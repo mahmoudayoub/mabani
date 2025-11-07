@@ -1,0 +1,17 @@
+{
+  "name": "taskflow-backend",
+  "version": "1.0.0",
+  "description": "Backend Lambda functions for TaskFlow intelligent task management platform",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "deploy:single": "serverless deploy function",
+    "test": "python -m pytest tests/",
+    "lint": "flake8 lambdas/",
+    "clean": "rm -rf .serverless __pycache__ *.pyc"
+  },
+  "devDependencies": {
+    "serverless": "^3.38.0",
+    "serverless-python-requirements": "^6.0.0"
+  }
+}

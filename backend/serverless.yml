@@ -1,0 +1,180 @@
+service: taskflow-backend
+
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.13
+  region: eu-west-1
+  stage: ${opt:stage, 'dev'}
+  profile: mia40
+  environment:
+    DYNAMODB_TABLE_NAME: ${self:service}-${self:provider.stage}-table
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-table"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-table/index/*"
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    slim: true
+    strip: false
+    noDeps:
+      - boto3
+      - botocore
+
+functions:
+  healthCheck:
+    handler: lambdas/user_profile.health_check
+    events:
+      - http:
+          path: /health
+          method: get
+          cors: true
+
+  getUserProfile:
+    handler: lambdas/user_profile.get_user_profile
+    events:
+      - http:
+          path: /profile
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  updateUserProfile:
+    handler: lambdas/user_profile.update_user_profile
+    events:
+      - http:
+          path: /profile
+          method: put
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  createItem:
+    handler: lambdas/items.create_item
+    events:
+      - http:
+          path: /items
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  getUserItems:
+    handler: lambdas/items.get_user_items
+    events:
+      - http:
+          path: /items
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  updateItem:
+    handler: lambdas/items.update_item
+    events:
+      - http:
+          path: /items/{itemId}
+          method: put
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  deleteItem:
+    handler: lambdas/items.delete_item
+    events:
+      - http:
+          path: /items/{itemId}
+          method: delete
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+resources:
+  Resources:
+    DynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${self:provider.stage}-table
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+          - AttributeName: GSI1PK
+            AttributeType: S
+          - AttributeName: GSI1SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: GSI1
+            KeySchema:
+              - AttributeName: GSI1PK
+                KeyType: HASH
+              - AttributeName: GSI1SK
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+            BillingMode: PAY_PER_REQUEST
+        BillingMode: PAY_PER_REQUEST
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+  Outputs:
+    ApiGatewayRestApiId:
+      Value:
+        Ref: ApiGatewayRestApi
+      Export:
+        Name: ${self:service}-${self:provider.stage}-api-id
+    ApiGatewayRestApiRootResourceId:
+      Value:
+        Fn::GetAtt:
+          - ApiGatewayRestApi
+          - RootResourceId
+      Export:
+        Name: ${self:service}-${self:provider.stage}-api-root-resource-id
+    DynamoDBTableName:
+      Value:
+        Ref: DynamoDBTable
+      Export:
+        Name: ${self:service}-${self:provider.stage}-table-name

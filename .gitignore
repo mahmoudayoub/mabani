@@ -1,0 +1,170 @@
+# Archive files (globally ignored)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.gz
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnp
+.pnp.js
+# Note: package-lock.json is intentionally tracked for reproducible builds
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.cache/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Serverless Framework
+.serverless/
+.serverless_plugins/
+.webpack/
+
+# AWS CDK
+cdk.out/
+cdk.context.json
+*.js.map
+*.d.ts.map
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+*.log.*
+
+# Testing
+coverage/
+.nyc_output/
+.coverage
+.pytest_cache/
+junit.xml
+test-results/
+playwright-report/
+test-results/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# AWS
+.aws-sam/
+samconfig.toml
+
+# Terraform (if used)
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+*.tfvars
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Misc
+.cache/
+.npm/
+.eslintcache
+.stylelintcache
+.parcel-cache/
+
+# CDK specific
+cdk.out/
+cdk.context.json
+
+# Python virtual environments
+backend/venv/
+backend/.venv/
+backend/env/
+backend/.env/
+
+# Frontend specific
+frontend/dist/
+frontend/.vite/
+frontend/dist-ssr/
+frontend/*.local
+
+# Infrastructure specific
+infrastructure/cdk.out/
+infrastructure/cdk.context.json
+infrastructure/.cdk.staging/
+
+# Secrets and sensitive files
+*.pem
+*.key
+*.crt
+secrets/
+.secrets/
+.secrets.json
+
+# Local configuration overrides
+local.json
+local.yml
+local.yaml
+

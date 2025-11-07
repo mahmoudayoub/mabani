@@ -1,0 +1,34 @@
+{
+  "name": "taskflow-infrastructure",
+  "version": "1.0.0",
+  "description": "Infrastructure as Code for TaskFlow intelligent task management platform",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "deploy": "cdk deploy --profile mia40",
+    "deploy:dev": "cdk deploy --context environment=dev --profile mia40",
+    "deploy:staging": "cdk deploy --context environment=staging --profile mia40",
+    "deploy:prod": "cdk deploy --context environment=prod --profile mia40",
+    "deploy:cognito": "cdk deploy --context environment=dev --profile mia40 --all --require-approval never MabaniCognitoStack-dev",
+    "deploy:frontend": "cdk deploy --context environment=dev --profile mia40 --all --require-approval never MabaniFrontendStack-dev",
+    "synth": "cdk synth --context environment=dev",
+    "synth:staging": "cdk synth --context environment=staging",
+    "synth:prod": "cdk synth --context environment=prod",
+    "diff": "cdk diff --context environment=dev",
+    "destroy": "cdk destroy --context environment=dev --profile mia40",
+    "bootstrap": "cdk bootstrap --profile mia40",
+    "list": "cdk list --context environment=dev"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.140.0",
+    "constructs": "^10.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "aws-cdk": "^2.140.0",
+    "typescript": "^5.5.0"
+  }
+}

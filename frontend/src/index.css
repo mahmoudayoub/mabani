@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #f9fafb;
+}
+
+/* AWS Amplify UI Customization */
+[data-amplify-authenticator] {
+  --amplify-colors-background-primary: #ffffff;
+  --amplify-colors-background-secondary: #f9fafb;
+  --amplify-colors-border-primary: #e5e7eb;
+  --amplify-colors-border-secondary: #d1d5db;
+  --amplify-colors-font-primary: #111827;
+  --amplify-colors-font-secondary: #6b7280;
+  --amplify-colors-brand-primary-60: #f69a00;
+  --amplify-colors-brand-primary-80: #f8bb6d;
+  --amplify-colors-brand-primary-100: #f69a00;
+  --amplify-colors-brand-primary-10: #fef7ed;
+  --amplify-colors-brand-secondary-60: #4b5563;
+  --amplify-colors-brand-secondary-80: #6b7280;
+  --amplify-colors-brand-secondary-100: #374151;
+  --amplify-radii-small: 0.5rem;
+  --amplify-radii-medium: 0.75rem;
+  --amplify-radii-large: 1rem;
+  --amplify-space-small: 0.75rem;
+  --amplify-space-medium: 1rem;
+  --amplify-space-large: 1.5rem;
+  --amplify-font-sizes-xs: 0.75rem;
+  --amplify-font-sizes-small: 0.875rem;
+  --amplify-font-sizes-medium: 1rem;
+  --amplify-font-sizes-large: 1.125rem;
+  --amplify-font-sizes-xl: 1.25rem;
+  --amplify-font-weights-normal: 400;
+  --amplify-font-weights-medium: 500;
+  --amplify-font-weights-semibold: 600;
+  --amplify-font-weights-bold: 700;
+}
+
+[data-amplify-authenticator] [data-amplify-container] {
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+  border-radius: 1rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 2rem;
+  max-width: 28rem;
+  margin: 2rem auto;
+  border: none !important;
+}
+
+[data-amplify-authenticator] [data-amplify-router] {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+[data-amplify-authenticator] [data-amplify-router] > * {
+  border: none !important;
+}
+
+[data-amplify-authenticator] [data-amplify-header] {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+[data-amplify-authenticator] [data-amplify-heading] {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 0.5rem;
+}
+
+[data-amplify-authenticator] [data-amplify-subtitle] {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+[data-amplify-authenticator] [data-amplify-form] {
+  gap: 1.25rem;
+}
+
+[data-amplify-authenticator] button[type="submit"],
+[data-amplify-authenticator] [data-amplify-button] {
+  background: linear-gradient(135deg, #f69a00 0%, #d17a00 100%);
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  border: none;
+  width: 100%;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px -1px rgba(246, 154, 0, 0.2);
+}
+
+[data-amplify-authenticator] button[type="submit"]:hover,
+[data-amplify-authenticator] [data-amplify-button]:hover {
+  background: linear-gradient(135deg, #d17a00 0%, #a85c00 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px -2px rgba(246, 154, 0, 0.3);
+}
+
+[data-amplify-authenticator] button[type="submit"]:active,
+[data-amplify-authenticator] [data-amplify-button]:active {
+  transform: translateY(0);
+}
+
+[data-amplify-authenticator] button[type="button"]:not([data-variation="link"]) {
+  background-color: #ffffff;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  font-weight: 500;
+}
+
+[data-amplify-authenticator] button[type="button"]:not([data-variation="link"]):hover {
+  background-color: #f9fafb;
+  border-color: #d1d5db;
+}
+
+[data-amplify-authenticator] [data-amplify-input] {
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+[data-amplify-authenticator] [data-amplify-input]:focus {
+  outline: none;
+  border-color: #f69a00;
+  box-shadow: 0 0 0 3px rgba(246, 154, 0, 0.1);
+}
+
+[data-amplify-authenticator] [data-amplify-label] {
+  font-weight: 500;
+  color: #374151;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+[data-amplify-authenticator] [data-amplify-footer] {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+[data-amplify-authenticator] [data-variation="link"] {
+  color: #f69a00;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+[data-amplify-authenticator] [data-variation="link"]:hover {
+  color: #d17a00;
+  text-decoration: underline;
+}
+
+[data-amplify-authenticator] [data-amplify-error] {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 640px) {
+  [data-amplify-authenticator] [data-amplify-container] {
+    margin: 1rem;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+  }
+  
+  [data-amplify-authenticator] [data-amplify-heading] {
+    font-size: 1.5rem;
+  }
+}

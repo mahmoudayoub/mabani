@@ -1,0 +1,25 @@
+{
+  "twilio-webhook-event": {
+    "body": "MessageSid=SM123456789&From=whatsapp%3A%2B1234567890&To=whatsapp%3A%2B14155238886&Body=Scaffolding+material+falling+from+height+-+urgent+inspection+needed&NumMedia=1&MediaUrl0=https%3A%2F%2Fapi.twilio.com%2F2010-04-01%2FAccounts%2FAC123%2FMessages%2FSM123%2FMedia%2FME123&MediaContentType0=image%2Fjpeg",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-Twilio-Signature": "test_signature_here",
+      "Host": "abc123.execute-api.eu-west-1.amazonaws.com"
+    },
+    "httpMethod": "POST",
+    "path": "/dev/webhook/twilio",
+    "requestContext": {
+      "path": "/dev/webhook/twilio"
+    }
+  },
+  "report-processor-event": {
+    "requestId": "550e8400-e29b-41d4-a716-446655440000",
+    "timestamp": "2025-11-08T10:30:00.000Z",
+    "sender": "+1234567890",
+    "description": "Scaffolding material falling from height - urgent inspection needed",
+    "imageUrl": "https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/SM123/Media/ME123",
+    "messageSid": "SM123456789",
+    "status": "RECEIVED"
+  }
+}
+

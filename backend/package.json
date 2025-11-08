@@ -11,7 +11,7 @@
     "clean": "rm -rf .serverless __pycache__ *.pyc"
   },
   "devDependencies": {
-    "serverless": "^3.38.0",
+    "serverless": "^3.40.0",
     "serverless-python-requirements": "^6.0.0"
   }
 }

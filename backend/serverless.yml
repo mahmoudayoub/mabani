@@ -10,6 +10,12 @@ provider:
   profile: mia40
   environment:
     DYNAMODB_TABLE_NAME: ${self:service}-${self:provider.stage}-table
+    REPORTS_TABLE: ${self:service}-${self:provider.stage}-reports
+    USER_PROJECT_TABLE: ${self:service}-${self:provider.stage}-user-projects
+    REPORTS_BUCKET: ${self:service}-${self:provider.stage}-reports
+    TWILIO_SECRETS_NAME: mabani/twilio/credentials
+    BEDROCK_MODEL_ID: eu.amazon.nova-lite-v1:0
+    BEDROCK_VISION_MODEL_ID: eu.amazon.nova-pro-v1:0
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
   iam:
     role:
@@ -25,22 +31,76 @@ provider:
           Resource:
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-table"
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-table/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-reports"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-reports/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-user-projects"
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:PutObjectTagging
+          Resource:
+            - "arn:aws:s3:::${self:service}-${self:provider.stage}-reports/*"
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - "arn:aws:secretsmanager:${self:provider.region}:*:secret:mabani/twilio/*"
+        - Effect: Allow
+          Action:
+            - bedrock:InvokeModel
+          Resource:
+            - "arn:aws:bedrock:*::foundation-model/*"
+            - "arn:aws:bedrock:*:*:inference-profile/*"
+        - Effect: Allow
+          Action:
+            - states:StartExecution
+          Resource:
+            - "arn:aws:states:${self:provider.region}:*:stateMachine:${self:service}-${self:provider.stage}-report-workflow"
+        - Effect: Allow
+          Action:
+            - lambda:InvokeFunction
+          Resource:
+            - "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-reportProcessor"
 
 plugins:
   - serverless-python-requirements
 
 custom:
   pythonRequirements:
-    dockerizePip: true
+    dockerizePip: false
     slim: true
     strip: false
+    layer: true
     noDeps:
       - boto3
       - botocore
 
+package:
+  individually: true
+  patterns:
+    - "!.venv/**"
+    - "!venv/**"
+    - "!node_modules/**"
+    - "!tests/**"
+    - "!__pycache__/**"
+    - "!*.pyc"
+    - "!.pytest_cache/**"
+    - "!.serverless/**"
+    - "!package.json"
+    - "!package-lock.json"
+    - "!serverless.yml"
+    - "!.python-version"
+    - "!.git/**"
+    - "lambdas/**"
+    - "!lambdas/tests/**"
+    - "!lambdas/__pycache__/**"
+
 functions:
   healthCheck:
     handler: lambdas/user_profile.health_check
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
     events:
       - http:
           path: /health
@@ -49,6 +109,8 @@ functions:
 
   getUserProfile:
     handler: lambdas/user_profile.get_user_profile
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
     events:
       - http:
           path: /profile
@@ -61,6 +123,8 @@ functions:
 
   updateUserProfile:
     handler: lambdas/user_profile.update_user_profile
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
     events:
       - http:
           path: /profile
@@ -73,6 +137,8 @@ functions:
 
   createItem:
     handler: lambdas/items.create_item
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
     events:
       - http:
           path: /items
@@ -85,6 +151,8 @@ functions:
 
   getUserItems:
     handler: lambdas/items.get_user_items
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
     events:
       - http:
           path: /items
@@ -97,6 +165,8 @@ functions:
 
   updateItem:
     handler: lambdas/items.update_item
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
     events:
       - http:
           path: /items/{itemId}
@@ -109,6 +179,8 @@ functions:
 
   deleteItem:
     handler: lambdas/items.delete_item
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
     events:
       - http:
           path: /items/{itemId}
@@ -118,6 +190,31 @@ functions:
             name: cognitoAuthorizer
             type: COGNITO_USER_POOLS
             arn: ${env:COGNITO_USER_POOL_ARN}
+
+  # H&S + Quality Workflow Functions
+  twilioWebhook:
+    handler: lambdas/twilio_webhook.handler
+    timeout: 30
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+    environment:
+      PROCESSOR_FUNCTION_NAME: ${self:service}-${self:provider.stage}-reportProcessor
+    events:
+      - http:
+          path: /webhook/twilio
+          method: post
+          cors: false
+
+  reportProcessor:
+    handler: lambdas/report_processor.handler
+    timeout: 300
+    memorySize: 1024
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+    environment:
+      REPORTS_TABLE: ${self:service}-${self:provider.stage}-reports
+      USER_PROJECT_TABLE: ${self:service}-${self:provider.stage}-user-projects
+      REPORTS_BUCKET: ${self:service}-${self:provider.stage}-reports
 
 resources:
   Resources:
@@ -148,12 +245,109 @@ resources:
                 KeyType: RANGE
             Projection:
               ProjectionType: ALL
-            BillingMode: PAY_PER_REQUEST
         BillingMode: PAY_PER_REQUEST
         StreamSpecification:
           StreamViewType: NEW_AND_OLD_IMAGES
         PointInTimeRecoverySpecification:
           PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+    # Reports Table
+    ReportsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${self:provider.stage}-reports
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+          - AttributeName: GSI1PK
+            AttributeType: S
+          - AttributeName: GSI1SK
+            AttributeType: S
+          - AttributeName: GSI2PK
+            AttributeType: S
+          - AttributeName: GSI2SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: GSI1
+            KeySchema:
+              - AttributeName: GSI1PK
+                KeyType: HASH
+              - AttributeName: GSI1SK
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: GSI2
+            KeySchema:
+              - AttributeName: GSI2PK
+                KeyType: HASH
+              - AttributeName: GSI2SK
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+    # User-Project Mappings Table
+    UserProjectTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${self:provider.stage}-user-projects
+        AttributeDefinitions:
+          - AttributeName: phoneNumber
+            AttributeType: S
+        KeySchema:
+          - AttributeName: phoneNumber
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+    # S3 Bucket for Reports
+    ReportsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-${self:provider.stage}-reports
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        VersioningConfiguration:
+          Status: Enabled
+        LifecycleConfiguration:
+          Rules:
+            - Id: ArchiveOldImages
+              Status: Enabled
+              Transitions:
+                - TransitionInDays: 90
+                  StorageClass: STANDARD_IA
+                - TransitionInDays: 365
+                  StorageClass: GLACIER
         Tags:
           - Key: Environment
             Value: ${self:provider.stage}
@@ -178,3 +372,18 @@ resources:
         Ref: DynamoDBTable
       Export:
         Name: ${self:service}-${self:provider.stage}-table-name
+    ReportsTableName:
+      Value:
+        Ref: ReportsTable
+      Export:
+        Name: ${self:service}-${self:provider.stage}-reports-table-name
+    ReportsBucketName:
+      Value:
+        Ref: ReportsBucket
+      Export:
+        Name: ${self:service}-${self:provider.stage}-reports-bucket-name
+    TwilioWebhookUrl:
+      Value:
+        Fn::Sub: "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}/webhook/twilio"
+      Export:
+        Name: ${self:service}-${self:provider.stage}-twilio-webhook-url

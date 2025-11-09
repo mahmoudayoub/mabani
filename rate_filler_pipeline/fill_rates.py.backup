@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""
+Rate Filler Pipeline - Main Script
+Auto-fill missing unit rates in Excel BOQ using vector search + LLM validation.
+"""
+import sys
+import logging
+from pathlib import Path
+from datetime import datetime
+from typing import Optional
+from dotenv import load_dotenv
+from tqdm import tqdm
+
+from rate_filler_pipeline.src import ExcelReader, RateMatcher, ExcelWriter
+
+# Load environment variables
+load_dotenv()
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('rate_filler.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+def run_pipeline(
+    input_excel: str,
+    output_excel: Optional[str] = None,
+    sheet_name: Optional[str] = None,
+    similarity_threshold: float = 0.76,
+    top_k: int = 6
+) -> str:
+    """
+    Run the rate filling pipeline.
+    
+    Args:
+        input_excel: Path to input Excel file
+        output_excel: Path to output Excel file (auto-generated if None)
+        sheet_name: Specific sheet to process (None = all sheets)
+        similarity_threshold: Minimum similarity score
+        top_k: Number of candidates to retrieve
+        
+    Returns:
+        Path to output file
+    """
+    print("=" * 80)
+    print("BOQ RATE FILLER PIPELINE")
+    print("Vector Search + LLM Validation")
+    print("=" * 80)
+    print()
+    
+    # Generate output path if not provided
+    if not output_excel:
+        input_path = Path(input_excel)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        # Use output folder in pipeline directory
+        pipeline_dir = Path(__file__).parent
+        output_dir = pipeline_dir / 'output'
+        output_dir.mkdir(exist_ok=True)
+        output_excel = str(output_dir / f"{input_path.stem}_filled_{timestamp}.xlsx")
+    
+    print(f"📥 Input:  {input_excel}")
+    print(f"📤 Output: {output_excel}")
+    print(f"🎯 Settings:")
+    print(f"   - Similarity threshold: {similarity_threshold}")
+    print(f"   - Top-K candidates: {top_k}")
+    print()
+    
+    # Step 1: Read Excel
+    print("=" * 80)
+    print("STEP 1: Reading Excel File")
+    print("=" * 80)
+    
+    reader = ExcelReader()
+    sheets = reader.read_excel(input_excel, sheet_name)
+    
+    if not sheets:
+        logger.error("No sheets found in Excel file")
+        return None
+    
+    # Process first sheet (or specified sheet)
+    sheet_name = list(sheets.keys())[0]
+    df = sheets[sheet_name]
+    
+    print(f"\n✓ Processing sheet: '{sheet_name}'")
+    print(f"  Rows: {len(df)}")
+    print()
+    
+    # Extract items
+    items = reader.extract_items(df)
+    
+    if not items:
+        logger.error("No items found in Excel")
+        return None
+    
+    # Filter items needing filling
+    items_to_fill = [item for item in items if item['needs_filling']]
+    
+    print(f"\n✓ Found {len(items_to_fill)} items needing rate filling")
+    print()
+    
+    if not items_to_fill:
+        print("✓ All items already have rates! Nothing to fill.")
+        return None
+    
+    # Step 2: Initialize matcher
+    print("=" * 80)
+    print("STEP 2: Initializing Rate Matcher")
+    print("=" * 80)
+    print()
+    
+    matcher = RateMatcher(
+        similarity_threshold=similarity_threshold,
+        top_k=top_k
+    )
+    
+    print("✓ Rate matcher ready")
+    print()
+    
+    # Step 3: Process items
+    print("=" * 80)
+    print("STEP 3: Finding Matches")
+    print("=" * 80)
+    print()
+    
+    filled_items = []
+    matched_count = 0
+    unmatched_count = 0
+    
+    print(f"Processing {len(items_to_fill)} items...")
+    print()
+    
+    for item in tqdm(items_to_fill, desc="Matching items", unit="item"):
+        # Find matches
+        result = matcher.find_matches(
+            item_description=item['description'],
+            item_code=item['code']
+        )
+        
+        # Store result
+        filled_item = {
+            'row_index': item['row_index'],
+            'description': item['description'],
+            'code': item['code'],
+            'original_unit': item['unit'],
+            'original_rate': item['rate'],
+            'match_status': result['status'],
+            'matched_unit': result.get('unit'),
+            'matched_rate': result.get('rate'),
+            'match_details': result
+        }
+        
+        filled_items.append(filled_item)
+        
+        if result['status'] == 'match':
+            matched_count += 1
+        else:
+            unmatched_count += 1
+    
+    print()
+    print(f"✓ Matching complete:")
+    print(f"  - Matched: {matched_count} ({matched_count/len(items_to_fill)*100:.1f}%)")
+    print(f"  - Unmatched: {unmatched_count} ({unmatched_count/len(items_to_fill)*100:.1f}%)")
+    print()
+    
+    # Step 4: Write output
+    print("=" * 80)
+    print("STEP 4: Writing Output")
+    print("=" * 80)
+    print()
+    
+    writer = ExcelWriter()
+    
+    # Write filled Excel
+    output_path = writer.write_filled_excel(
+        original_df=df,
+        filled_items=filled_items,
+        output_path=output_excel,
+        mark_unfilled=True
+    )
+    
+    # Generate report
+    report_path = Path(output_excel).with_suffix('.txt')
+    writer.generate_report(filled_items, report_path)
+    
+    print()
+    print("=" * 80)
+    print("✅ PIPELINE COMPLETE")
+    print("=" * 80)
+    print()
+    print(f"📊 Results:")
+    print(f"   Total items processed: {len(items_to_fill)}")
+    print(f"   Successfully filled: {matched_count}")
+    print(f"   Need manual review: {unmatched_count}")
+    print()
+    print(f"📁 Output files:")
+    print(f"   Excel: {output_path}")
+    print(f"   Report: {report_path}")
+    print()
+    print("📝 Color coding:")
+    print("   🟢 Green = Successfully filled")
+    print("   🔴 Red = Could not find match (manual review needed)")
+    print()
+    
+    return output_path
+
+
+def main():
+    """Main entry point."""
+    
+    if len(sys.argv) < 2:
+        print("Usage: python fill_rates.py <input_excel> [output_excel] [--threshold 0.76] [--top-k 6]")
+        print()
+        print("Example:")
+        print("  python fill_rates.py new_boq.xlsx")
+        print("  python fill_rates.py new_boq.xlsx filled_boq.xlsx --threshold 0.8")
+        return 1
+    
+    input_excel = sys.argv[1]
+    output_excel = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else None
+    
+    # Parse optional arguments
+    threshold = 0.76
+    top_k = 6
+    
+    for i, arg in enumerate(sys.argv):
+        if arg == '--threshold' and i + 1 < len(sys.argv):
+            threshold = float(sys.argv[i + 1])
+        if arg == '--top-k' and i + 1 < len(sys.argv):
+            top_k = int(sys.argv[i + 1])
+    
+    # Run pipeline
+    try:
+        output_path = run_pipeline(
+            input_excel=input_excel,
+            output_excel=output_excel,
+            similarity_threshold=threshold,
+            top_k=top_k
+        )
+        
+        if output_path:
+            return 0
+        else:
+            return 1
+            
+    except Exception as e:
+        logger.error(f"Pipeline failed: {e}", exc_info=True)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

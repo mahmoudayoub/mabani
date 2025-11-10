@@ -245,7 +245,7 @@ class RateMatcher:
         try:
             # Call OpenAI
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini-2025-08-07",
                 messages=[
                     {
                         "role": "system",
@@ -309,7 +309,7 @@ class RateMatcher:
             
             candidates_text += f"\n{cand_text}\n"
         
-        prompt = f"""You are analyzing a construction BOQ item to find exact matches from a database.
+        prompt = f"""You are analyzing a construction BOQ (Bill of Quantities) item to find exact matches from a database.
 
 TARGET ITEM TO MATCH:
 {target_info}
@@ -318,35 +318,68 @@ CANDIDATE ITEMS (from vector search):
 {candidates_text}
 
 TASK:
-Determine which candidates (if any) are EXACT MATCHES to the target item based on description, unit, and hierarchical context (parent/grandparent).
+Determine which candidates (if any) are EXACT MATCHES to the target item. Consider the complete context including description, unit, and hierarchical position (parent/grandparent).
 
-EXACT MATCH means:
-- Same construction work/item (even if wording differs)
-- Same specifications (materials, dimensions, standards)
-- Same scope of work
-- Compatible units (m², m³, No., LS, ha, ton, etc.)
-- Same or compatible hierarchical context
+MATCHING RULES:
 
-NOT an exact match if:
-- Different materials or specifications
-- Different scope (e.g., "supply only" vs "supply & install")
-- Different quality/grade
-- Incompatible units
-- Completely different context (e.g., electrical vs plumbing)
+1. CORE IDENTITY - The items must represent the SAME thing:
+   - Same type of work, material, equipment, service, or activity
+   - Same fundamental purpose and function
+   - Text variations are OK if meaning is identical ("excavation" = "excavate", "construct" = "construction")
 
-OUTPUT FORMAT (JSON):
+2. SPECIFICATIONS - Critical details must align:
+   - Dimensions/sizes must match (1500mm ≠ 1200mm, 16" ≠ 8")
+   - Materials/grades must match (C40 ≠ C30, API 5L Grade B = API 5L Grade B)
+   - Technical specs must match (80KW ≠ 100KW, PN16 = PN16)
+   - Standards/codes must be compatible (ASTM A234 WPB matches if same item)
+
+3. SCOPE OF WORK - Must be equivalent:
+   - "Supply only" ≠ "Supply & Install" ≠ "Install only"
+   - "Complete with accessories" ≠ "Equipment only"
+   - "Including excavation" ≠ "Excluding excavation"
+   - Minor wording differences OK if scope is clearly the same
+
+4. UNITS - Must be compatible:
+   - Exact match preferred (m = m, nr = nr, LS = LS)
+   - Compatible units accepted (m² = sqm, m³ = cum, No. = nr = Each)
+   - Incompatible units are red flags (m ≠ m², ton ≠ m³)
+
+5. HIERARCHICAL CONTEXT - Should be consistent:
+   - Same or very similar parent category (6.1 Ducts matches 6.1 Ducts)
+   - Same general domain (electrical matches electrical, civil matches civil)
+   - Different domains = likely different items (electrical ducts ≠ drainage pipes)
+
+MATCH IF:
+✓ Same item with identical/equivalent specifications
+✓ Different wording but clearly the same work
+✓ Compatible units and matching context
+✓ All critical specifications align
+
+DO NOT MATCH IF:
+✗ Different specifications (size, grade, capacity, etc.)
+✗ Different scope (supply vs install, with/without accessories)
+✗ Incompatible units (unless clearly an error)
+✗ Different domain/context (electrical vs plumbing, structure vs MEP)
+✗ One is generic, other is specific (unless clearly referring to same thing)
+
+OUTPUT FORMAT (strict JSON):
 {{
     "status": "match" or "no_match",
-    "matches": [1, 3, 5],  // Indices of matching candidates (empty if no match)
-    "reasoning": "Brief explanation of why items match or don't match"
+    "matches": [1, 3, 5],  // 1-based indices of matching candidates (empty array if no matches)
+    "reasoning": "Brief explanation of decision focusing on key factors"
 }}
 
-Examples:
-- "EXCAVATION FOR FOUNDATIONS" matches "EXCAVATION IN FOUNDATION AREAS" ✓
-- "CONCRETE C40" does NOT match "CONCRETE C30" ✗
-- "SUPPLY PUMPING STATION 80KW" matches "PUMPING STATION 80KW SUPPLY & INSTALL" (if specs same) ✓
+EXAMPLES:
+✓ "EXCAVATION FOR FOUNDATIONS depth 2m" matches "FOUNDATION EXCAVATION 2m deep"
+✗ "EXCAVATION FOR FOUNDATIONS depth 2m" does NOT match "EXCAVATION FOR TRENCHES depth 2m"
+✓ "Concrete C40/20" matches "Grade C40/20 Concrete" 
+✗ "Concrete C40" does NOT match "Concrete C30"
+✓ "Supply Pump 80KW" matches "80KW Pumping Unit Supply"
+✗ "Supply Pump 80KW" does NOT match "Supply & Install Pump 80KW"
+✓ "HDPE Pipe DN200" matches "200mm HDPE Pipe"
+✗ "HDPE Pipe DN200" does NOT match "HDPE Pipe DN300"
 
-Analyze carefully and return JSON only."""
+Analyze the target and candidates carefully. Return only valid JSON."""
         
         return prompt
     

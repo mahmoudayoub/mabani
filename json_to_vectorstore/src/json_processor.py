@@ -17,6 +17,7 @@ class JSONProcessor:
     """
     Processes hierarchical JSON files and extracts items for vector store.
     Only items with item_type='item' are extracted.
+    C-levels and subcategories are included in the category path for proper categorization.
     """
     
     def __init__(self):
@@ -74,7 +75,9 @@ class JSONProcessor:
         items: List[VectorStoreItem],
         category_path: List[str],
         source_name: str,
-        parent_level: Optional[int] = None
+        parent_level: Optional[int] = None,
+        parent_description: Optional[str] = None,
+        grandparent_description: Optional[str] = None
     ):
         """
         Recursively traverse the hierarchy and extract items.
@@ -85,44 +88,73 @@ class JSONProcessor:
             category_path: Current category path (for metadata)
             source_name: Name of the source sheet
             parent_level: Parent numeric level
+            parent_description: Description of the immediate parent
+            grandparent_description: Description of the grandparent
         """
         for node in nodes:
             item_type = node.get('item_type', 'unknown')
+            level = node.get('level')
             
-            # Update category path for numeric levels
+            # Determine current category path for this node
+            current_path = category_path.copy()
+            
+            # Track parent/grandparent for this branch
+            current_parent = parent_description
+            current_grandparent = grandparent_description
+            
+            # Update category path for numeric levels and c-levels
+            is_c_level = (str(level).lower().strip() == 'c')
+            
             if item_type == 'numeric_level':
                 description = node.get('description', '')
-                if description and description not in category_path:
-                    category_path = category_path + [description]
+                if description and description not in current_path:
+                    current_path.append(description)
                 
                 # Update parent level
-                level = node.get('level')
                 if level is not None:
                     try:
                         parent_level = int(level)
                     except (ValueError, TypeError):
                         pass
+                
+                # This numeric level becomes the parent for its children
+                current_grandparent = current_parent
+                current_parent = description
+            
+            elif is_c_level or item_type == 'subcategory':
+                # Include c-levels and subcategories in category path
+                description = node.get('description', '')
+                if description and description not in current_path:
+                    current_path.append(description)
+                
+                # This c-level/subcategory becomes the parent for its children
+                current_grandparent = current_parent
+                current_parent = description
             
             # Extract items (not categories)
             if item_type == 'item':
                 item = self._extract_item(
                     node, 
-                    category_path, 
+                    current_path, 
                     source_name,
-                    parent_level
+                    parent_level,
+                    current_parent,
+                    current_grandparent
                 )
                 if item:
                     items.append(item)
             
-            # Recursively process children
+            # Recursively process children with the updated path and parent info
             children = node.get('children', [])
             if children:
                 self._traverse_hierarchy(
                     children, 
                     items, 
-                    category_path,
+                    current_path,
                     source_name,
-                    parent_level
+                    parent_level,
+                    current_parent,
+                    current_grandparent
                 )
     
     def _is_header_row(self, node: Dict[str, Any]) -> bool:
@@ -159,13 +191,20 @@ class JSONProcessor:
         node: Dict[str, Any], 
         category_path: List[str],
         source_name: str,
-        parent_level: Optional[int]
+        parent_level: Optional[int],
+        parent_description: Optional[str] = None,
+        grandparent_description: Optional[str] = None
     ) -> Optional[VectorStoreItem]:
         """
         Extract a single item from a node.
         
         Args:
             node: The node containing item data
+            category_path: Current category path
+            source_name: Source sheet name
+            parent_level: Parent numeric level
+            parent_description: Description of the immediate parent
+            grandparent_description: Description of the grandparent
             category_path: Current category path
             source_name: Source sheet name
             parent_level: Parent numeric level
@@ -184,6 +223,23 @@ class JSONProcessor:
         if not description:
             logger.debug(f"Skipping item without description: {node.get('item_code', 'unknown')}")
             return None
+        
+        # Build enriched text for embedding with parent and grandparent context
+        text_parts = []
+        
+        # Add grandparent if available
+        if grandparent_description:
+            text_parts.append(grandparent_description)
+        
+        # Add parent if available
+        if parent_description:
+            text_parts.append(parent_description)
+        
+        # Add the main description
+        text_parts.append(description)
+        
+        # Combine all parts (just values separated by |, no labels)
+        enriched_text = " | ".join(text_parts)
         
         # Create unique ID
         item_code = node.get('item_code', 'unknown')
@@ -214,10 +270,16 @@ class JSONProcessor:
         if node.get('full_description') and node.get('full_description') != description:
             metadata['full_description'] = node['full_description']
         
-        # Create VectorStoreItem
+        # Store parent and grandparent in metadata for reference
+        if parent_description:
+            metadata['parent'] = parent_description
+        if grandparent_description:
+            metadata['grandparent'] = grandparent_description
+        
+        # Create VectorStoreItem with enriched text
         item = VectorStoreItem(
             id=item_id,
-            text=str(description),
+            text=enriched_text,
             metadata=metadata
         )
         

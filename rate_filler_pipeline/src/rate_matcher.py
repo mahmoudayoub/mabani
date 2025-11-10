@@ -20,7 +20,7 @@ class RateMatcher:
     def __init__(
         self,
         openai_api_key: Optional[str] = None,
-        similarity_threshold: float = 0.76,
+        similarity_threshold: float = 0.7,
         top_k: int = 6
     ):
         """
@@ -54,19 +54,24 @@ class RateMatcher:
     def find_matches(
         self,
         item_description: str,
-        item_code: str = ''
+        item_code: str = '',
+        parent: Optional[str] = None,
+        grandparent: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Find matching items for a given description.
+        Find matching items for a given description with hierarchical context.
         
         Process:
-        1. Search vector store for top-K similar items (score > threshold)
-        2. Pass candidates to LLM for exact match validation
-        3. Return matched items with rates
+        1. Build enriched query text (matching vector store format)
+        2. Search vector store for top-K similar items (score > threshold)
+        3. Pass candidates to LLM for exact match validation
+        4. Return matched items with rates
         
         Args:
             item_description: Item description to match
             item_code: Optional item code
+            parent: Parent description (immediate level above)
+            grandparent: Grandparent description (two levels above)
             
         Returns:
             Dictionary with match results:
@@ -79,9 +84,13 @@ class RateMatcher:
             }
         """
         logger.info(f"Finding matches for: {item_description[:60]}...")
+        if parent:
+            logger.info(f"  Parent: {parent[:60]}...")
+        if grandparent:
+            logger.info(f"  Grandparent: {grandparent[:60]}...")
         
-        # Step 1: Vector search
-        candidates = self._search_similar_items(item_description)
+        # Step 1: Vector search with enriched context
+        candidates = self._search_similar_items(item_description, parent, grandparent)
         
         if not candidates:
             logger.info("  No candidates found above threshold")
@@ -95,11 +104,13 @@ class RateMatcher:
         
         logger.info(f"  Found {len(candidates)} candidates")
         
-        # Step 2: LLM validation
+        # Step 2: LLM validation with hierarchical context
         llm_result = self._validate_with_llm(
             item_description,
             item_code,
-            candidates
+            candidates,
+            parent,
+            grandparent
         )
         
         if llm_result['status'] == 'match':
@@ -143,19 +154,38 @@ class RateMatcher:
     
     def _search_similar_items(
         self,
-        description: str
+        description: str,
+        parent: Optional[str] = None,
+        grandparent: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Search vector store for similar items.
+        Search vector store for similar items using enriched context.
+        
+        Builds query in same format as vector store embeddings:
+        "[grandparent] | [parent] | [description]"
         
         Args:
             description: Item description
+            parent: Parent description (optional)
+            grandparent: Grandparent description (optional)
             
         Returns:
             List of similar items above threshold
         """
-        # Generate embedding
-        query_vector = self.embedder.generate_embedding(description)
+        # Build enriched query text (same format as vector store - just values, no labels)
+        text_parts = []
+        if grandparent:
+            text_parts.append(grandparent)
+        if parent:
+            text_parts.append(parent)
+        text_parts.append(description)
+        
+        enriched_query = " | ".join(text_parts)
+        
+        logger.debug(f"Enriched query: {enriched_query[:100]}...")
+        
+        # Generate embedding for enriched query
+        query_vector = self.embedder.generate_embedding(enriched_query)
         
         # Search Pinecone
         results = self.uploader.search(
@@ -168,12 +198,15 @@ class RateMatcher:
         for result in results:
             score = result.get('score', 0)
             if score >= self.similarity_threshold:
+                metadata = result.get('metadata', {})
                 candidates.append({
                     'description': result.get('text', ''),
-                    'unit': result.get('metadata', {}).get('unit', ''),
-                    'rate': result.get('metadata', {}).get('rate', 0),
-                    'code': result.get('metadata', {}).get('item_code', ''),
-                    'project': result.get('metadata', {}).get('source_sheet', ''),
+                    'unit': metadata.get('unit', ''),
+                    'rate': metadata.get('rate', 0),
+                    'code': metadata.get('item_code', ''),
+                    'project': metadata.get('source_sheet', ''),
+                    'parent': metadata.get('parent', ''),
+                    'grandparent': metadata.get('grandparent', ''),
                     'score': score
                 })
         
@@ -183,7 +216,9 @@ class RateMatcher:
         self,
         target_description: str,
         target_code: str,
-        candidates: List[Dict[str, Any]]
+        candidates: List[Dict[str, Any]],
+        parent: Optional[str] = None,
+        grandparent: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Use LLM to validate if candidates are exact matches.
@@ -192,15 +227,19 @@ class RateMatcher:
             target_description: Item to match
             target_code: Item code (optional)
             candidates: Retrieved candidates
+            parent: Parent description (optional)
+            grandparent: Grandparent description (optional)
             
         Returns:
             {'status': 'match'|'no_match', 'matches': [...]}
         """
-        # Build prompt
+        # Build prompt with parent/grandparent context
         prompt = self._build_validation_prompt(
             target_description,
             target_code,
-            candidates
+            candidates,
+            parent,
+            grandparent
         )
         
         try:
@@ -241,41 +280,59 @@ class RateMatcher:
         self,
         target_description: str,
         target_code: str,
-        candidates: List[Dict[str, Any]]
+        candidates: List[Dict[str, Any]],
+        parent: Optional[str] = None,
+        grandparent: Optional[str] = None
     ) -> str:
-        """Build prompt for LLM validation - only descriptions and units."""
+        """Build prompt for LLM validation with hierarchical context."""
         
         code_info = f" (Code: {target_code})" if target_code else ""
         
+        # Build target item info with hierarchy
+        target_info = f"Description: {target_description}{code_info}"
+        if parent:
+            target_info = f"Parent: {parent}\n{target_info}"
+        if grandparent:
+            target_info = f"Grandparent: {grandparent}\n{target_info}"
+        
         candidates_text = ""
         for i, cand in enumerate(candidates, 1):
-            candidates_text += f"""
-{i}. Description: {cand['description']}
-   Unit: {cand['unit']}
-"""
+            # Extract parent/grandparent from metadata if available
+            cand_parent = cand.get('parent', '')
+            cand_grandparent = cand.get('grandparent', '')
+            
+            cand_text = f"{i}. Description: {cand['description']}\n   Unit: {cand['unit']}"
+            if cand_parent:
+                cand_text += f"\n   Parent: {cand_parent}"
+            if cand_grandparent:
+                cand_text += f"\n   Grandparent: {cand_grandparent}"
+            
+            candidates_text += f"\n{cand_text}\n"
         
         prompt = f"""You are analyzing a construction BOQ item to find exact matches from a database.
 
 TARGET ITEM TO MATCH:
-Description: {target_description}{code_info}
+{target_info}
 
 CANDIDATE ITEMS (from vector search):
 {candidates_text}
 
 TASK:
-Determine which candidates (if any) are EXACT MATCHES to the target item based on description and unit.
+Determine which candidates (if any) are EXACT MATCHES to the target item based on description, unit, and hierarchical context (parent/grandparent).
 
 EXACT MATCH means:
 - Same construction work/item (even if wording differs)
 - Same specifications (materials, dimensions, standards)
 - Same scope of work
 - Compatible units (m², m³, No., LS, ha, ton, etc.)
+- Same or compatible hierarchical context
 
 NOT an exact match if:
 - Different materials or specifications
 - Different scope (e.g., "supply only" vs "supply & install")
 - Different quality/grade
 - Incompatible units
+- Completely different context (e.g., electrical vs plumbing)
 
 OUTPUT FORMAT (JSON):
 {{

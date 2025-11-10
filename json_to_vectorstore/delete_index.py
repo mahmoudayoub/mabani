@@ -28,7 +28,7 @@ def main():
     
     print(f"\n⚠️  WARNING: This will DELETE the '{index_name}' index!")
     print("⚠️  All vectors will be permanently removed.")
-    print("\nYou will need to run prepare_and_upload.py or delete_and_reprocess.py")
+    print("\nYou will need to run process_json_to_vectorstore.py")
     print("to rebuild the vector database.")
     
     response = input(f"\n❓ Delete index '{index_name}'? (yes/no): ")
@@ -46,9 +46,8 @@ def main():
             pc.delete_index(index_name)
             print(f"\n✅ Index '{index_name}' deleted successfully!")
             print("\nThe vector database is now empty.")
-            print("Run one of these to rebuild:")
-            print("  - prepare_and_upload.py (use existing JSONL)")
-            print("  - delete_and_reprocess.py (reprocess all JSON files)")
+            print("Run this to rebuild:")
+            print("  .venv/bin/python json_to_vectorstore/process_json_to_vectorstore.py")
         else:
             print(f"\nℹ️  Index '{index_name}' does not exist")
             print("Nothing to delete.")

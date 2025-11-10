@@ -25,7 +25,13 @@ class JsonExporter:
             config: Configuration dictionary
         """
         self.config = config
-        self.output_dir = Path(config.get('output_directory', 'output'))
+        
+        # Get the pipeline directory (parent of src directory)
+        pipeline_dir = Path(__file__).parent.parent
+        
+        # Use absolute path to output directory within the pipeline module
+        output_dir_name = config.get('output_directory', 'output')
+        self.output_dir = pipeline_dir / output_dir_name
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def export_workbook(self, workbook: WorkbookData, output_filename: Optional[str] = None) -> Path:

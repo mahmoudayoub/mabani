@@ -99,7 +99,13 @@ class Pipeline:
         log_config = self.config.get('logging', {})
         log_level = log_config.get('level', 'INFO')
         log_format = log_config.get('format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        log_dir = Path(self.config.get('log_directory', 'logs'))
+        
+        # Get the pipeline directory (parent of src directory)
+        pipeline_dir = Path(__file__).parent.parent
+        
+        # Use absolute path to log directory within the pipeline module
+        log_dir_name = self.config.get('log_directory', 'logs')
+        log_dir = pipeline_dir / log_dir_name
         log_dir.mkdir(parents=True, exist_ok=True)
         
         # Create log filename with timestamp

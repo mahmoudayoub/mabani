@@ -7,6 +7,9 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Add parent directory to path for absolute imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 # Import from rate_filler_pipeline
 from rate_filler_pipeline.fill_rates import run_pipeline
 
@@ -17,11 +20,11 @@ load_dotenv()
 def main():
     """Process a single Excel file from input folder."""
     
-    if len(sys.argv) < 2:
-        print("Usage: python process_single.py <filename.xlsx>")
+    if len(sys.argv) < 3:
+        print("Usage: python process_single.py <filename.xlsx> <sheet_name>")
         print()
         print("Example:")
-        print("  python process_single.py my_boq.xlsx")
+        print("  python process_single.py my_boq.xlsx 'Terminal'")
         print()
         print("Note: File must be in the 'input/' folder")
         return 1
@@ -35,8 +38,9 @@ def main():
     input_dir.mkdir(exist_ok=True)
     output_dir.mkdir(exist_ok=True)
     
-    # Get input file
+    # Get input file and sheet name
     filename = sys.argv[1]
+    sheet_name = sys.argv[2]
     input_file = input_dir / filename
     
     if not input_file.exists():
@@ -51,7 +55,8 @@ def main():
     print("=" * 80)
     print()
     print(f"📥 Input:  {input_file.name}")
-    print(f"📤 Output: output/{input_file.stem}_filled_TIMESTAMP.xlsx")
+    print(f"� Sheet:  {sheet_name}")
+    print(f"�📤 Output: output/{input_file.stem}_filled_TIMESTAMP.xlsx")
     print()
     
     # Parse optional arguments
@@ -68,6 +73,7 @@ def main():
     try:
         output_path = run_pipeline(
             input_excel=str(input_file),
+            sheet_name=sheet_name,
             output_excel=None,  # Auto-generate in output folder
             similarity_threshold=threshold,
             top_k=top_k

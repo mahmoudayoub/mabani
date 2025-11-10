@@ -122,7 +122,8 @@ class ExcelReader:
         
         Logic:
         - If Level is EMPTY and row contains an Item → Process for filling
-        - Extract: row_index, description, current_unit, current_rate
+        - Extract: row_index, description, current_unit, current_rate, parent, grandparent
+        - Track parent hierarchy using same rules as excel_to_json_pipeline
         
         Args:
             df: DataFrame with all rows
@@ -137,6 +138,10 @@ class ExcelReader:
         logger.info(f"Detected columns: {columns}")
         
         items_to_fill = []
+        
+        # Parent tracking stacks (following hierarchy_processor.py logic)
+        level_stack = []  # Stack for numeric level hierarchy [(level_num, description), ...]
+        c_level_stack = []  # Stack for c-level hierarchy [description, ...]
         
         # Start processing after header row
         for idx in range(header_row_index + 1, len(df)):
@@ -153,62 +158,145 @@ class ExcelReader:
                 if columns['item'] and columns['item'] in df.columns:
                     item_value = row[columns['item']]
                 
-                # Check if Level is empty/NaN AND Item has a value
-                try:
-                    level_is_empty = pd.isna(level_value) or str(level_value).strip() == ''
-                except:
-                    level_is_empty = True
-                
-                try:
-                    item_exists = not (pd.isna(item_value) or str(item_value).strip() == '')
-                except:
-                    item_exists = False
-                
-                if not (level_is_empty and item_exists):
-                    continue
-                
-                # This is an item row that needs processing
+                # Get description for hierarchy tracking
                 description_val = row[columns['description']] if columns['description'] and columns['description'] in df.columns else ''
                 try:
                     description = '' if pd.isna(description_val) else str(description_val).strip()
                 except:
                     description = str(description_val).strip() if description_val else ''
                 
-                unit_val = row[columns['unit']] if columns['unit'] and columns['unit'] in df.columns else ''
-                try:
-                    unit = '' if pd.isna(unit_val) else str(unit_val).strip()
-                except:
-                    unit = str(unit_val).strip() if unit_val else ''
-                
-                rate_val = row[columns['rate']] if columns['rate'] and columns['rate'] in df.columns else None
-                rate = None
-                if rate_val is not None:
+                # Check if this is a c-level (level value = 'c')
+                is_c_level = False
+                if level_value is not None:
                     try:
-                        if not pd.isna(rate_val) and str(rate_val).strip() != '':
-                            rate = float(rate_val)
+                        is_c_level = (str(level_value).lower().strip() == 'c')
                     except:
-                        rate = None
+                        pass
                 
-                # Determine what needs filling
-                needs_unit = not unit
-                needs_rate = rate is None
+                # Check if Level is empty/NaN
+                try:
+                    level_is_empty = pd.isna(level_value) or str(level_value).strip() == ''
+                except:
+                    level_is_empty = True
                 
-                if needs_unit or needs_rate:
-                    item = {
-                        'row_index': idx,  # Original row index in DataFrame
-                        'item_code': str(item_value).strip(),
-                        'description': description,
-                        'current_unit': unit if unit else None,
-                        'current_rate': rate,
-                        'needs_unit': needs_unit,
-                        'needs_rate': needs_rate
-                    }
-                    items_to_fill.append(item)
+                # Check if Item has a value
+                try:
+                    item_exists = not (pd.isna(item_value) or str(item_value).strip() == '')
+                except:
+                    item_exists = False
+                
+                # Update parent hierarchy stacks
+                if not level_is_empty and not item_exists:
+                    # This is a parent row (has Level, no Item)
                     
-                    logger.debug(f"Row {idx}: Item {item['item_code']} needs "
-                               f"{'unit' if needs_unit else ''}"
-                               f"{' and ' if needs_unit and needs_rate else ''}"
-                               f"{'rate' if needs_rate else ''}")
+                    if is_c_level:
+                        # Handle c-level hierarchy (same logic as hierarchy_processor.py)
+                        # Check if next row is also a c-level
+                        next_is_c = False
+                        if idx + 1 < len(df):
+                            next_row = df.iloc[idx + 1]
+                            next_level = None
+                            if columns['level'] and columns['level'] in df.columns:
+                                next_level = next_row[columns['level']]
+                            if next_level is not None:
+                                try:
+                                    next_is_c = (str(next_level).lower().strip() == 'c')
+                                except:
+                                    pass
+                        
+                        if next_is_c:
+                            # This c is parent of next c
+                            if c_level_stack:
+                                # Clear c-stack to make this a sibling
+                                c_level_stack = []
+                            # This becomes the new c-parent
+                            c_level_stack.append(description)
+                        else:
+                            # This c is NOT followed by another c
+                            if len(c_level_stack) >= 1:
+                                # Replace the most recent c-level
+                                if len(c_level_stack) > 1:
+                                    c_level_stack.pop()
+                                c_level_stack.append(description)
+                            else:
+                                # Start new c-stack
+                                c_level_stack.append(description)
+                    
+                    else:
+                        # Numeric level - clear c-level stack
+                        c_level_stack = []
+                        
+                        # Extract numeric level
+                        numeric_level = self._extract_numeric_level(level_value)
+                        if numeric_level is not None:
+                            # Update level_stack based on depth
+                            # Keep only levels less than current level
+                            while level_stack and level_stack[-1][0] >= numeric_level:
+                                level_stack.pop()
+                            
+                            # Add this level
+                            level_stack.append((numeric_level, description))
+                
+                # If this is an item row (empty Level, has Item), extract it
+                if level_is_empty and item_exists:
+                    unit_val = row[columns['unit']] if columns['unit'] and columns['unit'] in df.columns else ''
+                    try:
+                        unit = '' if pd.isna(unit_val) else str(unit_val).strip()
+                    except:
+                        unit = str(unit_val).strip() if unit_val else ''
+                    
+                    rate_val = row[columns['rate']] if columns['rate'] and columns['rate'] in df.columns else None
+                    rate = None
+                    if rate_val is not None:
+                        try:
+                            if not pd.isna(rate_val) and str(rate_val).strip() != '':
+                                rate = float(rate_val)
+                        except:
+                            rate = None
+                    
+                    # Determine what needs filling
+                    needs_unit = not unit
+                    needs_rate = rate is None
+                    
+                    if needs_unit or needs_rate:
+                        # Extract parent and grandparent from stacks
+                        parent = None
+                        grandparent = None
+                        
+                        if c_level_stack:
+                            # Use c-level hierarchy
+                            if len(c_level_stack) >= 1:
+                                parent = c_level_stack[-1]  # Most recent c-level
+                            if len(c_level_stack) >= 2:
+                                grandparent = c_level_stack[-2]  # Previous c-level
+                            elif len(level_stack) >= 1:
+                                # If only one c-level, use numeric level as grandparent
+                                grandparent = level_stack[-1][1]
+                        elif level_stack:
+                            # Use numeric level hierarchy
+                            if len(level_stack) >= 1:
+                                parent = level_stack[-1][1]  # Most recent numeric level
+                            if len(level_stack) >= 2:
+                                grandparent = level_stack[-2][1]  # Previous numeric level
+                        
+                        item = {
+                            'row_index': idx,  # Original row index in DataFrame
+                            'item_code': str(item_value).strip(),
+                            'description': description,
+                            'parent': parent,
+                            'grandparent': grandparent,
+                            'current_unit': unit if unit else None,
+                            'current_rate': rate,
+                            'needs_unit': needs_unit,
+                            'needs_rate': needs_rate
+                        }
+                        items_to_fill.append(item)
+                        
+                        logger.debug(f"Row {idx}: Item {item['item_code']} needs "
+                                   f"{'unit' if needs_unit else ''}"
+                                   f"{' and ' if needs_unit and needs_rate else ''}"
+                                   f"{'rate' if needs_rate else ''} "
+                                   f"[Parent: {parent}, Grandparent: {grandparent}]")
             
             except Exception as e:
                 logger.error(f"ERROR processing row {idx}: {e}", exc_info=True)
@@ -229,6 +317,31 @@ class ExcelReader:
         logger.info(f"  - Missing rate: {result['needs_rate']}")
         
         return result
+    
+    def _extract_numeric_level(self, level_value: Any) -> Optional[float]:
+        """
+        Extract numeric level from level value.
+        Handles: "1", "2", "2.1", "8.1", etc.
+        
+        Args:
+            level_value: Level value from Excel
+            
+        Returns:
+            Numeric level as float, or None if not numeric
+        """
+        if level_value is None or pd.isna(level_value):
+            return None
+        
+        try:
+            level_str = str(level_value).strip()
+            if not level_str:
+                return None
+            
+            # Try to convert to float
+            level_num = float(level_str)
+            return level_num
+        except (ValueError, TypeError):
+            return None
     
     def _detect_columns(self, df: pd.DataFrame) -> Dict[str, Optional[str]]:
         """

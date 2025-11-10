@@ -25,25 +25,36 @@ from rate_filler_pipeline.src import ExcelReader, RateMatcher, ExcelWriter
 # Load environment variables
 load_dotenv()
 
-# Setup logging
+# Setup logging - logs go to rate_filler_pipeline/logs/
+log_dir = Path(__file__).parent / 'logs'
+log_dir.mkdir(parents=True, exist_ok=True)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+log_file = log_dir / f"rate_filler_{timestamp}.log"
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
 
 
 def run_pipeline(
     input_excel: str,
+    sheet_name: str,
     output_excel: Optional[str] = None,
-    similarity_threshold: float = 0.76,
+    similarity_threshold: float = 0.7,
     top_k: int = 6
 ) -> str:
     """
-    Run the rate filling pipeline.
+    Run the rate filling pipeline on a specific sheet.
     
     Args:
         input_excel: Path to input Excel file
+        sheet_name: Name of the sheet to process
         output_excel: Path to output Excel file (auto-generated if None)
         similarity_threshold: Minimum similarity score for candidates
         top_k: Number of candidates to retrieve
@@ -53,7 +64,7 @@ def run_pipeline(
     """
     print("=" * 80)
     print("BOQ RATE FILLER PIPELINE")
-    print("Vector Search + LLM Validation")
+    print("Vector Search + LLM Validation + Hierarchical Context")
     print("=" * 80)
     
     input_path = Path(input_excel)
@@ -66,13 +77,15 @@ def run_pipeline(
         output_dir.mkdir(exist_ok=True)
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_excel = output_dir / f"{input_path.stem}_filled_{timestamp}.xlsx"
+        output_excel = str(output_dir / f"{input_path.stem}_filled_{timestamp}.xlsx")
     
     print(f"\n📥 Input:  {input_path}")
-    print(f"📤 Output: {output_excel}")
+    print(f"� Sheet:  {sheet_name}")
+    print(f"�📤 Output: {output_excel}")
     print(f"🎯 Settings:")
     print(f"   - Similarity threshold: {similarity_threshold}")
     print(f"   - Top-K candidates: {top_k}")
+    print(f"   - Using enriched embeddings (with parent/grandparent context)")
     
     # Step 1: Read Excel
     print("\n" + "=" * 80)
@@ -80,7 +93,7 @@ def run_pipeline(
     print("=" * 80)
     
     reader = ExcelReader()
-    sheets = reader.read_excel(str(input_path))
+    sheets = reader.read_excel(str(input_path), sheet_name=sheet_name)
     
     if not sheets:
         logger.error("No sheets found in Excel file")
@@ -128,10 +141,12 @@ def run_pipeline(
         
         print(f"\n  Processing items...")
         for item in tqdm(items_to_fill, desc=f"  {sheet_name}", unit="item"):
-            # Search for matches
+            # Search for matches with enriched context
             match_result = matcher.find_matches(
                 item_description=item['description'],
-                item_code=item['item_code']
+                item_code=item['item_code'],
+                parent=item.get('parent'),
+                grandparent=item.get('grandparent')
             )
             
             filled_item = {
@@ -233,15 +248,17 @@ def run_pipeline(
 
 def main():
     """Main entry point."""
-    if len(sys.argv) < 2:
-        print("Usage: python fill_rates.py <input_excel> [output_excel]")
+    if len(sys.argv) < 3:
+        print("Usage: python fill_rates.py <input_excel> <sheet_name> [output_excel]")
+        print("\nExample: python fill_rates.py input.xlsx 'Terminal' output.xlsx")
         sys.exit(1)
     
     input_excel = sys.argv[1]
-    output_excel = sys.argv[2] if len(sys.argv) > 2 else None
+    sheet_name = sys.argv[2]
+    output_excel = sys.argv[3] if len(sys.argv) > 3 else None
     
     try:
-        run_pipeline(input_excel, output_excel)
+        run_pipeline(input_excel, sheet_name, output_excel)
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)
         print(f"\n❌ Error: {e}")

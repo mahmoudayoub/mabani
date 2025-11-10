@@ -59,7 +59,7 @@ class HierarchyProcessor:
         
         Logic:
         - Numeric levels (1, 2, 3...) define the main hierarchy depth
-        - 'c' levels are IGNORED - items go directly under numeric levels
+        - 'c' levels create sub-hierarchies based on consecutive pairs
         - Items (A, B, C, etc.) are leaf nodes
         
         Args:
@@ -69,7 +69,8 @@ class HierarchyProcessor:
             List of root-level HierarchyItem objects with children attached
         """
         root_items = []
-        level_stack = []  # Stack to track current position in hierarchy
+        level_stack = []  # Stack to track current position in numeric hierarchy
+        c_level_stack = []  # Stack to track c-level hierarchy
         current_level = 0
         
         i = 0
@@ -77,7 +78,9 @@ class HierarchyProcessor:
             item = items[i]
             
             if item.item_type == ItemType.NUMERIC_LEVEL:
-                # Handle numeric level
+                # Handle numeric level - clear c-level stack
+                c_level_stack = []
+                
                 new_level = self._extract_numeric_level(item.level)
                 
                 if new_level is not None:
@@ -113,24 +116,71 @@ class HierarchyProcessor:
                     current_level = new_level
             
             elif item.item_type == ItemType.SUBCATEGORY:
-                # IGNORE 'c' subcategory levels - skip them
-                logger.debug(f"Skipping 'c' level at row {item.row_number}: {item.description}")
-                pass
+                # Handle 'c' subcategory levels with consecutive c-level logic
+                logger.debug(f"Processing 'c' level at row {item.row_number}: {item.description}")
+                
+                # Look ahead to see if next item is also a c-level
+                next_item = self._find_next_significant_item(items, i + 1)
+                next_is_c_level = (next_item and next_item.item_type == ItemType.SUBCATEGORY)
+                
+                if next_is_c_level:
+                    # Consecutive c-levels: current c is PARENT of next c
+                    # Clear c_level_stack to start fresh parent-child relationship
+                    c_level_stack = []
+                    
+                    # Add this c-level to numeric level's children
+                    if level_stack:
+                        level_stack[-1].children.append(item)
+                    else:
+                        root_items.append(item)
+                    
+                    # This becomes the new c-parent
+                    c_level_stack.append(item)
+                    logger.debug(f"  → Parent c-level (followed by another c)")
+                else:
+                    # NOT followed by another c-level (items follow)
+                    # This is a SIBLING of previous c-level
+                    
+                    if len(c_level_stack) >= 2:
+                        # Pop the last c (it was only for its own items)
+                        c_level_stack.pop()
+                    
+                    # Add as child of remaining stack or numeric level
+                    if c_level_stack:
+                        # Add as child of parent c-level
+                        c_level_stack[-1].children.append(item)
+                        logger.debug(f"  → Child of c-level: {c_level_stack[-1].description}")
+                    elif level_stack:
+                        # No c-parent, add to numeric level
+                        level_stack[-1].children.append(item)
+                        logger.debug(f"  → Child of numeric level: {level_stack[-1].description}")
+                    else:
+                        root_items.append(item)
+                    
+                    # Add to c_level_stack for its own children
+                    c_level_stack.append(item)
             
             elif item.item_type == ItemType.ITEM:
                 # Handle actual items (A, B, C, etc.)
-                # Add directly to the current numeric level
+                # Add to c-level if exists, otherwise to numeric level
                 
-                if level_stack:
+                if c_level_stack:
+                    # Add to the current c-level
+                    c_level_stack[-1].children.append(item)
+                    logger.debug(f"Adding item to c-level: {c_level_stack[-1].description}")
+                elif level_stack:
                     # Add to the current numeric level
                     level_stack[-1].children.append(item)
+                    logger.debug(f"Adding item to numeric level: {level_stack[-1].description}")
                 else:
                     # No parent, add to root
                     root_items.append(item)
             
             else:
                 # Unknown items - try to add to current context
-                if level_stack:
+                if c_level_stack:
+                    c_level_stack[-1].children.append(item)
+                elif level_stack:
                     level_stack[-1].children.append(item)
                 else:
                     root_items.append(item)

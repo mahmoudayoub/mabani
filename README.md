@@ -148,7 +148,7 @@ similarity_threshold = 0.7  # Lower = more candidates (0.6-0.8 recommended)
 Change GPT model in `rate_filler_pipeline/src/rate_matcher.py`:
 
 ```python
-model = "gpt-4o-mini"  # or "gpt-4o" for better accuracy
+model = "gpt-5-mini-2025-08-07"  # or "gpt-4o" for better latency
 ```
 
 ### Embedding Format
@@ -327,11 +327,3 @@ For issues or questions:
 1. Check individual pipeline READMEs
 2. Review troubleshooting sections
 3. Check logs in each pipeline's `logs/` directory
-
-## 🔄 Version History
-
-- **v3.0** (Nov 2025): Fixed consecutive c-level hierarchy alignment across all pipelines
-- **v2.5** (Nov 2025): Removed embedding labels for cleaner format
-- **v2.0** (Nov 2025): Added hierarchical context, improved LLM validation
-- **v1.5** (Nov 2025): Multi-sheet support, color coding
-- **v1.0** (Oct 2025): Initial release

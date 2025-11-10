@@ -70,7 +70,6 @@ json_to_vectorstore/├── src/                      # Core modules
 
 ```
 
-## Installation
 
 ## Installation
 
@@ -394,8 +393,3 @@ python process_single.py your_file.xlsx "Sheet Name"```
 - Always use `text-embedding-3-small` model (1536 dimensions)
 - Delete and recreate index if dimension changes
 
-## Version History
-
-- **v2.0** (Nov 2025): Removed labels from embedding format for cleaner matching
-- **v1.5** (Nov 2025): Added grandparent/parent hierarchy to embeddings
-- **v1.0** (Oct 2025): Initial release

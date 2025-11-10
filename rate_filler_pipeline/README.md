@@ -4,7 +4,7 @@ Automatically fill missing unit rates in Excel BOQ files using AI-powered semant
 
 ## Overview
 
-This pipeline takes Excel BOQ files with missing units/rates, uses semantic search to find similar items from a vector database, validates matches with GPT-4, and fills the missing data with confidence scores and color coding.
+This pipeline takes Excel BOQ files with missing units/rates, uses semantic search to find similar items from a vector database, validates matches with GPT-5-mini, and fills the missing data with confidence scores and color coding.
 
 ## Features
 
@@ -104,7 +104,7 @@ results = index.query(
 )
 ```
 
-### 3. LLM Validation (GPT-4)
+### 3. LLM Validation (GPT-5-mini)
 
 Top 6 candidates sent to GPT with 5 matching rules:
 
@@ -294,11 +294,3 @@ python test_query_preview.py input/Book_2.xlsx "9-PA" 15
 # - LLM prompt format
 # - No API calls = no cost
 ```
-
-## Version History
-
-- **v3.0** (Nov 2025): Fixed consecutive c-level hierarchy to match excel_to_json
-- **v2.5** (Nov 2025): Removed labels from embedding format
-- **v2.0** (Nov 2025): Added hierarchical context, improved LLM prompt
-- **v1.5** (Nov 2025): Added GPT validation, color coding
-- **v1.0** (Oct 2025): Initial release with vector search only

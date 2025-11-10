@@ -191,36 +191,51 @@ class ExcelReader:
                     
                     if is_c_level:
                         # Handle c-level hierarchy (same logic as hierarchy_processor.py)
-                        # Check if next row is also a c-level
+                        # Check if next significant row (skipping empty rows) is also a c-level
                         next_is_c = False
-                        if idx + 1 < len(df):
-                            next_row = df.iloc[idx + 1]
-                            next_level = None
+                        # Look ahead to find next row with Level value (skip empty rows)
+                        for future_idx in range(idx + 1, len(df)):
+                            future_row = df.iloc[future_idx]
+                            future_level = None
                             if columns['level'] and columns['level'] in df.columns:
-                                next_level = next_row[columns['level']]
-                            if next_level is not None:
+                                future_level = future_row[columns['level']]
+                            # Check if this row has a level value
+                            if future_level is not None:
                                 try:
-                                    next_is_c = (str(next_level).lower().strip() == 'c')
+                                    if not (pd.isna(future_level) or str(future_level).strip() == ''):
+                                        # Found next significant row with level
+                                        next_is_c = (str(future_level).lower().strip() == 'c')
+                                        break
+                                except:
+                                    pass
+                            # If this row has an item, stop looking (no more c-levels before items)
+                            future_item = None
+                            if columns['item'] and columns['item'] in df.columns:
+                                future_item = future_row[columns['item']]
+                            if future_item is not None:
+                                try:
+                                    if not (pd.isna(future_item) or str(future_item).strip() == ''):
+                                        # Found an item row, stop looking
+                                        break
                                 except:
                                     pass
                         
                         if next_is_c:
-                            # This c is parent of next c
-                            if c_level_stack:
-                                # Clear c-stack to make this a sibling
-                                c_level_stack = []
-                            # This becomes the new c-parent
+                            # Consecutive c-levels: current c is PARENT of next c
+                            # Clear stack and start fresh parent-child relationship
+                            # This matches excel_to_json_pipeline/src/hierarchy_processor.py logic
+                            c_level_stack = []
                             c_level_stack.append(description)
                         else:
-                            # This c is NOT followed by another c
-                            if len(c_level_stack) >= 1:
-                                # Replace the most recent c-level
-                                if len(c_level_stack) > 1:
-                                    c_level_stack.pop()
-                                c_level_stack.append(description)
-                            else:
-                                # Start new c-stack
-                                c_level_stack.append(description)
+                            # NOT followed by another c-level (items follow)
+                            # This is a SIBLING of previous c-level
+                            
+                            if len(c_level_stack) >= 2:
+                                # Pop the last c (it was only for its own items)
+                                c_level_stack.pop()
+                            
+                            # Add to c_level_stack for its own children
+                            c_level_stack.append(description)
                     
                     else:
                         # Numeric level - clear c-level stack

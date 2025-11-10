@@ -1,4 +1,8 @@
-pandas>=2.0.0
-openpyxl>=3.1.0
-pydantic>=2.0.0
-pyyaml>=6.0.0
+# Excel to JSON Pipeline Requirements
+# For all dependencies, install from root: pip install -r ../requirements.txt
+
+# This module uses:
+# - pandas>=2.0.0
+# - openpyxl>=3.1.0
+# - pydantic>=2.0.0
+# - pyyaml>=6.0.0

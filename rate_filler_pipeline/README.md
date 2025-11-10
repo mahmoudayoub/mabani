@@ -4,46 +4,52 @@ Automatically fill missing unit rates in Excel BOQ files using AI-powered semant
 
 ## Overview
 
-This pipeline uses vector search and GPT-4o-mini to find matching items from your database and auto-fill missing unit rates in Excel BOQ files. It combines semantic similarity search with LLM validation to ensure accurate matches.
+This pipeline takes Excel BOQ files with missing units/rates, uses semantic search to find similar items from a vector database, validates matches with GPT-4, and fills the missing data with confidence scores and color coding.
 
 ## Features
 
-- ✅ Auto-detect Excel headers and columns
-- ✅ Vector search for similar items (Pinecone)
-- ✅ LLM validation for exact matches (GPT-4o-mini)
-- ✅ Batch processing of multiple files
-- ✅ Color-coded Excel output (green=filled, red=no match)
-- ✅ Detailed text reports
+- ✅ **Semantic Search**: Find similar items using OpenAI embeddings + Pinecone
+- ✅ **LLM Validation**: GPT validates matches based on 5 comprehensive rules
+- ✅ **Hierarchical Context**: Uses grandparent/parent hierarchy for better matching
+- ✅ **Smart Filling**: Fills units and/or rates based on what's missing
+- ✅ **Color Coding**: Green for matched, red for unmatched cells
+- ✅ **Detailed Reports**: Text reports with fill statistics and unmatched items
+- ✅ **Preview Mode**: Test queries without API calls (test_query_preview.py)
 
 ## Directory Structure
 
 ```
 rate_filler_pipeline/
-├── src/                      # Core modules
-│   ├── excel_reader.py       # Excel parsing with auto-detection
-│   ├── rate_matcher.py       # Vector search + LLM validation
-│   └── excel_writer.py       # Excel output with formatting
-├── input/                    # Place Excel files here
-├── output/                   # Generated files (Excel + reports)
-├── fill_rates.py             # Main pipeline
-├── process_single.py         # Process one file
-├── process_folder.py         # Process all files in input/
-├── requirements.txt          # Dependencies
-├── .env                      # API keys (not in git)
-└── README.md                 # This file
+├── src/
+│   ├── excel_reader.py           # Read Excel & extract hierarchy
+│   ├── rate_matcher.py           # Vector search + LLM validation
+│   └── excel_writer.py           # Write filled Excel with formatting
+├── input/                        # Place Excel files here
+├── output/                       # Filled Excel files + reports
+├── logs/                         # Processing logs
+├── fill_rates.py                 # Core pipeline logic
+├── process_single.py             # Process one file
+├── process_folder.py             # Process all files in input/
+└── requirements.txt              # Dependencies
 ```
 
 ## Installation
 
 ```bash
-# Install dependencies
+# From project root
 pip install -r requirements.txt
+```
 
-# Create .env file with API keys
-cat > .env << EOF
-OPENAI_API_KEY=your_openai_key_here
-PINECONE_API_KEY=your_pinecone_key_here
-EOF
+## Configuration
+
+Create `.env` file in `rate_filler_pipeline/` directory:
+
+```bash
+# OpenAI API Key (for embeddings and GPT validation)
+OPENAI_API_KEY=sk-...
+
+# Pinecone API Key (for vector search)
+PINECONE_API_KEY=pc-...
 ```
 
 ## Usage
@@ -51,116 +57,248 @@ EOF
 ### Process Single File
 
 ```bash
-cd /home/ali/Desktop/Almabani
-python -m rate_filler_pipeline.process_single your_file.xlsx
+cd rate_filler_pipeline
+python process_single.py "your_file.xlsx" "Sheet Name"
+
+# Example
+python process_single.py "Book_2.xlsx" "9-PA"
 ```
 
-### Process All Files in input/
+### Process All Files
 
 ```bash
-cd /home/ali/Desktop/Almabani
-python -m rate_filler_pipeline.process_folder
+# Processes all .xlsx files in input/ folder
+python process_folder.py
 ```
 
-### Advanced (Custom Settings)
+### Preview Queries (No API Calls)
 
-```python
-from rate_filler_pipeline.fill_rates import run_pipeline
-
-run_pipeline(
-    input_excel="path/to/file.xlsx",
-    output_excel="path/to/output.xlsx",
-    similarity_threshold=0.76,  # Minimum similarity score
-    top_k=6                      # Number of candidates to retrieve
-)
+```bash
+# Test what queries will be sent (saves $$)
+cd ..
+python test_query_preview.py input/Book_2.xlsx "9-PA" 10
 ```
-
-## Input Format
-
-Excel file with columns (auto-detected):
-- **Item** or **Code**: Item code
-- **Bill description** or **Description**: Item description  
-- **Unit**: Unit of measurement (m2, m3, ton, etc.)
-- **Rate** or **Unit rate**: Unit rate (to be filled if missing)
-
-The pipeline automatically detects:
-- Header row location
-- Column names (handles variations)
-- Items with missing rates
-
-## Output
-
-### Excel File
-- **Green cells**: Successfully filled rates
-- **Red cells**: No match found
-- Same structure as input
-- Filename: `{original}_filled_{timestamp}.xlsx`
-
-### Text Report
-- Total items processed
-- Items filled vs. not filled
-- Match details (description, unit, rate, source)
-- Reasoning for matches/no-matches
 
 ## How It Works
 
-1. **Read Excel**: Auto-detect headers and extract items with missing rates
-2. **Vector Search**: Find similar items from Pinecone (31K+ items)
-3. **LLM Validation**: GPT-4o-mini checks if candidates are exact matches
-4. **Fill Rates**: Calculate average rate from validated matches
-5. **Write Output**: Color-coded Excel + detailed report
+### 1. Read Excel & Extract Hierarchy
 
-## Matching Logic
+For each item row (empty Level, has Item code):
+- Extracts: description, unit, rate
+- Builds hierarchy from c-levels (same logic as excel_to_json_pipeline)
+- Tracks grandparent and parent for context
 
-**Exact Match Criteria:**
-- Same construction work (even if wording differs)
-- Same specifications (materials, dimensions, standards)
-- Same scope of work
-- Compatible units
+### 2. Semantic Search (Vector Search)
 
-**Example Matches:**
-- ✅ "EXCAVATION FOR FOUNDATIONS" ↔ "EXCAVATION IN FOUNDATION AREAS"
-- ✅ "SUPPLY PUMPING STATION 80KW" ↔ "PUMPING STATION 80KW SUPPLY & INSTALL"
-- ❌ "CONCRETE C40" ↔ "CONCRETE C30" (different specs)
+For items missing unit or rate:
+```python
+# Query format (matches embedding format)
+query = "[grandparent] | [parent] | [description]"
 
-## Settings
+# Search Pinecone
+results = index.query(
+    embedding=query_embedding,
+    top_k=6,
+    include_metadata=True,
+    filter={"similarity": {"$gte": 0.7}}  # Threshold
+)
+```
 
-- **Similarity threshold**: 0.76 (adjustable, range: 0.0-1.0)
-- **Top-K candidates**: 6 (how many similar items to retrieve)
-- **LLM model**: gpt-4o-mini (cost-effective, accurate)
-- **Embedding model**: text-embedding-3-small (1536 dimensions)
+### 3. LLM Validation (GPT-4)
 
-## API Costs
+Top 6 candidates sent to GPT with 5 matching rules:
 
-- **OpenAI Embeddings**: ~$0.00001 per item
-- **GPT-4o-mini**: ~$0.0001 per validation
-- **Pinecone**: Free tier (100K vectors)
+**Matching Rules:**
+1. **Core Identity**: Same thing, different wording OK
+2. **Specifications**: Critical details must align (thickness, grade, capacity)
+3. **Scope of Work**: Must be equivalent (supply vs supply+install matters)
+4. **Units**: Must be compatible (m2 vs m3 incompatible)
+5. **Hierarchical Context**: Should be in same domain
 
-**Estimated cost for 1000 items:** ~$0.10 USD
+**LLM Response:**
+```json
+{
+  "is_match": true,
+  "confidence": 0.92,
+  "explanation": "Both are cement treated base course, same thickness..."
+}
+```
 
-## Requirements
+### 4. Fill Excel & Format
 
-- Python 3.8+
-- openai
-- pinecone-client
-- pandas
-- openpyxl
-- python-dotenv
-- tqdm
+- **Green cells**: Successfully matched (confidence > threshold)
+- **Red cells**: No match found
+- Original formatting preserved
+- Report generated with statistics
 
-## Prerequisites
+## Configuration Options
 
-Must have completed:
-1. `excel_to_json_pipeline` - Convert BOQ to JSON
-2. `json_to_vectorstore` - Upload items to Pinecone
+### In `fill_rates.py`
 
-The vector database must be populated before running this pipeline.
+```python
+# Similarity threshold (0.0 to 1.0)
+similarity_threshold = 0.7  # Lower = more candidates
 
-## Notes
+# Top-K candidates for LLM
+top_k = 6
 
-- Processes only items with missing rates
-- Skips header rows automatically
-- Handles multi-sheet Excel files
-- Progress bars show real-time status
-- All API calls are logged
-- Safe: Creates new files, doesn't modify originals
+# GPT model
+model = "gpt-4o-mini"  # or "gpt-4o"
+
+# Match confidence threshold
+confidence_threshold = 0.7  # For accepting LLM match
+```
+
+### Column Detection
+
+Pipeline auto-detects columns by looking for:
+- **Level**: First unnamed column
+- **Item**: Second unnamed column  
+- **Description**: Third unnamed column
+- **Unit**: Fourth unnamed column
+- **Pricing**: Column named "Pricing"
+
+Customize in `excel_reader.py` if needed.
+
+## Output
+
+### Filled Excel File
+
+`output/{filename}_filled_{timestamp}.xlsx`
+
+- ✅ Green cells: Matched and filled
+- ❌ Red cells: No match found
+- 📝 Original formatting preserved
+- 🔢 All formulas maintained
+
+### Text Report
+
+`output/{filename}_filled_{timestamp}_report.txt`
+
+```
+================================================================================
+RATE FILLING REPORT
+================================================================================
+
+File: Book_2.xlsx
+Sheet: 9-PA
+Date: 2025-11-10 14:30:00
+
+Summary:
+--------
+Total items processed: 562
+Items filled: 470
+Items not filled: 92
+Fill rate: 83.6%
+
+Top Unmatched Items:
+--------------------
+Row 45: "Specific item that couldn't be matched"
+  Reason: No similar items found above threshold
+  Top candidate: "..." (similarity: 0.65)
+...
+```
+
+## Hierarchy Matching Logic
+
+**Same as excel_to_json_pipeline:**
+
+When consecutive c-levels appear:
+1. First c followed by second c → Clear stack, add first
+2. Second c followed by items → Add to stack
+3. Items get: grandparent=first_c, parent=second_c
+
+**Example:**
+```
+c | 3.1 - General Excavation
+c | General Excavation: material...
+c | Apron area
+  | 3.1.02 | Depth not exceeding 0.25m
+
+Hierarchy for item 3.1.02:
+- Grandparent: "General Excavation: material..."
+- Parent: "Apron area"
+- Description: "Depth not exceeding 0.25m"
+
+Embedding query:
+"General Excavation: material... | Apron area | Depth not exceeding 0.25m"
+```
+
+## Costs
+
+Approximate costs for 500-item BOQ:
+
+- **Embeddings**: 500 queries × $0.00002 = $0.01
+- **GPT-4o-mini**: 500 validations × $0.0001 = $0.05
+- **Total**: ~$0.06 per sheet
+
+Using `test_query_preview.py` helps minimize costs during testing.
+
+## Performance
+
+Typical processing for 500 items:
+- **Read Excel**: <1 second
+- **Vector Search**: ~2-3 minutes (rate limited)
+- **LLM Validation**: ~3-5 minutes (rate limited)
+- **Write Excel**: <1 second
+- **Total**: ~5-10 minutes
+
+## Troubleshooting
+
+**No matches found?**
+- Lower `similarity_threshold` (try 0.6 or 0.65)
+- Check that vector database is populated (`json_to_vectorstore`)
+- Verify embedding format matches (no labels, just `[gp] | [p] | [desc]`)
+
+**Wrong matches?**
+- Increase `confidence_threshold` (try 0.8 or 0.9)
+- Review LLM matching rules in `rate_matcher.py`
+- Check that hierarchy is extracted correctly (use preview script)
+
+**Hierarchy incorrect?**
+- Verify c-levels are marked with "c" in Level column
+- Check for empty rows between c-levels (auto-skipped)
+- Review logs for hierarchy decisions
+
+**API rate limits?**
+- Pipeline includes automatic rate limiting
+- Increase delays in `rate_matcher.py` if needed
+- Consider upgrading OpenAI plan for higher limits
+
+**Excel formatting lost?**
+- Only matched cells are colored (green/red)
+- All other formatting is preserved
+- Check `excel_writer.py` if issues persist
+
+## Next Steps
+
+After filling rates:
+1. **Review** output Excel file
+2. **Check** red cells in report
+3. **Manual fill** remaining items if needed
+4. **Re-run** with adjusted thresholds if needed
+
+## Utilities
+
+### test_query_preview.py (Root)
+
+Preview what will be sent to APIs without making calls:
+
+```bash
+# From root directory
+python test_query_preview.py input/Book_2.xlsx "9-PA" 15
+
+# Shows:
+# - Hierarchy for each item
+# - Embedding query format
+# - LLM prompt format
+# - No API calls = no cost
+```
+
+## Version History
+
+- **v3.0** (Nov 2025): Fixed consecutive c-level hierarchy to match excel_to_json
+- **v2.5** (Nov 2025): Removed labels from embedding format
+- **v2.0** (Nov 2025): Added hierarchical context, improved LLM prompt
+- **v1.5** (Nov 2025): Added GPT validation, color coding
+- **v1.0** (Oct 2025): Initial release with vector search only

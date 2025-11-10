@@ -1,8 +1,16 @@
+# Almabani BOQ Management System - Complete Requirements
+# Install all dependencies: pip install -r requirements.txt
+
+# Core Data Processing
 pandas>=2.0.0
 openpyxl>=3.1.0
-openai>=1.0.0
-pinecone>=4.0.0
-python-dotenv>=1.0.0
-tqdm>=4.66.0
 pydantic>=2.0.0
 pyyaml>=6.0.0
+
+# AI & Vector Search
+openai>=1.0.0
+pinecone>=4.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.66.0

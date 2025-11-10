@@ -4,15 +4,28 @@ Simple wrapper - processes all Excel files in input/ folder
 and saves results to output/ folder.
 """
 import sys
-import os
 from pathlib import Path
 from dotenv import load_dotenv
+import pandas as pd
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import from rate_filler_pipeline
 from rate_filler_pipeline.fill_rates import run_pipeline
 
 # Load environment
 load_dotenv()
+
+
+def get_sheet_names(excel_file: Path) -> list:
+    """Get all sheet names from Excel file."""
+    try:
+        xl = pd.ExcelFile(excel_file)
+        return xl.sheet_names
+    except Exception as e:
+        print(f"Warning: Could not read sheets from {excel_file.name}: {e}")
+        return []
 
 
 def main():
@@ -53,11 +66,37 @@ def main():
     
     print(f"📊 Found {len(excel_files)} Excel file(s):")
     for f in excel_files:
-        print(f"   - {f.name}")
+        sheets = get_sheet_names(f)
+        if sheets:
+            print(f"   - {f.name} ({len(sheets)} sheets)")
+        else:
+            print(f"   - {f.name}")
     print()
     
-    # Ask for confirmation
-    response = input("Process these files? (y/n): ").strip().lower()
+    # Ask which sheet(s) to process
+    print("Sheet processing mode:")
+    print("  1. Process first sheet only")
+    print("  2. Process ALL sheets in each file")
+    print("  3. Specify sheet name")
+    print()
+    mode = input("Select mode (1/2/3): ").strip()
+    
+    sheet_name = None
+    process_all_sheets = False
+    
+    if mode == '1':
+        print("Will process first sheet in each file")
+    elif mode == '2':
+        process_all_sheets = True
+        print("Will process ALL sheets in each file")
+    elif mode == '3':
+        sheet_name = input("Enter sheet name: ").strip()
+        print(f"Will process sheet '{sheet_name}' in each file")
+    else:
+        print("Invalid choice. Defaulting to first sheet only.")
+    
+    print()
+    response = input("Proceed? (y/n): ").strip().lower()
     if response != 'y':
         print("Cancelled.")
         return 0
@@ -75,22 +114,52 @@ def main():
         print()
         
         try:
-            # Run pipeline
-            output_path = run_pipeline(
-                input_excel=str(excel_file),
-                output_excel=None,  # Auto-generate in output folder
-                similarity_threshold=0.76,
-                top_k=6
-            )
+            # Determine which sheets to process
+            if process_all_sheets:
+                sheets_to_process = get_sheet_names(excel_file)
+                if not sheets_to_process:
+                    print(f"⚠️  No sheets found in {excel_file.name}, skipping")
+                    failed_count += 1
+                    continue
+            elif sheet_name:
+                sheets_to_process = [sheet_name]
+            else:
+                sheets_to_process = get_sheet_names(excel_file)
+                if sheets_to_process:
+                    sheets_to_process = [sheets_to_process[0]]  # First sheet only
+                else:
+                    print(f"⚠️  No sheets found in {excel_file.name}, skipping")
+                    failed_count += 1
+                    continue
             
-            if output_path:
+            # Process each sheet
+            file_success = True
+            for sheet in sheets_to_process:
+                print(f"\n📄 Processing sheet: '{sheet}'")
+                try:
+                    output_path = run_pipeline(
+                        input_excel=str(excel_file),
+                        sheet_name=sheet,
+                        output_excel=None,  # Auto-generate in output folder
+                        similarity_threshold=0.76,
+                        top_k=6
+                    )
+                    
+                    if output_path:
+                        print(f"   ✅ Success! Output: {Path(output_path).name}")
+                    else:
+                        print(f"   ⚠️  Warning: No output generated for sheet '{sheet}'")
+                        file_success = False
+                        
+                except Exception as e:
+                    print(f"   ❌ Error processing sheet '{sheet}': {e}")
+                    file_success = False
+            
+            if file_success:
                 success_count += 1
-                print()
-                print(f"✅ Success! Output: {Path(output_path).name}")
             else:
                 failed_count += 1
-                print()
-                print(f"⚠️  Warning: No output generated")
+            print()
         
         except Exception as e:
             failed_count += 1

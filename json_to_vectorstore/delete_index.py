@@ -15,8 +15,8 @@ def main():
     print("DELETE PINECONE INDEX")
     print("=" * 80)
     
-    # Load environment variables
-    env_file = Path(__file__).parent / '.env'
+    # Load environment variables from root .env
+    env_file = Path(__file__).parent.parent / '.env'
     load_dotenv(env_file)
     
     api_key = os.getenv('PINECONE_API_KEY')

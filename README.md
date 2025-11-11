@@ -48,12 +48,25 @@ pip install -r requirements.txt
 
 ### Setup API Keys
 
-Create `.env` file in `json_to_vectorstore/` and `rate_filler_pipeline/`:
+Create `.env` file in the **root directory**:
 
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your API keys
+nano .env
+```
+
+Add your keys:
 ```bash
 OPENAI_API_KEY=sk-your-key-here
 PINECONE_API_KEY=pc-your-key-here
+PINECONE_ENVIRONMENT=us-east-1
+PINECONE_INDEX_NAME=almabani-boq
 ```
+
+**All pipelines will use this single `.env` file in the root directory.**
 
 ### Initial Setup (One Time)
 

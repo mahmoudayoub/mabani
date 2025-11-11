@@ -24,8 +24,8 @@ def main():
     print("OpenAI Embeddings → Pinecone (with Enriched Embeddings)")
     print("=" * 80)
     
-    # Load environment variables
-    load_dotenv()
+    # Load environment variables from root .env
+    load_dotenv(Path(__file__).parent.parent / '.env')
     
     # Check for required env vars
     if not os.getenv('OPENAI_API_KEY'):

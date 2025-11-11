@@ -12,7 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from rate_filler_pipeline.src.excel_reader import ExcelReader
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load environment from root .env
+load_dotenv(Path(__file__).parent.parent / '.env')
 
 def preview_queries(excel_file: str, sheet_name: str, num_samples: int = 5):
     """Preview what queries will be sent."""

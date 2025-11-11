@@ -5,12 +5,13 @@ Usage: python3 json_to_vectorstore/query_vectorstore.py "your search text"
 """
 import sys
 import os
+from pathlib import Path
 from openai import OpenAI
 from pinecone import Pinecone
 from dotenv import load_dotenv
 
-# Load environment from root
-load_dotenv()
+# Load environment from root .env
+load_dotenv(Path(__file__).parent.parent / '.env')
 
 
 def query_vectorstore(query_text: str, top_k: int = 5):

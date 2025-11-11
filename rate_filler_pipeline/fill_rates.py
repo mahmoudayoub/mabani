@@ -22,8 +22,8 @@ from tqdm import tqdm
 
 from rate_filler_pipeline.src import ExcelReader, RateMatcher, ExcelWriter
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from root .env
+load_dotenv(Path(__file__).parent.parent / '.env')
 
 # Setup logging - logs go to rate_filler_pipeline/logs/
 log_dir = Path(__file__).parent / 'logs'

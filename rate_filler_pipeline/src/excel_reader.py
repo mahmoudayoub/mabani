@@ -370,7 +370,8 @@ class ExcelReader:
             'item': None,
             'description': None,
             'unit': None,
-            'rate': None
+            'rate': None,
+            'reference': None
         }
         
         # Get column names (from DataFrame columns)
@@ -401,5 +402,9 @@ class ExcelReader:
             # Detect Rate
             elif 'rate' in col_lower and not columns['rate']:
                 columns['rate'] = col
+            
+            # Detect Reference
+            elif 'reference' in col_lower and not columns['reference']:
+                columns['reference'] = col
         
         return columns

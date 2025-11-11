@@ -74,10 +74,13 @@ class ExcelWriter:
             # Get column indices (1-based for openpyxl)
             unit_col_idx = self._get_column_index(ws, columns['unit'], header_row_idx)
             rate_col_idx = self._get_column_index(ws, columns['rate'], header_row_idx)
+            reference_col_idx = self._get_column_index(ws, columns.get('reference'), header_row_idx)
             
             logger.info(f"Processing sheet '{sheet_name}':")
             logger.info(f"  Unit column: {columns['unit']} (index {unit_col_idx})")
             logger.info(f"  Rate column: {columns['rate']} (index {rate_col_idx})")
+            if reference_col_idx:
+                logger.info(f"  Reference column: {columns.get('reference')} (index {reference_col_idx})")
             
             # Process each filled item
             for item in filled_items:
@@ -98,6 +101,13 @@ class ExcelWriter:
                         cell.value = item['filled_rate']
                         cell.fill = self.green_fill
                         logger.debug(f"Row {excel_row}: Filled rate = {item['filled_rate']}")
+                    
+                    # Fill reference if needed and column exists
+                    if item.get('reference') and reference_col_idx:
+                        cell = ws.cell(row=excel_row, column=reference_col_idx)
+                        cell.value = item['reference']
+                        cell.fill = self.green_fill
+                        logger.debug(f"Row {excel_row}: Filled reference = {item['reference']}")
                 
                 else:  # not_filled
                     # Mark cells as red (unfilled)
@@ -202,6 +212,9 @@ class ExcelWriter:
                         
                         if item.get('filled_rate') is not None:
                             f.write(f"  Rate: {item['filled_rate']:.2f}\n")
+                        
+                        if item.get('reference'):
+                            f.write(f"  Reference: {item['reference']}\n")
                         
                         if item.get('match_info'):
                             f.write(f"  Source: {item['match_info'].get('source', 'Unknown')}\n")

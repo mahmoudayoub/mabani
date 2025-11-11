@@ -167,6 +167,9 @@ def run_pipeline(
                 if item['needs_rate'] and match_result['rate'] is not None:
                     filled_item['filled_rate'] = match_result['rate']
                 
+                # Add reference string
+                filled_item['reference'] = match_result.get('reference', '')
+                
                 # Add match info for report
                 filled_item['match_info'] = {
                     'source': match_result['matches'][0].get('project', 'Unknown') if match_result['matches'] else 'Unknown',
@@ -179,6 +182,7 @@ def run_pipeline(
             else:
                 # Not filled - mark for red coloring
                 filled_item['status'] = 'not_filled'
+                filled_item['reference'] = ''
                 filled_item['reason'] = 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No exact match found by LLM'
                 total_not_filled += 1
             

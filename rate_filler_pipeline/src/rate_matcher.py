@@ -133,6 +133,9 @@ class RateMatcher:
             unit = self._get_consensus_unit(matches)
             rate = self._calculate_average_rate(matches)
             
+            # Build reference string with source info
+            reference = self._build_reference_string(matches)
+            
             logger.info(f"  ✓ Match found: {unit} @ {rate}")
             
             return {
@@ -140,6 +143,7 @@ class RateMatcher:
                 'matches': matches,
                 'unit': unit,
                 'rate': rate,
+                'reference': reference,
                 'candidates': candidates
             }
         else:
@@ -193,22 +197,27 @@ class RateMatcher:
             top_k=self.top_k
         )
         
-        # Filter by threshold
+        # Filter by threshold AND only include items with valid rates
         candidates = []
         for result in results:
             score = result.get('score', 0)
             if score >= self.similarity_threshold:
                 metadata = result.get('metadata', {})
-                candidates.append({
-                    'description': result.get('text', ''),
-                    'unit': metadata.get('unit', ''),
-                    'rate': metadata.get('rate', 0),
-                    'code': metadata.get('item_code', ''),
-                    'project': metadata.get('source_sheet', ''),
-                    'parent': metadata.get('parent', ''),
-                    'grandparent': metadata.get('grandparent', ''),
-                    'score': score
-                })
+                rate = metadata.get('rate', 0)
+                
+                # Only include candidates that have a valid rate
+                if rate and rate > 0:
+                    candidates.append({
+                        'description': result.get('text', ''),
+                        'unit': metadata.get('unit', ''),
+                        'rate': rate,
+                        'code': metadata.get('item_code', ''),
+                        'project': metadata.get('source_sheet', ''),
+                        'row_number': metadata.get('row_number', ''),
+                        'parent': metadata.get('parent', ''),
+                        'grandparent': metadata.get('grandparent', ''),
+                        'score': score
+                    })
         
         return candidates
     
@@ -416,3 +425,54 @@ Analyze the target and candidates carefully. Return only valid JSON."""
             return None
         
         return round(sum(rates) / len(rates), 2)
+    
+    def _build_reference_string(self, matches: List[Dict[str, Any]]) -> str:
+        """
+        Build reference string with source info for each matched item.
+        
+        Format: "Grandparent > Parent > Description [Sheet1-Row25@450.00]; ..."
+        
+        Args:
+            matches: List of matched items
+            
+        Returns:
+            Reference string with source info
+        """
+        references = []
+        for match in matches:
+            # Get hierarchy info
+            grandparent = match.get('grandparent', '')
+            parent = match.get('parent', '')
+            description = match.get('description', '')
+            
+            # Extract just the description part (remove enriched parent/grandparent if present)
+            # The description might be in format "GP | P | Desc", extract last part
+            if ' | ' in description:
+                parts = description.split(' | ')
+                description = parts[-1]  # Get the actual description (last part)
+            
+            # Build hierarchy path
+            hierarchy_parts = []
+            if grandparent:
+                hierarchy_parts.append(grandparent)
+            if parent:
+                hierarchy_parts.append(parent)
+            if description:
+                hierarchy_parts.append(description)
+            
+            hierarchy_path = " > ".join(hierarchy_parts) if hierarchy_parts else "Unknown"
+            
+            # Get source info
+            project = match.get('project', 'Unknown')
+            row_num = match.get('row_number', '')
+            rate = match.get('rate', 0)
+            
+            # Build reference
+            if row_num:
+                ref = f"{hierarchy_path} [{project}-Row{row_num}@{rate:.2f}]"
+            else:
+                ref = f"{hierarchy_path} [{project}@{rate:.2f}]"
+            
+            references.append(ref)
+        
+        return "; ".join(references)

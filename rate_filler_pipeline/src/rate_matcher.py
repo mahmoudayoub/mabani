@@ -327,65 +327,94 @@ CANDIDATE ITEMS (from vector search):
 {candidates_text}
 
 TASK:
-Determine which candidates (if any) are EXACT MATCHES to the target item. Consider the complete context including description, unit, and hierarchical position (parent/grandparent).
+Determine which candidates (if any) are EXACT MATCHES to the target item. Consider the complete context including the item description, unit, and hierarchical position (parent/grandparent). Hierarchy can help disambiguate discipline/system, but the item's own description/spec/unit takes priority.
 
 MATCHING RULES:
 
-1. CORE IDENTITY - The items must represent the SAME thing:
-   - Same type of work, material, equipment, service, or activity
-   - Same fundamental purpose and function
-   - Text variations are OK if meaning is identical ("excavation" = "excavate", "construct" = "construction")
+CORE IDENTITY — Must be the SAME thing
 
-2. SPECIFICATIONS - Critical details must align:
-   - Dimensions/sizes must match (1500mm ≠ 1200mm, 16" ≠ 8")
-   - Materials/grades must match (C40 ≠ C30, API 5L Grade B = API 5L Grade B)
-   - Technical specs must match (80KW ≠ 100KW, PN16 = PN16)
-   - Standards/codes must be compatible (ASTM A234 WPB matches if same item)
+Same type of work, material, equipment, service, or activity
 
-3. SCOPE OF WORK - Must be equivalent:
-   - "Supply only" ≠ "Supply & Install" ≠ "Install only"
-   - "Complete with accessories" ≠ "Equipment only"
-   - "Including excavation" ≠ "Excluding excavation"
-   - Minor wording differences OK if scope is clearly the same
+Same fundamental purpose/function
 
-4. UNITS - Must be compatible:
-   - Exact match preferred (m = m, nr = nr, LS = LS)
-   - Compatible units accepted (m² = sqm, m³ = cum, No. = nr = Each)
-   - Incompatible units are red flags (m ≠ m², ton ≠ m³)
+Wording variations OK if meaning is identical (e.g., "excavation" = "excavate", "construct" = "construction")
 
-5. HIERARCHICAL CONTEXT - Should be consistent:
-   - Same or very similar parent category (6.1 Ducts matches 6.1 Ducts)
-   - Same general domain (electrical matches electrical, civil matches civil)
-   - Different domains = likely different items (electrical ducts ≠ drainage pipes)
+SPECIFICATIONS — Critical details must ALIGN
+
+Dimensions/sizes must match (1500 mm ≠ 1200 mm; DN200 = 200 mm nominal diameter; NPS 8 = 8")
+
+Materials/grades/classes must match (e.g., C40/20 = C40/20; S275 ≠ S355; PE100 ≠ PE80)
+
+Technical ratings must match (e.g., 80 kW ≠ 100 kW; PN16 = PN16; SDR/rating/class must align)
+
+Standards/codes must be compatible/same (e.g., ASTM A234 WPB = ASTM A234 WPB)
+
+If target is specific and candidate is generic (omits a critical spec), treat as NO MATCH unless text make the same spec unambiguous
+
+SCOPE OF WORK — Must be EQUIVALENT
+
+"Supply only" ≠ "Supply & Install" ≠ "Install only"
+
+"Complete with accessories" ≠ "Equipment only"
+
+Inclusions/exclusions must align (e.g., "including excavation" vs "excluding excavation")
+
+Minor wording differences OK if scope clearly the same
+
+UNITS — Must be COMPATIBLE
+
+Prefer exact match (m = m, nr = nr, LS = LS)
+
+Accept synonyms (m² = sqm, m³ = cum, No. = nr = each)
+
+Incompatible units are red flags (m ≠ m²; ton ≠ m³)
+
+HIERARCHY/CONTEXT — Use to confirm or disambiguate
+
+
+Hierarchy may differ across projects; identical parent/grandparent labels are not required. Use hierarchy only to confirm discipline/system or resolve ambiguity—the item’s own description/spec/unit takes priority.
+
+If the item text is generic, you may use hierarchy + unit + system naming to unambiguously pin it to the same specific item; if any doubt remains, NO MATCH
+INTERPRETATION NOTES:
+
+Normalize common synonyms/abbreviations: No./nr/each; sqm/m²; cum/m³; HDPE/PE100 (only if explicitly stated); uPVC/PVC-U; CS/MS = carbon/mild steel (only if stated)
+
+Treat "DN" in mm as nominal diameter; convert inches↔mm when provided (do not guess if not given)
+
+Concrete grades must match exactly (e.g., C40/20 = C40/20; C30 ≠ C40)
+
+Pressure/class/SDR/rating values must match exactly unless clearly declared equivalent in the text
+
+If a critical detail is missing in a candidate, and equivalence cannot be confirmed, choose NO MATCH
 
 MATCH IF:
 ✓ Same item with identical/equivalent specifications
-✓ Different wording but clearly the same work
-✓ Compatible units and matching context
-✓ All critical specifications align
+✓ Same scope of work
+✓ Compatible units and non-contradictory hierarchy
+✓ All critical specs align
 
 DO NOT MATCH IF:
-✗ Different specifications (size, grade, capacity, etc.)
-✗ Different scope (supply vs install, with/without accessories)
-✗ Incompatible units (unless clearly an error)
-✗ Different domain/context (electrical vs plumbing, structure vs MEP)
-✗ One is generic, other is specific (unless clearly referring to same thing)
+✗ Different critical specs (size, grade, rating, material, capacity, pressure class, SDR, etc.)
+✗ Different scope (supply vs install; with/without accessories; different inclusions/exclusions)
+✗ Incompatible units
+✗ Different domain/context implied by hierarchy (e.g., electrical vs plumbing)
+✗ One is generic and the other specific, unless context makes them clearly the same item
 
 OUTPUT FORMAT (strict JSON):
 {{
     "status": "match" or "no_match",
     "matches": [1, 3, 5],  // 1-based indices of matching candidates (empty array if no matches)
-    "reasoning": "Brief explanation of decision focusing on key factors"
+    "reasoning": "Brief explanation focusing on decisive factors: core identity, specs, scope, units, and hierarchy."
 }}
 
 EXAMPLES:
 ✓ "EXCAVATION FOR FOUNDATIONS depth 2m" matches "FOUNDATION EXCAVATION 2m deep"
 ✗ "EXCAVATION FOR FOUNDATIONS depth 2m" does NOT match "EXCAVATION FOR TRENCHES depth 2m"
-✓ "Concrete C40/20" matches "Grade C40/20 Concrete" 
+✓ "Concrete C40/20" matches "Grade C40/20 Concrete"
 ✗ "Concrete C40" does NOT match "Concrete C30"
-✓ "Supply Pump 80KW" matches "80KW Pumping Unit Supply"
-✗ "Supply Pump 80KW" does NOT match "Supply & Install Pump 80KW"
-✓ "HDPE Pipe DN200" matches "200mm HDPE Pipe"
+✓ "Supply Pump 80 kW" matches "80 kW Pumping Unit Supply"
+✗ "Supply Pump 80 kW" does NOT match "Supply & Install Pump 80 kW"
+✓ "HDPE Pipe DN200" matches "200 mm HDPE Pipe"
 ✗ "HDPE Pipe DN200" does NOT match "HDPE Pipe DN300"
 
 Analyze the target and candidates carefully. Return only valid JSON."""

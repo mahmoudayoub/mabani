@@ -113,19 +113,25 @@ class RateMatcher:
             grandparent
         )
         
-        if llm_result['status'] == 'match':
-            # Convert indices to actual candidates
-            match_indices = llm_result.get('matches', [])
+        # Handle exact matches
+        if llm_result['status'] == 'exact_match':
+            match_indices = llm_result.get('exact_matches', [])
             # Indices are 1-based in the prompt, convert to 0-based
             matches = [candidates[i-1] for i in match_indices if 0 < i <= len(candidates)]
             
             if not matches:
+                # Check for similar matches if no exact matches
+                if llm_result.get('similar_matches'):
+                    return self._handle_similar_matches(llm_result, candidates)
+                
                 logger.info("  No valid matches after index conversion")
                 return {
                     'status': 'no_match',
+                    'match_type': 'none',
                     'matches': [],
                     'unit': None,
                     'rate': None,
+                    'reasoning': llm_result.get('reasoning', ''),
                     'candidates': candidates
                 }
             
@@ -136,25 +142,103 @@ class RateMatcher:
             # Build reference string with source info
             reference = self._build_reference_string(matches)
             
-            logger.info(f"  ✓ Match found: {unit} @ {rate}")
+            logger.info(f"  ✓ Exact match found: {unit} @ {rate}")
             
             return {
                 'status': 'match',
+                'match_type': 'exact',
                 'matches': matches,
                 'unit': unit,
                 'rate': rate,
                 'reference': reference,
+                'reasoning': llm_result.get('reasoning', ''),
                 'candidates': candidates
             }
+        
+        # Handle similar matches
+        elif llm_result['status'] == 'similar_match':
+            return self._handle_similar_matches(llm_result, candidates)
+        
+        # No match
         else:
-            logger.info("  ✗ No exact match")
+            logger.info("  ✗ No match")
             return {
                 'status': 'no_match',
+                'match_type': 'none',
                 'matches': [],
                 'unit': None,
                 'rate': None,
+                'reasoning': llm_result.get('reasoning', ''),
                 'candidates': candidates
             }
+    
+    def _handle_similar_matches(
+        self,
+        llm_result: Dict[str, Any],
+        candidates: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Handle similar matches with confidence levels."""
+        similar_matches_data = llm_result.get('similar_matches', [])
+        
+        if not similar_matches_data:
+            return {
+                'status': 'no_match',
+                'match_type': 'none',
+                'matches': [],
+                'unit': None,
+                'rate': None,
+                'reasoning': llm_result.get('reasoning', ''),
+                'candidates': candidates
+            }
+        
+        # Extract matches with confidence
+        matches = []
+        confidences = []
+        for match_data in similar_matches_data:
+            idx = match_data.get('index', 0)
+            confidence = match_data.get('confidence', 0)
+            
+            if 0 < idx <= len(candidates):
+                match = candidates[idx - 1].copy()
+                match['confidence'] = confidence
+                matches.append(match)
+                confidences.append(confidence)
+        
+        if not matches:
+            logger.info("  No valid similar matches after index conversion")
+            return {
+                'status': 'no_match',
+                'match_type': 'none',
+                'matches': [],
+                'unit': None,
+                'rate': None,
+                'reasoning': llm_result.get('reasoning', ''),
+                'candidates': candidates
+            }
+        
+        # Calculate consensus unit and average rate
+        unit = self._get_consensus_unit(matches)
+        rate = self._calculate_average_rate(matches)
+        
+        # Build reference string
+        reference = self._build_reference_string(matches)
+        
+        # Calculate average confidence
+        avg_confidence = round(sum(confidences) / len(confidences), 1) if confidences else 0
+        
+        logger.info(f"  ≈ Similar match found: {unit} @ {rate} (confidence: {avg_confidence}%)")
+        
+        return {
+            'status': 'match',
+            'match_type': 'similar',
+            'matches': matches,
+            'unit': unit,
+            'rate': rate,
+            'reference': reference,
+            'confidence': avg_confidence,
+            'reasoning': llm_result.get('reasoning', ''),
+            'candidates': candidates
+        }
     
     def _search_similar_items(
         self,
@@ -242,6 +326,19 @@ class RateMatcher:
         Returns:
             {'status': 'match'|'no_match', 'matches': [...]}
         """
+        # Log candidates being evaluated
+        logger.info(f"LLM Validation - Target: {target_description}")
+        logger.info(f"LLM Validation - Evaluating {len(candidates)} candidates:")
+        for i, cand in enumerate(candidates, 1):
+            cand_parent = cand.get('parent', '')
+            cand_grandparent = cand.get('grandparent', '')
+            logger.info(f"  Candidate {i}: {cand['description']}")
+            logger.info(f"    Unit: {cand['unit']}, Rate: {cand.get('rate', 'N/A')}")
+            if cand_parent:
+                logger.info(f"    Parent: {cand_parent}")
+            if cand_grandparent:
+                logger.info(f"    Grandparent: {cand_grandparent}")
+        
         # Build prompt with parent/grandparent context
         prompt = self._build_validation_prompt(
             target_description,
@@ -258,7 +355,7 @@ class RateMatcher:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert in construction BOQ (Bill of Quantities) analysis. Your task is to identify exact matches between construction items, even if the wording differs."
+                        "content": "You are an expert in construction BOQ (Bill of Quantities) analysis. Your task is to identify exact matches and similar matches between construction items."
                     },
                     {
                         "role": "user",
@@ -273,17 +370,23 @@ class RateMatcher:
             result_text = response.choices[0].message.content
             if not result_text:
                 logger.error("LLM returned empty response")
-                return {'status': 'no_match', 'matches': []}
+                return {'status': 'no_match', 'exact_matches': [], 'similar_matches': []}
             
             result = json.loads(result_text)
             
-            logger.debug(f"LLM response: {result}")
+            # Log LLM reasoning
+            logger.info(f"LLM Response - Status: {result.get('status', 'unknown')}")
+            logger.info(f"LLM Response - Exact Matches: {result.get('exact_matches', [])}")
+            logger.info(f"LLM Response - Similar Matches: {result.get('similar_matches', [])}")
+            logger.info(f"LLM Response - Reasoning: {result.get('reasoning', 'N/A')}")
+            
+            logger.debug(f"LLM full response: {result}")
             
             return result
             
         except Exception as e:
             logger.error(f"LLM validation error: {e}")
-            return {'status': 'no_match', 'matches': []}
+            return {'status': 'no_match', 'exact_matches': [], 'similar_matches': []}
     
     def _build_validation_prompt(
         self,
@@ -318,7 +421,7 @@ class RateMatcher:
             
             candidates_text += f"\n{cand_text}\n"
         
-        prompt = f"""You are analyzing a construction BOQ (Bill of Quantities) item to find exact matches from a database.
+        prompt = f"""You are analyzing a construction BOQ (Bill of Quantities) item to find matches from a database.
 
 TARGET ITEM TO MATCH:
 {target_info}
@@ -327,97 +430,70 @@ CANDIDATE ITEMS (from vector search):
 {candidates_text}
 
 TASK:
-Determine which candidates (if any) are EXACT MATCHES to the target item. Consider the complete context including the item description, unit, and hierarchical position (parent/grandparent). Hierarchy can help disambiguate discipline/system, but the item's own description/spec/unit takes priority.
+Determine which candidates are EXACT MATCHES or SIMILAR MATCHES to the target item.
+
+MATCH TYPES:
+
+1. EXACT MATCH - Items are the same with identical specifications:
+   - Same type of work, material, equipment, or activity
+   - All critical specifications match (size, grade, rating, material, etc.)
+   - Same scope of work
+   - Compatible units
+   - Wording variations OK if meaning is identical
+
+2. SIMILAR MATCH - Items are very similar but not identical:
+   - Same type of work/activity but with minor specification differences
+   - Similar but not identical dimensions (e.g., DN200 vs DN250, but both HDPE pipes)
+   - Similar grade/class (e.g., C30 vs C40 concrete, both concrete)
+   - Similar scope with minor differences
+   - Confidence level: 70-95% (you must provide confidence percentage)
 
 MATCHING RULES:
 
-CORE IDENTITY — Must be the SAME thing
+SPECIFICATIONS:
+- Exact specifications → EXACT MATCH
+- Similar but different specifications (same category) → SIMILAR MATCH with confidence level
+- Completely different specifications → NO MATCH
 
-Same type of work, material, equipment, service, or activity
+SCOPE:
+- Identical scope → EXACT MATCH
+- Similar scope with minor differences → SIMILAR MATCH
+- Different scope (supply vs install) → NO MATCH
 
-Same fundamental purpose/function
+UNITS:
+- Same or synonym units (m = m, m² = sqm) → Compatible
+- Different units → Check if makes sense for SIMILAR MATCH
 
-Wording variations OK if meaning is identical (e.g., "excavation" = "excavate", "construct" = "construction")
-
-SPECIFICATIONS — Critical details must ALIGN
-
-Dimensions/sizes must match (1500 mm ≠ 1200 mm; DN200 = 200 mm nominal diameter; NPS 8 = 8")
-
-Materials/grades/classes must match (e.g., C40/20 = C40/20; S275 ≠ S355; PE100 ≠ PE80)
-
-Technical ratings must match (e.g., 80 kW ≠ 100 kW; PN16 = PN16; SDR/rating/class must align)
-
-Standards/codes must be compatible/same (e.g., ASTM A234 WPB = ASTM A234 WPB)
-
-If target is specific and candidate is generic (omits a critical spec), treat as NO MATCH unless text make the same spec unambiguous
-
-SCOPE OF WORK — Must be EQUIVALENT
-
-"Supply only" ≠ "Supply & Install" ≠ "Install only"
-
-"Complete with accessories" ≠ "Equipment only"
-
-Inclusions/exclusions must align (e.g., "including excavation" vs "excluding excavation")
-
-Minor wording differences OK if scope clearly the same
-
-UNITS — Must be COMPATIBLE
-
-Prefer exact match (m = m, nr = nr, LS = LS)
-
-Accept synonyms (m² = sqm, m³ = cum, No. = nr = each)
-
-Incompatible units are red flags (m ≠ m²; ton ≠ m³)
-
-HIERARCHY/CONTEXT — Use to confirm or disambiguate
-
-
-Hierarchy may differ across projects; identical parent/grandparent labels are not required. Use hierarchy only to confirm discipline/system or resolve ambiguity—the item’s own description/spec/unit takes priority.
-
-If the item text is generic, you may use hierarchy + unit + system naming to unambiguously pin it to the same specific item; if any doubt remains, NO MATCH
-INTERPRETATION NOTES:
-
-Normalize common synonyms/abbreviations: No./nr/each; sqm/m²; cum/m³; HDPE/PE100 (only if explicitly stated); uPVC/PVC-U; CS/MS = carbon/mild steel (only if stated)
-
-Treat "DN" in mm as nominal diameter; convert inches↔mm when provided (do not guess if not given)
-
-Concrete grades must match exactly (e.g., C40/20 = C40/20; C30 ≠ C40)
-
-Pressure/class/SDR/rating values must match exactly unless clearly declared equivalent in the text
-
-If a critical detail is missing in a candidate, and equivalence cannot be confirmed, choose NO MATCH
-
-MATCH IF:
-✓ Same item with identical/equivalent specifications
-✓ Same scope of work
-✓ Compatible units and non-contradictory hierarchy
-✓ All critical specs align
-
-DO NOT MATCH IF:
-✗ Different critical specs (size, grade, rating, material, capacity, pressure class, SDR, etc.)
-✗ Different scope (supply vs install; with/without accessories; different inclusions/exclusions)
-✗ Incompatible units
-✗ Different domain/context implied by hierarchy (e.g., electrical vs plumbing)
-✗ One is generic and the other specific, unless context makes them clearly the same item
+INTERPRETATION:
+- Normalize abbreviations: No./nr/each; sqm/m²; cum/m³; DN = nominal diameter
+- Consider if items could reasonably substitute each other → SIMILAR MATCH
+- If critical details missing/unclear → NO MATCH
 
 OUTPUT FORMAT (strict JSON):
 {{
-    "status": "match" or "no_match",
-    "matches": [1, 3, 5],  // 1-based indices of matching candidates (empty array if no matches)
-    "reasoning": "Brief explanation focusing on decisive factors: core identity, specs, scope, units, and hierarchy."
+    "status": "exact_match" or "similar_match" or "no_match",
+    "exact_matches": [1, 2],  // 1-based indices of exact matches (empty if none)
+    "similar_matches": [
+        {{"index": 3, "confidence": 85}},  // confidence must be 70-95%
+        {{"index": 4, "confidence": 72}}
+    ],
+    "reasoning": "Explain which items are exact matches, which are similar (with confidence %), and why"
 }}
 
 EXAMPLES:
-✓ "EXCAVATION FOR FOUNDATIONS depth 2m" matches "FOUNDATION EXCAVATION 2m deep"
-✗ "EXCAVATION FOR FOUNDATIONS depth 2m" does NOT match "EXCAVATION FOR TRENCHES depth 2m"
-✓ "Concrete C40/20" matches "Grade C40/20 Concrete"
-✗ "Concrete C40" does NOT match "Concrete C30"
-✓ "Supply Pump 80 kW" matches "80 kW Pumping Unit Supply"
-✗ "Supply Pump 80 kW" does NOT match "Supply & Install Pump 80 kW"
-✓ "HDPE Pipe DN200" matches "200 mm HDPE Pipe"
-✗ "HDPE Pipe DN200" does NOT match "HDPE Pipe DN300"
+EXACT: "EXCAVATION depth 2m" = "Excavation 2m deep" (same work, same spec)
+SIMILAR: "EXCAVATION depth 2m" ≈ "EXCAVATION depth 2.5m" (similar depth, 80% confidence)
+NO MATCH: "EXCAVATION depth 2m" ≠ "BACKFILL depth 2m" (different work)
 
-Analyze the target and candidates carefully. Return only valid JSON."""
+EXACT: "Concrete C40/20" = "C40/20 Concrete" (identical grade)
+SIMILAR: "Concrete C40/20" ≈ "Concrete C30/20" (similar grade, 75% confidence)
+NO MATCH: "Concrete C40" ≠ "Steel reinforcement" (different material)
+
+EXACT: "HDPE Pipe DN200" = "200mm HDPE Pipe" (same pipe, same size)
+SIMILAR: "HDPE Pipe DN200" ≈ "HDPE Pipe DN250" (same material, similar size, 82% confidence)
+NO MATCH: "HDPE Pipe DN200" ≠ "PVC Pipe DN200" (different material)
+
+Analyze carefully and return only valid JSON."""
         
         return prompt
     

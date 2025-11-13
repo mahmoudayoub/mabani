@@ -19,8 +19,9 @@ class ExcelWriter:
     
     def __init__(self):
         self.logger = logger
-        self.green_fill = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')
-        self.red_fill = PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid')
+        self.green_fill = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')  # Exact match
+        self.yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Similar match
+        self.red_fill = PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid')  # Not filled
     
     def write_filled_excel(
         self,
@@ -75,39 +76,79 @@ class ExcelWriter:
             unit_col_idx = self._get_column_index(ws, columns['unit'], header_row_idx)
             rate_col_idx = self._get_column_index(ws, columns['rate'], header_row_idx)
             reference_col_idx = self._get_column_index(ws, columns.get('reference'), header_row_idx)
+            reasoning_col_idx = self._get_column_index(ws, columns.get('reasoning'), header_row_idx)
+            
+            # Auto-create "AutoRate Reference" column if it doesn't exist
+            if not reference_col_idx:
+                # Find the last used column
+                last_col = ws.max_column
+                reference_col_idx = last_col + 1
+                
+                # Add header for new column
+                header_cell = ws.cell(row=header_row_idx, column=reference_col_idx)
+                header_cell.value = "AutoRate Reference"
+                
+                logger.info(f"  Created new 'AutoRate Reference' column at index {reference_col_idx}")
+            
+            # Auto-create "AutoRate Reasoning" column if it doesn't exist
+            if not reasoning_col_idx:
+                # Find the last used column (after reference)
+                last_col = max(ws.max_column, reference_col_idx)
+                reasoning_col_idx = last_col + 1
+                
+                # Add header for new column
+                header_cell = ws.cell(row=header_row_idx, column=reasoning_col_idx)
+                header_cell.value = "AutoRate Reasoning"
+                
+                logger.info(f"  Created new 'AutoRate Reasoning' column at index {reasoning_col_idx}")
             
             logger.info(f"Processing sheet '{sheet_name}':")
             logger.info(f"  Unit column: {columns['unit']} (index {unit_col_idx})")
             logger.info(f"  Rate column: {columns['rate']} (index {rate_col_idx})")
-            if reference_col_idx:
-                logger.info(f"  Reference column: {columns.get('reference')} (index {reference_col_idx})")
+            logger.info(f"  Reference column: index {reference_col_idx}")
+            logger.info(f"  Reasoning column: index {reasoning_col_idx}")
             
             # Process each filled item
             for item in filled_items:
                 # openpyxl uses 1-based indexing, and we need to account for header
                 excel_row = item['row_index'] + 1  # +1 for 1-based indexing
                 
+                # Determine fill color based on match type
+                match_type = item.get('match_type', 'exact')
+                fill_color = self.green_fill if match_type == 'exact' else self.yellow_fill
+                
                 if item['status'] == 'filled':
                     # Fill unit if needed
                     if item.get('filled_unit') and unit_col_idx:
                         cell = ws.cell(row=excel_row, column=unit_col_idx)
                         cell.value = item['filled_unit']
-                        cell.fill = self.green_fill
-                        logger.debug(f"Row {excel_row}: Filled unit = {item['filled_unit']}")
+                        cell.fill = fill_color
+                        logger.debug(f"Row {excel_row}: Filled unit = {item['filled_unit']} ({match_type})")
                     
                     # Fill rate if needed
                     if item.get('filled_rate') is not None and rate_col_idx:
                         cell = ws.cell(row=excel_row, column=rate_col_idx)
                         cell.value = item['filled_rate']
-                        cell.fill = self.green_fill
-                        logger.debug(f"Row {excel_row}: Filled rate = {item['filled_rate']}")
+                        cell.fill = fill_color
+                        logger.debug(f"Row {excel_row}: Filled rate = {item['filled_rate']} ({match_type})")
                     
-                    # Fill reference if needed and column exists
-                    if item.get('reference') and reference_col_idx:
+                    # Always fill reference for filled items
+                    if reference_col_idx:
                         cell = ws.cell(row=excel_row, column=reference_col_idx)
-                        cell.value = item['reference']
-                        cell.fill = self.green_fill
-                        logger.debug(f"Row {excel_row}: Filled reference = {item['reference']}")
+                        ref_value = item.get('reference', '')
+                        # Add confidence to reference for similar matches
+                        if match_type == 'similar' and item.get('confidence'):
+                            ref_value = f"{ref_value} [Confidence: {item.get('confidence')}%]"
+                        cell.value = ref_value
+                        cell.fill = fill_color
+                        logger.debug(f"Row {excel_row}: Filled reference = {item.get('reference', '')}")
+                    
+                    # Always fill reasoning for filled items
+                    if reasoning_col_idx:
+                        cell = ws.cell(row=excel_row, column=reasoning_col_idx)
+                        cell.value = item.get('reasoning', '')
+                        cell.fill = fill_color
+                        logger.debug(f"Row {excel_row}: Filled reasoning = {item.get('reasoning', '')}")
                 
                 else:  # not_filled
                     # Mark cells as red (unfilled)
@@ -120,6 +161,12 @@ class ExcelWriter:
                         cell = ws.cell(row=excel_row, column=rate_col_idx)
                         cell.fill = self.red_fill
                         logger.debug(f"Row {excel_row}: Rate not filled (marked red)")
+                    
+                    # Fill reasoning for not_filled items if available
+                    if reasoning_col_idx and item.get('reasoning'):
+                        cell = ws.cell(row=excel_row, column=reasoning_col_idx)
+                        cell.value = item.get('reasoning', '')
+                        # No fill color for reasoning when not filled
         
         # Save workbook
         wb.save(output_file)
@@ -203,7 +250,11 @@ class ExcelWriter:
                     row_num = item['row_index'] + 1  # Excel row number
                     
                     if item['status'] == 'filled':
-                        f.write(f"Row {row_num}: ✓ FILLED\n")
+                        match_type = item.get('match_type', 'exact')
+                        match_symbol = "✓" if match_type == 'exact' else "≈"
+                        match_label = "EXACT MATCH" if match_type == 'exact' else "SIMILAR MATCH"
+                        
+                        f.write(f"Row {row_num}: {match_symbol} {match_label}\n")
                         f.write(f"  Item: {item['item_code']}\n")
                         f.write(f"  Description: {item['description']}\n")
                         
@@ -213,20 +264,26 @@ class ExcelWriter:
                         if item.get('filled_rate') is not None:
                             f.write(f"  Rate: {item['filled_rate']:.2f}\n")
                         
+                        if match_type == 'similar' and item.get('confidence'):
+                            f.write(f"  Confidence: {item.get('confidence')}%\n")
+                        
                         if item.get('reference'):
                             f.write(f"  Reference: {item['reference']}\n")
                         
+                        if item.get('reasoning'):
+                            f.write(f"  Reasoning: {item['reasoning']}\n")
+                        
                         if item.get('match_info'):
                             f.write(f"  Source: {item['match_info'].get('source', 'Unknown')}\n")
-                            if item['match_info'].get('reasoning'):
-                                f.write(f"  Reasoning: {item['match_info']['reasoning']}\n")
                         
                     else:  # not_filled
                         f.write(f"Row {row_num}: ✗ NOT FILLED\n")
                         f.write(f"  Item: {item['item_code']}\n")
                         f.write(f"  Description: {item['description']}\n")
                         
-                        if item.get('reason'):
+                        if item.get('reasoning'):
+                            f.write(f"  Reasoning: {item['reasoning']}\n")
+                        elif item.get('reason'):
                             f.write(f"  Reason: {item['reason']}\n")
                     
                     f.write("\n")

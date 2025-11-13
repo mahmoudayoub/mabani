@@ -60,7 +60,7 @@ def main():
     print()
     
     # Parse optional arguments
-    threshold = 0.76
+    threshold = 0.5
     top_k = 6
     
     for i, arg in enumerate(sys.argv):

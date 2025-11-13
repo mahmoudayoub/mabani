@@ -160,6 +160,7 @@ def run_pipeline(
             if match_result['status'] == 'match':
                 # Fill unit and/or rate
                 filled_item['status'] = 'filled'
+                filled_item['match_type'] = match_result.get('match_type', 'exact')
                 
                 if item['needs_unit'] and match_result['unit']:
                     filled_item['filled_unit'] = match_result['unit']
@@ -170,11 +171,20 @@ def run_pipeline(
                 # Add reference string
                 filled_item['reference'] = match_result.get('reference', '')
                 
+                # Add reasoning
+                filled_item['reasoning'] = match_result.get('reasoning', '')
+                
+                # Add confidence for similar matches
+                if match_result.get('match_type') == 'similar':
+                    filled_item['confidence'] = match_result.get('confidence', 0)
+                
                 # Add match info for report
                 filled_item['match_info'] = {
                     'source': match_result['matches'][0].get('project', 'Unknown') if match_result['matches'] else 'Unknown',
                     'reasoning': match_result.get('reasoning', 'Matched by LLM validation'),
-                    'num_matches': len(match_result['matches'])
+                    'num_matches': len(match_result['matches']),
+                    'match_type': match_result.get('match_type', 'exact'),
+                    'confidence': match_result.get('confidence', 100) if match_result.get('match_type') == 'exact' else match_result.get('confidence', 0)
                 }
                 
                 total_filled += 1
@@ -182,8 +192,10 @@ def run_pipeline(
             else:
                 # Not filled - mark for red coloring
                 filled_item['status'] = 'not_filled'
+                filled_item['match_type'] = 'none'
                 filled_item['reference'] = ''
-                filled_item['reason'] = 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No exact match found by LLM'
+                filled_item['reasoning'] = match_result.get('reasoning', 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No match found by LLM')
+                filled_item['reason'] = 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No match found by LLM'
                 total_not_filled += 1
             
             filled_items.append(filled_item)
@@ -198,8 +210,13 @@ def run_pipeline(
         
         total_items += len(items_to_fill)
         
+        # Count exact and similar matches
+        exact_matches = sum(1 for i in filled_items if i['status'] == 'filled' and i.get('match_type') == 'exact')
+        similar_matches = sum(1 for i in filled_items if i['status'] == 'filled' and i.get('match_type') == 'similar')
+        
         print(f"\n  ✓ Sheet processed:")
-        print(f"    - Filled: {sum(1 for i in filled_items if i['status'] == 'filled')}")
+        print(f"    - Exact matches: {exact_matches}")
+        print(f"    - Similar matches: {similar_matches}")
         print(f"    - Not filled: {sum(1 for i in filled_items if i['status'] == 'not_filled')}")
     
     if total_items == 0:
@@ -220,6 +237,12 @@ def run_pipeline(
         sheet_results=sheet_results
     )
     
+    # Count total exact and similar matches
+    total_exact = sum(sum(1 for i in result['filled_items'] if i['status'] == 'filled' and i.get('match_type') == 'exact') 
+                      for result in sheet_results.values())
+    total_similar = sum(sum(1 for i in result['filled_items'] if i['status'] == 'filled' and i.get('match_type') == 'similar') 
+                        for result in sheet_results.values())
+    
     # Write text report
     report_file = str(output_excel).replace('.xlsx', '_report.txt')
     writer.write_report(
@@ -239,12 +262,15 @@ def run_pipeline(
     print(f"\n📊 Summary:")
     print(f"   Total items processed: {total_items}")
     print(f"   Successfully filled: {total_filled} ({total_filled/total_items*100:.1f}%)")
+    print(f"     - Exact matches: {total_exact} ({total_exact/total_items*100:.1f}%)")
+    print(f"     - Similar matches: {total_similar} ({total_similar/total_items*100:.1f}%)")
     print(f"   Not filled: {total_not_filled} ({total_not_filled/total_items*100:.1f}%)")
     print(f"\n📤 Output files:")
     print(f"   Excel: {output_path}")
     print(f"   Report: {report_file}")
     print(f"\n💡 Check the Excel file:")
-    print(f"   🟢 Green cells = Successfully filled")
+    print(f"   🟢 Green cells = Exact match")
+    print(f"   🟡 Yellow cells = Similar match (with confidence %)")
     print(f"   🔴 Red cells = No match found")
     
     return output_path

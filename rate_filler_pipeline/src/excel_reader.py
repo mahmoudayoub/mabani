@@ -360,7 +360,7 @@ class ExcelReader:
     
     def _detect_columns(self, df: pd.DataFrame) -> Dict[str, Optional[str]]:
         """
-        Detect column names for Level, Item, Description, Unit, Rate.
+        Detect column names for Level, Item, Description, Unit, Rate, Reference, Reasoning.
         
         Returns:
             Dictionary mapping field names to actual column names
@@ -371,7 +371,8 @@ class ExcelReader:
             'description': None,
             'unit': None,
             'rate': None,
-            'reference': None
+            'reference': None,
+            'reasoning': None
         }
         
         # Get column names (from DataFrame columns)
@@ -406,5 +407,9 @@ class ExcelReader:
             # Detect Reference
             elif 'reference' in col_lower and not columns['reference']:
                 columns['reference'] = col
+            
+            # Detect Reasoning
+            elif 'reasoning' in col_lower and not columns['reasoning']:
+                columns['reasoning'] = col
         
         return columns

@@ -141,7 +141,7 @@ def main():
                         input_excel=str(excel_file),
                         sheet_name=sheet,
                         output_excel=None,  # Auto-generate in output folder
-                        similarity_threshold=0.76,
+                        similarity_threshold=0.5,
                         top_k=6
                     )
                     

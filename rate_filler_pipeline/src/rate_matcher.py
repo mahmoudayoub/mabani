@@ -426,7 +426,7 @@ class RateMatcher:
 TARGET ITEM TO MATCH:
 {target_info}
 
-CANDIDATE ITEMS (from vector search):
+CANDIDATE ITEMS:
 {candidates_text}
 
 TASK:
@@ -452,7 +452,7 @@ MATCHING RULES:
 
 SPECIFICATIONS:
 - Exact specifications → EXACT MATCH
-- Similar but different specifications (same category) → SIMILAR MATCH with confidence level
+- Similar but some different specifications (same category) → SIMILAR MATCH with confidence level
 - Completely different specifications → NO MATCH
 
 SCOPE:

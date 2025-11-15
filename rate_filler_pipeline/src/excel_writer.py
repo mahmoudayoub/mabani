@@ -20,7 +20,8 @@ class ExcelWriter:
     def __init__(self):
         self.logger = logger
         self.green_fill = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')  # Exact match
-        self.yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Similar match
+        self.yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Close match
+        self.blue_fill = PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')  # Approximation
         self.red_fill = PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid')  # Not filled
     
     def write_filled_excel(
@@ -115,7 +116,14 @@ class ExcelWriter:
                 
                 # Determine fill color based on match type
                 match_type = item.get('match_type', 'exact')
-                fill_color = self.green_fill if match_type == 'exact' else self.yellow_fill
+                if match_type == 'exact':
+                    fill_color = self.green_fill
+                elif match_type == 'close':
+                    fill_color = self.yellow_fill
+                elif match_type == 'approximation':
+                    fill_color = self.blue_fill
+                else:
+                    fill_color = self.green_fill  # Default
                 
                 if item['status'] == 'filled':
                     # Fill unit if needed
@@ -231,12 +239,39 @@ class ExcelWriter:
             f.write("=" * 80 + "\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             
-            # Summary
+            # Summary - compute method breakdown across all sheets
+            total_items = summary.get('total_items', 0)
+            total_filled = summary.get('filled', 0)
+            total_not_filled = summary.get('not_filled', 0)
+
+            # Count by match type
+            exact_total = 0
+            close_total = 0
+            approx_total = 0
+            for res in sheet_results.values():
+                for it in res.get('filled_items', []):
+                    if it.get('status') != 'filled':
+                        continue
+                    mt = it.get('match_type', 'exact')
+                    if mt == 'exact':
+                        exact_total += 1
+                    elif mt == 'close':
+                        close_total += 1
+                    elif mt == 'approximation':
+                        approx_total += 1
+
+            # Defensive division
+            def pct(part, whole):
+                return (part / whole * 100) if whole else 0.0
+
             f.write("SUMMARY\n")
             f.write("-" * 80 + "\n")
-            f.write(f"Total items needing filling: {summary['total_items']}\n")
-            f.write(f"Items filled: {summary['filled']} ({summary['filled']/summary['total_items']*100:.1f}%)\n")
-            f.write(f"Items not filled: {summary['not_filled']} ({summary['not_filled']/summary['total_items']*100:.1f}%)\n\n")
+            f.write(f"Total items needing filling: {total_items}\n")
+            f.write(f"Items filled: {total_filled} ({pct(total_filled, total_items):.1f}%)\n")
+            f.write(f"  - Exact matches: {exact_total} ({pct(exact_total, total_items):.1f}%)\n")
+            f.write(f"  - Close matches: {close_total} ({pct(close_total, total_items):.1f}%)\n")
+            f.write(f"  - Approximations: {approx_total} ({pct(approx_total, total_items):.1f}%)\n")
+            f.write(f"Items not filled: {total_not_filled} ({pct(total_not_filled, total_items):.1f}%)\n\n")
             
             # Details per sheet
             for sheet_name, result in sheet_results.items():
@@ -245,16 +280,40 @@ class ExcelWriter:
                 f.write("=" * 80 + "\n\n")
                 
                 filled_items = result['filled_items']
+
+                # Per-sheet breakdown
+                sheet_total = len(filled_items)
+                sheet_filled = sum(1 for i in filled_items if i.get('status') == 'filled')
+                sheet_not_filled = sum(1 for i in filled_items if i.get('status') == 'not_filled')
+                sheet_exact = sum(1 for i in filled_items if i.get('status') == 'filled' and i.get('match_type') == 'exact')
+                sheet_close = sum(1 for i in filled_items if i.get('status') == 'filled' and i.get('match_type') == 'close')
+                sheet_approx = sum(1 for i in filled_items if i.get('status') == 'filled' and i.get('match_type') == 'approximation')
+
+                f.write(f"Sheet summary: Total={sheet_total}, Filled={sheet_filled} ({pct(sheet_filled, sheet_total):.1f}%), Not filled={sheet_not_filled} ({pct(sheet_not_filled, sheet_total):.1f}%)\n")
+                f.write(f"  Exact: {sheet_exact} ({pct(sheet_exact, sheet_total):.1f}%), Close: {sheet_close} ({pct(sheet_close, sheet_total):.1f}%), Approx: {sheet_approx} ({pct(sheet_approx, sheet_total):.1f}%)\n\n")
                 
                 for item in filled_items:
                     row_num = item['row_index'] + 1  # Excel row number
                     
                     if item['status'] == 'filled':
                         match_type = item.get('match_type', 'exact')
-                        match_symbol = "✓" if match_type == 'exact' else "≈"
-                        match_label = "EXACT MATCH" if match_type == 'exact' else "SIMILAR MATCH"
+                        stage = item.get('stage', 'matcher')
                         
-                        f.write(f"Row {row_num}: {match_symbol} {match_label}\n")
+                        # Determine symbol and label based on match type
+                        if match_type == 'exact':
+                            match_symbol = "✓"
+                            match_label = "EXACT MATCH"
+                        elif match_type == 'close':
+                            match_symbol = "≈"
+                            match_label = "CLOSE MATCH"
+                        elif match_type == 'approximation':
+                            match_symbol = "~"
+                            match_label = "APPROXIMATION"
+                        else:
+                            match_symbol = "✓"
+                            match_label = "MATCH"
+                        
+                        f.write(f"Row {row_num}: {match_symbol} {match_label} (Stage: {stage.upper()})\n")
                         f.write(f"  Item: {item['item_code']}\n")
                         f.write(f"  Description: {item['description']}\n")
                         
@@ -264,8 +323,11 @@ class ExcelWriter:
                         if item.get('filled_rate') is not None:
                             f.write(f"  Rate: {item['filled_rate']:.2f}\n")
                         
-                        if match_type == 'similar' and item.get('confidence'):
+                        if match_type in ['close', 'approximation'] and item.get('confidence'):
                             f.write(f"  Confidence: {item.get('confidence')}%\n")
+                        
+                        if match_type == 'approximation' and item.get('adjustment'):
+                            f.write(f"  Adjustment: {item.get('adjustment')}\n")
                         
                         if item.get('reference'):
                             f.write(f"  Reference: {item['reference']}\n")

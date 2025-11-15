@@ -1,4 +1,4 @@
-# Excel to JSON Pipeline# Excel to JSON Pipeline# Excel to JSON Pipeline
+# Excel to JSON Pipeline# Excel to JSON Pipeline# Excel to JSON Pipeline# Excel to JSON Pipeline
 
 
 
@@ -6,7 +6,7 @@ Convert Excel BOQ (Bill of Quantities) files into structured JSON format with hi
 
 
 
-## OverviewConvert Excel BOQ files to structured JSON format with hierarchical organization.A production-level, modular pipeline for converting Excel files with hierarchical BOQ (Bill of Quantities) data into JSON format.
+## OverviewConvert Excel BOQ (Bill of Quantities) files into structured JSON format with hierarchical organization.
 
 
 
@@ -14,355 +14,720 @@ This pipeline processes Excel files containing construction BOQ data and convert
 
 
 
-## Features## Overview## Table of Contents
+## Features## OverviewConvert Excel BOQ files to structured JSON format with hierarchical organization.A production-level, modular pipeline for converting Excel files with hierarchical BOQ (Bill of Quantities) data into JSON format.
 
 
 
-- ✅ **Hierarchical Processing**: Builds tree structure from numeric levels (PART 1, PART 2, etc.)- [Features](#features)
+- ✅ **Hierarchical Processing**: Builds tree structure from numeric levels (PART 1, PART 2, etc.)
 
 - ✅ **C-Level Logic**: Handles consecutive c-level subcategories with proper parent-child relationships
 
-- ✅ **Multi-Sheet Support**: Process single sheets or all sheets in a workbookThis pipeline processes Excel files containing Bill of Quantities (BOQ) data and converts them into structured JSON format. It preserves the hierarchical structure (levels 1, 2, 3) while flattening level "c" entries.- [Key Improvements](#key-improvements)
+- ✅ **Multi-Sheet Support**: Process single sheets or all sheets in a workbookThis pipeline processes Excel files containing construction BOQ data and converts them into structured JSON format. It intelligently handles hierarchical levels (numeric levels 1, 2, 3, etc.) and consecutive c-level subcategories to create a clean, navigable data structure.
 
 - ✅ **Type Safety**: Pydantic models ensure data validation
 
-- ✅ **Flexible Configuration**: YAML-based configuration for customization- [Quick Start](#quick-start)
+- ✅ **Flexible Configuration**: YAML-based configuration for customization
 
 - ✅ **Comprehensive Logging**: Detailed logs for debugging and monitoring
 
-## Features- [Installation](#installation)
+- ✅ **No API Dependencies**: Pure Python processing, no external API calls needed## Features## Overview## Table of Contents
+
+
 
 ## Directory Structure
 
+
+
+```- ✅ **Hierarchical Processing**: Builds tree structure from numeric levels (PART 1, PART 2, etc.)- [Features](#features)
+
+excel_to_json_pipeline/
+
+├── src/- ✅ **C-Level Logic**: Handles consecutive c-level subcategories with proper parent-child relationships
+
+│   ├── excel_parser.py          # Read Excel files and extract data
+
+│   ├── hierarchy_processor.py   # Build hierarchical structure from levels- ✅ **Multi-Sheet Support**: Process single sheets or all sheets in a workbookThis pipeline processes Excel files containing Bill of Quantities (BOQ) data and converts them into structured JSON format. It preserves the hierarchical structure (levels 1, 2, 3) while flattening level "c" entries.- [Key Improvements](#key-improvements)
+
+│   ├── json_exporter.py         # Export to JSON format
+
+│   ├── models.py                # Pydantic data models- ✅ **Type Safety**: Pydantic models ensure data validation
+
+│   └── pipeline.py              # Main orchestration logic
+
+├── config/- ✅ **Flexible Configuration**: YAML-based configuration for customization- [Quick Start](#quick-start)
+
+│   └── settings.yaml            # Configuration settings
+
+├── input/                       # Place Excel files here- ✅ **Comprehensive Logging**: Detailed logs for debugging and monitoring
+
+├── output/                      # Generated JSON files (one per sheet)
+
+├── logs/                        # Processing logs with timestamps## Features- [Installation](#installation)
+
+├── process_separate_sheets.py  # Main entry point
+
+└── requirements.txt             # Dependencies## Directory Structure
+
+```
+
 - [Project Structure](#project-structure)
-
-```
-
-excel_to_json_pipeline/- ✅ Process multiple sheets from Excel files- [Usage](#usage)
-
-├── src/
-
-│   ├── excel_parser.py          # Read Excel files- ✅ Hierarchical organization (Level 1 → Level 2 → Level 3)- [Hierarchy Logic](#hierarchy-logic)
-
-│   ├── hierarchy_processor.py   # Build hierarchical structure
-
-│   ├── json_exporter.py         # Export to JSON- ✅ Automatic level "c" flattening- [Configuration](#configuration)
-
-│   ├── models.py                # Data models (Pydantic)
-
-│   └── pipeline.py              # Main orchestration- ✅ Separate JSON file per sheet- [Output Format](#output-format)
-
-├── config/
-
-│   └── settings.yaml            # Configuration- ✅ Preserves item codes, descriptions, units, and rates- [Logging](#logging)
-
-├── input/                       # Place Excel files here
-
-├── output/                      # Generated JSON files- [Examples](#examples)
-
-├── logs/                        # Processing logs
-
-├── process_separate_sheets.py   # Main entry point## Directory Structure- [Performance & File Sizes](#performance--file-sizes)
-
-└── requirements.txt             # Dependencies
-
-```- [Troubleshooting](#troubleshooting)
-
-
-
-## Installation```- [Next Steps: Vector Store Preparation](#next-steps-vector-store-preparation)
-
-
-
-```bashexcel_to_json_pipeline/- [Development](#development)
-
-# From project root
-
-pip install -r requirements.txt├── src/                      # Core modules- [Version History](#version-history)
-
-```
-
-│   ├── excel_parser.py       # Excel file reading
-
-## Usage
-
-│   ├── hierarchy_processor.py # Hierarchy management---
-
-### Process All Sheets (Default)
-
-│   ├── json_exporter.py      # JSON output
-
-```bash
-
-# Place Excel file in input/ folder│   ├── models.py             # Data models## Features
-
-cp "your_file.xlsx" excel_to_json_pipeline/input/
-
-│   └── pipeline.py           # Main pipeline
-
-# Run pipeline
-
-cd excel_to_json_pipeline├── config/✨ **Modular Architecture**: Separate modules for parsing, processing, and exporting  
-
-python process_separate_sheets.py
-
-```│   └── settings.yaml         # Configuration📊 **Hierarchical Processing**: Builds tree structure from numeric levels  
-
-
-
-### Process Specific Sheet├── input/                    # Place Excel files here🎯 **Simplified Structure**: Ignores 'c' subcategory levels for cleaner output  
-
-
-
-Edit `config/settings.yaml`:├── output/                   # Generated JSON files🔒 **Type Safety**: Uses Pydantic models for data validation  
-
-```yaml
-
-input_file: "your_file.xlsx"├── logs/                     # Log files⚙️ **Flexible Configuration**: YAML-based configuration for easy customization  
-
-sheet_name: "Terminal"  # or null for all sheets
-
-```├── process_separate_sheets.py # Main script📝 **Comprehensive Logging**: Detailed logging for debugging and monitoring  
-
-
-
-Then run:├── requirements.txt          # Dependencies📦 **Batch Processing**: Process single files or entire directories  
-
-```bash
-
-python process_separate_sheets.py└── README.md                 # This file📁 **Multiple Output Modes**: Separate JSON file per sheet (default) or single combined file  
-
-```
-
-```
-
-## Configuration
-
-## Key Improvements
-
-Edit `config/settings.yaml`:
 
 ## Installation
 
-```yaml
+```
 
-# Input/Output**91% File Size Reduction**: By ignoring 'c' subcategory levels, output files are dramatically smaller (173 MB → 16 MB)
+```bash
 
-input_directory: "input"
+# From project rootexcel_to_json_pipeline/- ✅ Process multiple sheets from Excel files- [Usage](#usage)
 
-output_directory: "output"```bash
+pip install -r excel_to_json_pipeline/requirements.txt
 
-log_directory: "logs"
-
-# Install dependencies**Simpler Hierarchy**: Items placed directly under numeric levels instead of nested under 'c' subcategories
-
-# Processing
-
-input_file: "your_file.xlsx"        # Requiredpip install -r requirements.txt
-
-sheet_name: null                     # null = all sheets
-
-output_mode: "separate"              # "separate" or "combined"```**Separate Files by Default**: Each sheet exports as individual JSON file for easier management
+```├── src/
 
 
 
-# Column Mapping (customize if your Excel has different columns)
+## Configuration│   ├── excel_parser.py          # Read Excel files- ✅ Hierarchical organization (Level 1 → Level 2 → Level 3)- [Hierarchy Logic](#hierarchy-logic)
 
-columns:
 
-  level: "Unnamed: 0"## Usage## Quick Start
 
-  item: "Unnamed: 1"
+The pipeline doesn't require API keys. All configuration is in `config/settings.yaml`:│   ├── hierarchy_processor.py   # Build hierarchical structure
 
-  description: "Unnamed: 2"
 
-  unit: "Unnamed: 3"
 
-  pricing: "Pricing"1. **Place Excel files** in the `input/` directory**Fastest way to get started:**
+```yaml│   ├── json_exporter.py         # Export to JSON- ✅ Automatic level "c" flattening- [Configuration](#configuration)
+
+# Excel file settings
+
+excel:│   ├── models.py                # Data models (Pydantic)
+
+  header_row: 0  # Row index for headers (0-based)
+
+  │   └── pipeline.py              # Main orchestration- ✅ Separate JSON file per sheet- [Output Format](#output-format)
+
+# Output settings
+
+output:├── config/
+
+  indent: 2  # JSON indentation
+
+  ensure_ascii: false  # Allow non-ASCII characters│   └── settings.yaml            # Configuration- ✅ Preserves item codes, descriptions, units, and rates- [Logging](#logging)
 
 ```
 
+├── input/                       # Place Excel files here
 
+## Usage
 
-## Hierarchy Logic
+├── output/                      # Generated JSON files- [Examples](#examples)
 
-2. **Run the pipeline:**```bash
+### Process All Sheets
 
-### Consecutive C-Levels
+├── logs/                        # Processing logs
 
-   ```bash# 1. Place your Excel file in the input directory
+```bash
 
-When multiple c-levels appear consecutively, the pipeline creates parent-child relationships:
+# Place Excel file in input/ folder├── process_separate_sheets.py   # Main entry point## Directory Structure- [Performance & File Sizes](#performance--file-sizes)
 
-   cd excel_to_json_pipelinecp "your_file.xlsx" input/
+cp "your_file.xlsx" excel_to_json_pipeline/input/
 
-**Example Excel Structure:**
+└── requirements.txt             # Dependencies
 
-```   python process_separate_sheets.py
+# Run pipeline (processes all sheets)
 
-Level | Item    | Description
+cd excel_to_json_pipeline```- [Troubleshooting](#troubleshooting)
 
-------|---------|---------------------------   ```# 2. Run the pipeline (using convenience script)
-
-3     |         | PART 3 - EARTHWORKS
-
-c     |         | 3.1 - General Excavation./run.sh
-
-c     |         | General Excavation: topsoil
-
-      | 3.1.01  | Depth not exceeding 0.25m3. **Output:** JSON files will be created in `output/` directory
-
-c     |         | General Excavation: material...
-
-c     |         | Apron area   - One JSON file per Excel sheet# Or using the process script directly
-
-      | 3.1.02  | Depth not exceeding 0.25m
-
-```   - Format: `{original_filename}_{sheet_name}.json`python process_separate_sheets.py
+python process_separate_sheets.py
 
 
 
-**Resulting Hierarchy:**```
+# Output: One JSON file per sheet in output/
+
+# - Book1_Sheet1.json## Installation```- [Next Steps: Vector Store Preparation](#next-steps-vector-store-preparation)
+
+# - Book1_Sheet2.json
+
+# - etc.
 
 ```
 
-PART 3 - EARTHWORKS## Input Format
+```bashexcel_to_json_pipeline/- [Development](#development)
 
-  └─ 3.1 - General Excavation
+### Process Specific Sheet
 
-      ├─ General Excavation: topsoilThat's it! Check the `output/` directory for your JSON files (one per sheet).
+# From project root
 
-      │   └─ Item 3.1.01
+```bash
 
-      └─ General Excavation: material...Excel file should have these columns:
+# Edit process_separate_sheets.py to specify sheet namepip install -r requirements.txt├── src/                      # Core modules- [Version History](#version-history)
 
-          └─ Apron area
+python process_separate_sheets.py --sheet "Sheet Name"
 
-              └─ Item 3.1.02- **Level**: Hierarchy level (1, 2, 3, or c)---
+``````
+
+
+
+## How It Works│   ├── excel_parser.py       # Excel file reading
+
+
+
+### 1. Excel Parsing## Usage
+
+
+
+The pipeline reads Excel files and identifies:│   ├── hierarchy_processor.py # Hierarchy management---
+
+- **Header row**: Typically contains "Level", "Item", "Description", "Unit", "Pricing"
+
+- **Data rows**: All rows below header### Process All Sheets (Default)
+
+- **Hierarchy markers**: "Level" column with numeric values (1, 2, 3) or "c"
+
+│   ├── json_exporter.py      # JSON output
+
+### 2. Hierarchy Building
+
+```bash
+
+**Level Structure:**
+
+- **Level 1**: Top-level categories (e.g., "PART 1 - EARTHWORKS")# Place Excel file in input/ folder│   ├── models.py             # Data models## Features
+
+- **Level 2**: Subcategories (e.g., "General Excavation")
+
+- **Level 3**: Detail level (e.g., "Excavation for foundations")cp "your_file.xlsx" excel_to_json_pipeline/input/
+
+- **Level c**: Special consecutive levels handled with custom logic
+
+│   └── pipeline.py           # Main pipeline
+
+**C-Level Logic:**
+
+# Run pipeline
+
+When consecutive c-levels appear:
+
+1. First c followed by second c → Clear stack, add first to current parentcd excel_to_json_pipeline├── config/✨ **Modular Architecture**: Separate modules for parsing, processing, and exporting  
+
+2. Second c followed by items → Add second c to stack
+
+3. Items get: grandparent=first_c, parent=second_cpython process_separate_sheets.py
+
+
+
+Example:```│   └── settings.yaml         # Configuration📊 **Hierarchical Processing**: Builds tree structure from numeric levels  
 
 ```
 
-- **Item**: Item code
+Level 2: General Excavation
 
-**Key Rules:**
+  c: General Excavation: material excavated to be...
 
-1. When c-level is followed by another c-level → clear stack, add first c as parent- **Bill description**: Item description## Installation
+  c: Apron area### Process Specific Sheet├── input/                    # Place Excel files here🎯 **Simplified Structure**: Ignores 'c' subcategory levels for cleaner output  
 
-2. When c-level is followed by items → add c to existing stack, items get proper grandparent/parent
-
-3. Stack maintains: `[grandparent_c, parent_c]` for items- **Unit**: Unit of measurement
+    Item: 3.1.02 | Depth not exceeding 0.25m
 
 
 
-## Output Format- **Rate**: Unit rate```
+Result for item 3.1.02:
 
+- Grandparent: "General Excavation: material excavated to be..."Edit `config/settings.yaml`:├── output/                   # Generated JSON files🔒 **Type Safety**: Uses Pydantic models for data validation  
 
+- Parent: "Apron area"
 
-Each sheet produces a JSON file: `{filename}_{sheet_name}.json`excel_to_json_pipeline/
+- Description: "Depth not exceeding 0.25m"```yaml
 
+```
 
+input_file: "your_file.xlsx"├── logs/                     # Log files⚙️ **Flexible Configuration**: YAML-based configuration for easy customization  
 
-```json## Output Format├── config/
+### 3. JSON Export
+
+sheet_name: "Terminal"  # or null for all sheets
+
+Each sheet is exported as a separate JSON file with structure:
+
+```├── process_separate_sheets.py # Main script📝 **Comprehensive Logging**: Detailed logging for debugging and monitoring  
+
+```json
 
 {
 
-  "source_file": "your_file.xlsx",│   └── settings.yaml          # Configuration file
-
   "sheet_name": "Terminal",
 
-  "hierarchy": [```json├── src/
+  "hierarchy": [Then run:├── requirements.txt          # Dependencies📦 **Batch Processing**: Process single files or entire directories  
 
     {
 
-      "level": 3,{│   ├── __init__.py
+      "level": 1,```bash
 
-      "description": "PART 3 - EARTHWORKS",
+      "description": "PART 1 - EARTHWORKS",
 
-      "item_type": "numeric_level",  "source_file": "example.xlsx",│   ├── models.py              # Pydantic data models
-
-      "row_number": 7,
-
-      "children": [  "source_sheet": "Sheet1",│   ├── excel_parser.py        # Excel file parsing
+      "children": [python process_separate_sheets.py└── README.md                 # This file📁 **Multiple Output Modes**: Separate JSON file per sheet (default) or single combined file  
 
         {
 
-          "level": "c",  "hierarchy": [│   ├── hierarchy_processor.py # Hierarchy building logic
+          "level": 2,```
 
-          "description": "3.1 - General Excavation",
+          "description": "General Excavation",
 
-          "item_type": "subcategory",    {│   ├── json_exporter.py       # JSON export functionality
+          "children": [```
 
-          "row_number": 9,
+            {
 
-          "children": [...]      "level": 1,│   └── pipeline.py            # Main orchestrator
+              "level": "c",## Configuration
 
-        }
+              "description": "General Excavation: material...",
 
-      ]      "code": "1",├── input/                     # Place input Excel files here
+              "children": [## Key Improvements
 
-    }
+                {
 
-  ]      "description": "Main Category",├── output/                    # Generated JSON files
+                  "level": "c",Edit `config/settings.yaml`:
 
-}
+                  "description": "Apron area",
 
-```      "children": [├── logs/                      # Log files
+                  "items": [## Installation
 
+                    {
 
+                      "item_code": "3.1.02",```yaml
 
-## Logging        {├── requirements.txt           # Python dependencies
+                      "description": "Depth not exceeding 0.25m",
 
+                      "unit": "m³",# Input/Output**91% File Size Reduction**: By ignoring 'c' subcategory levels, output files are dramatically smaller (173 MB → 16 MB)
 
+                      "rate": 45.50,
 
-Logs are saved to `logs/pipeline_YYYYMMDD_HHMMSS.log`          "level": 2,└── README.md                  # This file
+                      "parent": "Apron area",input_directory: "input"
 
+                      "grandparent": "General Excavation: material..."
 
+                    }output_directory: "output"```bash
 
-**Log Levels:**          "code": "1.1",```
+                  ]
 
-- `INFO`: Processing progress
+                }log_directory: "logs"
 
-- `DEBUG`: Detailed hierarchy decisions          "description": "Sub Category",
+              ]
 
-- `WARNING`: Missing data or anomalies
+            }# Install dependencies**Simpler Hierarchy**: Items placed directly under numeric levels instead of nested under 'c' subcategories
 
-- `ERROR`: Processing failures          "children": [---
+          ]
 
+        }# Processing
 
+      ]
 
-## Next Steps            {
+    }input_file: "your_file.xlsx"        # Requiredpip install -r requirements.txt
 
+  ]
 
-
-After generating JSON files, use them with **json_to_vectorstore** pipeline to create embeddings and upload to Pinecone.              "level": 3,## Installation
-
-
-
-```bash              "code": "1.1.1",
-
-cd ../json_to_vectorstore
-
-python process_json_to_vectorstore.py              "description": "Item Description",### Prerequisites
+}sheet_name: null                     # null = all sheets
 
 ```
 
-              "unit": "m2",- Python 3.8 or higher
+output_mode: "separate"              # "separate" or "combined"```**Separate Files by Default**: Each sheet exports as individual JSON file for easier management
 
-## Troubleshooting
-
-              "rate": 100.50- pip package manager
-
-**No JSON files generated?**
-
-- Check `logs/` for error messages            }
-
-- Verify Excel file is in `input/` directory
-
-- Ensure Excel file has correct column structure          ]### Setup
+## Output Format
 
 
 
-**Wrong hierarchy?**        }
+Each JSON file contains:
+
+# Column Mapping (customize if your Excel has different columns)
+
+### Item Fields
+
+- **item_code**: Item reference number (e.g., "3.1.02")columns:
+
+- **description**: Item description text
+
+- **unit**: Unit of measurement (m³, m², nr, etc.)  level: "Unnamed: 0"## Usage## Quick Start
+
+- **rate**: Unit rate/price (numeric)
+
+- **parent**: Immediate parent description (from last c-level)  item: "Unnamed: 1"
+
+- **grandparent**: Second-level parent description (from first c-level)
+
+  description: "Unnamed: 2"
+
+### Hierarchy Fields
+
+- **level**: Numeric (1, 2, 3) or "c"  unit: "Unnamed: 3"
+
+- **description**: Level description text
+
+- **children**: Nested sub-levels  pricing: "Pricing"1. **Place Excel files** in the `input/` directory**Fastest way to get started:**
+
+- **items**: Array of items at this level
+
+```
+
+## Logging
+
+
+
+Logs are saved to `logs/excel_to_json_{timestamp}.log` with:
+
+- Processing start/end times## Hierarchy Logic
+
+- Sheets processed
+
+- Items extracted per sheet2. **Run the pipeline:**```bash
+
+- Hierarchy structure validation
+
+- Any errors or warnings### Consecutive C-Levels
+
+
+
+Example log output:   ```bash# 1. Place your Excel file in the input directory
+
+```
+
+2025-11-14 20:30:00 - INFO - Starting Excel to JSON pipelineWhen multiple c-levels appear consecutively, the pipeline creates parent-child relationships:
+
+2025-11-14 20:30:01 - INFO - Processing file: Book_1.xlsx
+
+2025-11-14 20:30:01 - INFO - Found 3 sheets   cd excel_to_json_pipelinecp "your_file.xlsx" input/
+
+2025-11-14 20:30:02 - INFO - Sheet 'Terminal': Extracted 450 items
+
+2025-11-14 20:30:03 - INFO - Exported: output/Book_1_Terminal.json**Example Excel Structure:**
+
+2025-11-14 20:30:05 - INFO - Pipeline complete. Processed 3 sheets, 1,250 total items
+
+``````   python process_separate_sheets.py
+
+
+
+## ExamplesLevel | Item    | Description
+
+
+
+### Input Excel Structure------|---------|---------------------------   ```# 2. Run the pipeline (using convenience script)
+
+
+
+| Level | Item   | Description                        | Unit | Pricing |3     |         | PART 3 - EARTHWORKS
+
+|-------|--------|------------------------------------|------|---------|
+
+| 1     |        | PART 1 - EARTHWORKS               |      |         |c     |         | 3.1 - General Excavation./run.sh
+
+| 2     |        | General Excavation                 |      |         |
+
+| c     |        | General Excavation: material...    |      |         |c     |         | General Excavation: topsoil
+
+| c     |        | Apron area                         |      |         |
+
+|       | 3.1.02 | Depth not exceeding 0.25m         | m³   | 45.50   |      | 3.1.01  | Depth not exceeding 0.25m3. **Output:** JSON files will be created in `output/` directory
+
+|       | 3.1.03 | Depth 0.25m to 0.50m              | m³   | 52.00   |
+
+c     |         | General Excavation: material...
+
+### Output JSON (simplified)
+
+c     |         | Apron area   - One JSON file per Excel sheet# Or using the process script directly
+
+```json
+
+{      | 3.1.02  | Depth not exceeding 0.25m
+
+  "sheet_name": "Sheet1",
+
+  "hierarchy": [```   - Format: `{original_filename}_{sheet_name}.json`python process_separate_sheets.py
+
+    {
+
+      "level": 1,
+
+      "description": "PART 1 - EARTHWORKS",
+
+      "children": [**Resulting Hierarchy:**```
+
+        {
+
+          "level": 2,```
+
+          "description": "General Excavation",
+
+          "children": [PART 3 - EARTHWORKS## Input Format
+
+            {
+
+              "level": "c",  └─ 3.1 - General Excavation
+
+              "description": "General Excavation: material...",
+
+              "children": [      ├─ General Excavation: topsoilThat's it! Check the `output/` directory for your JSON files (one per sheet).
+
+                {
+
+                  "level": "c",      │   └─ Item 3.1.01
+
+                  "description": "Apron area",
+
+                  "items": [      └─ General Excavation: material...Excel file should have these columns:
+
+                    {
+
+                      "item_code": "3.1.02",          └─ Apron area
+
+                      "description": "Depth not exceeding 0.25m",
+
+                      "unit": "m³",              └─ Item 3.1.02- **Level**: Hierarchy level (1, 2, 3, or c)---
+
+                      "rate": 45.50,
+
+                      "parent": "Apron area",```
+
+                      "grandparent": "General Excavation: material..."
+
+                    }- **Item**: Item code
+
+                  ]
+
+                }**Key Rules:**
+
+              ]
+
+            }1. When c-level is followed by another c-level → clear stack, add first c as parent- **Bill description**: Item description## Installation
+
+          ]
+
+        }2. When c-level is followed by items → add c to existing stack, items get proper grandparent/parent
+
+      ]
+
+    }3. Stack maintains: `[grandparent_c, parent_c]` for items- **Unit**: Unit of measurement
+
+  ]
+
+}
+
+```
+
+## Output Format- **Rate**: Unit rate```
+
+## Performance
+
+
+
+Typical processing times:
+
+- **Small files** (< 500 items): < 5 secondsEach sheet produces a JSON file: `{filename}_{sheet_name}.json`excel_to_json_pipeline/
+
+- **Medium files** (500-2000 items): 5-15 seconds
+
+- **Large files** (2000+ items): 15-30 seconds
+
+
+
+No API calls means processing is very fast and has no usage costs.```json## Output Format├── config/
+
+
+
+## Troubleshooting{
+
+
+
+### No items extracted?  "source_file": "your_file.xlsx",│   └── settings.yaml          # Configuration file
+
+- Check that "Level" column contains "c" markers
+
+- Verify header row is correctly identified  "sheet_name": "Terminal",
+
+- Review logs for parsing errors
+
+- Ensure Excel file has standard structure  "hierarchy": [```json├── src/
+
+
+
+### Wrong hierarchy?    {
+
+- Verify c-levels are in correct order
+
+- Check for empty rows between c-levels (they're skipped)      "level": 3,{│   ├── __init__.py
+
+- Review c-level logic in `hierarchy_processor.py`
+
+- Check logs for hierarchy building steps      "description": "PART 3 - EARTHWORKS",
+
+
+
+### Missing parent/grandparent?      "item_type": "numeric_level",  "source_file": "example.xlsx",│   ├── models.py              # Pydantic data models
+
+- C-level logic requires at least 2 consecutive c-levels
+
+- Single c-level items won't have grandparent      "row_number": 7,
+
+- Check that c-levels appear before items
+
+      "children": [  "source_sheet": "Sheet1",│   ├── excel_parser.py        # Excel file parsing
+
+### Excel file not found?
+
+- Ensure file is in `input/` directory        {
+
+- Check file name and extension (.xlsx)
+
+- Verify file is not corrupted          "level": "c",  "hierarchy": [│   ├── hierarchy_processor.py # Hierarchy building logic
+
+
+
+### JSON export fails?          "description": "3.1 - General Excavation",
+
+- Check disk space
+
+- Verify write permissions on `output/` directory          "item_type": "subcategory",    {│   ├── json_exporter.py       # JSON export functionality
+
+- Check for invalid characters in descriptions
+
+          "row_number": 9,
+
+## Next Steps
+
+          "children": [...]      "level": 1,│   └── pipeline.py            # Main orchestrator
+
+After converting Excel to JSON:
+
+        }
+
+1. **Verify output**: Check JSON files are correctly structured
+
+2. **Review hierarchy**: Ensure parent/grandparent relationships are correct      ]      "code": "1",├── input/                     # Place input Excel files here
+
+3. **Prepare for vector store**: Move JSON files to `json_to_vectorstore/input/`
+
+4. **Generate embeddings**: Run `json_to_vectorstore` pipeline to create vector database    }
+
+
+
+## Integration with Other Pipelines  ]      "description": "Main Category",├── output/                    # Generated JSON files
+
+
+
+This pipeline is the **first step** in the BOQ processing workflow:}
+
+
+
+``````      "children": [├── logs/                      # Log files
+
+Excel Files
+
+    ↓
+
+[excel_to_json_pipeline]
+
+    ↓## Logging        {├── requirements.txt           # Python dependencies
+
+JSON Files (hierarchical structure)
+
+    ↓
+
+[json_to_vectorstore]
+
+    ↓Logs are saved to `logs/pipeline_YYYYMMDD_HHMMSS.log`          "level": 2,└── README.md                  # This file
+
+Pinecone Vector Database
+
+    ↓
+
+[rate_filler_pipeline]
+
+    ↓**Log Levels:**          "code": "1.1",```
+
+Filled Excel Files
+
+```- `INFO`: Processing progress
+
+
+
+The JSON output from this pipeline serves as input for:- `DEBUG`: Detailed hierarchy decisions          "description": "Sub Category",
+
+- **json_to_vectorstore**: Generates embeddings and uploads to Pinecone
+
+- **rate_filler_pipeline**: Uses vector search to find matching items- `WARNING`: Missing data or anomalies
+
+
+
+## Development- `ERROR`: Processing failures          "children": [---
+
+
+
+### Adding Custom Logic
+
+
+
+To customize hierarchy processing:## Next Steps            {
+
+
+
+1. **Modify level detection**: Edit `excel_parser.py`
+
+2. **Change hierarchy rules**: Edit `hierarchy_processor.py`
+
+3. **Adjust output format**: Edit `json_exporter.py`After generating JSON files, use them with **json_to_vectorstore** pipeline to create embeddings and upload to Pinecone.              "level": 3,## Installation
+
+4. **Update data models**: Edit `models.py`
+
+
+
+### Testing
+
+```bash              "code": "1.1.1",
+
+```bash
+
+# Process test filecd ../json_to_vectorstore
+
+cp test_data.xlsx input/
+
+python process_separate_sheets.pypython process_json_to_vectorstore.py              "description": "Item Description",### Prerequisites
+
+
+
+# Check output```
+
+cat output/test_data_Sheet1.json | jq .
+
+```              "unit": "m2",- Python 3.8 or higher
+
+
+
+## Dependencies## Troubleshooting
+
+
+
+Key libraries:              "rate": 100.50- pip package manager
+
+- **pandas**: Excel file reading
+
+- **openpyxl**: Excel file manipulation**No JSON files generated?**
+
+- **pydantic**: Data validation
+
+- **pyyaml**: Configuration management- Check `logs/` for error messages            }
+
+
+
+No API dependencies or external services required.- Verify Excel file is in `input/` directory
+
+
+
+---- Ensure Excel file has correct column structure          ]### Setup
+
+
+
+**Version**: 2.0  
+
+**Last Updated**: November 14, 2025  
+
+**Status**: Production Ready**Wrong hierarchy?**        }
+
 
 - Check numeric level values (1, 2, 3, etc.)
 

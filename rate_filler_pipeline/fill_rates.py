@@ -174,17 +174,27 @@ def run_pipeline(
                 # Add reasoning
                 filled_item['reasoning'] = match_result.get('reasoning', '')
                 
-                # Add confidence for similar matches
-                if match_result.get('match_type') == 'similar':
+                # Add stage information
+                filled_item['stage'] = match_result.get('stage', 'matcher')
+                
+                # Add confidence for close/approximation matches
+                match_type = match_result.get('match_type', 'exact')
+                if match_type in ['close', 'approximation']:
                     filled_item['confidence'] = match_result.get('confidence', 0)
+                
+                # Add adjustment for approximation matches
+                if match_type == 'approximation':
+                    filled_item['adjustment'] = match_result.get('adjustment', '')
                 
                 # Add match info for report
                 filled_item['match_info'] = {
                     'source': match_result['matches'][0].get('project', 'Unknown') if match_result['matches'] else 'Unknown',
                     'reasoning': match_result.get('reasoning', 'Matched by LLM validation'),
                     'num_matches': len(match_result['matches']),
-                    'match_type': match_result.get('match_type', 'exact'),
-                    'confidence': match_result.get('confidence', 100) if match_result.get('match_type') == 'exact' else match_result.get('confidence', 0)
+                    'match_type': match_type,
+                    'stage': match_result.get('stage', 'matcher'),
+                    'confidence': match_result.get('confidence', 100) if match_type == 'exact' else match_result.get('confidence', 0),
+                    'adjustment': match_result.get('adjustment', '') if match_type == 'approximation' else ''
                 }
                 
                 total_filled += 1

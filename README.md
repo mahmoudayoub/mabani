@@ -39,7 +39,7 @@ graph TD
 - ⚡ **Fast Processing**: ~10 minutes for 500-item BOQ with early-return optimization
 - 💰 **Cost Effective**: ~$0.08 per 500-item sheet (saves on wasteful LLM calls)
 - � **Auto-Created Columns**: Reference and Reasoning columns for full transparency
-- 🔍 **Adjustment Guidance**: Approximations include scaling/modification instructions
+- 🔍 **LLM-Calculated Rates**: For approximations, LLM applies scaling logic and returns calculated rates
 
 ## 🚀 Quick Start
 
@@ -225,9 +225,10 @@ Close match? ──YES──→ ≈ Fill (Yellow) ← DONE
 ┌─────────────────────────────────┐
 │  Stage 3: ESTIMATOR             │
 │  - Approximation detection      │
+│  - LLM calculates adjusted rate │
 │  - Temperature: 0                │
 │  - Confidence: 50-69%            │
-│  - Provides adjustment guidance │
+│  - Provides adjustment logic    │
 └─────────────────────────────────┘
     ↓
 Approximation? ──YES──→ ~ Fill (Blue) ← DONE
@@ -290,7 +291,7 @@ Hierarchy for Item 4.2.01:
 - **AutoRate Reasoning**: LLM's explanation
   - Exact: "Identical specifications and scope"
   - Close: "Very similar, differences: DN200 vs DN250"
-  - Approximation: "Can approximate, adjust by diameter ratio (250/200)"
+  - Approximation: "Candidate DN250@500.00: scaled by diameter ratio (200/250) = 400.00. Limitations: different size class"
 
 **Color Meaning:**
 - 🟢 Green: Use confidently (exact match)

@@ -90,7 +90,7 @@ class RateMatcher:
                 'status': 'match' | 'no_match',
                 'matches': [...],  # List of exact matches (if found)
                 'unit': str,       # Consensus unit (if matched)
-                'rate': float,     # Average rate (if matched)
+                'rate': float,     # LLM-calculated/recommended rate (if matched)
                 'candidates': [...] # Retrieved candidates
             }
         """
@@ -136,7 +136,11 @@ class RateMatcher:
             
             if matches:
                 unit = self._get_consensus_unit(matches)
-                rate = self._calculate_average_rate(matches)
+                # Get LLM-calculated recommended rate
+                rate = matcher_result.get('recommended_rate')
+                if rate is None:
+                    logger.error("  ✗ LLM did not provide recommended_rate for exact match")
+                    raise ValueError("Matcher stage must provide recommended_rate")
                 reference = self._build_reference_string(matches)
                 
                 logger.info(f"  ✓ EXACT match found: {unit} @ {rate}")
@@ -185,7 +189,11 @@ class RateMatcher:
                 
                 if matches:
                     unit = self._get_consensus_unit(matches)
-                    rate = self._calculate_average_rate(matches)
+                    # Get LLM-calculated recommended rate
+                    rate = expert_result.get('recommended_rate')
+                    if rate is None:
+                        logger.error("  ✗ LLM did not provide recommended_rate for close match")
+                        raise ValueError("Expert stage must provide recommended_rate")
                     reference = self._build_reference_string(matches)
                     avg_confidence = round(sum(confidences) / len(confidences), 1)
                     
@@ -222,26 +230,34 @@ class RateMatcher:
             if approximations_data:
                 matches = []
                 confidences = []
+                approximated_rates = []
                 adjustments = []
                 
                 for approx_data in approximations_data:
                     idx = approx_data.get('index', 0)
                     confidence = approx_data.get('confidence', 0)
+                    approximated_rate = approx_data.get('approximated_rate', 0)
                     adjustment = approx_data.get('adjustment', '')
                     limitations = approx_data.get('limitations', '')
                     
                     if 0 < idx <= len(candidates):
                         match = candidates[idx - 1].copy()
                         match['confidence'] = confidence
+                        match['approximated_rate'] = approximated_rate
                         match['adjustment'] = adjustment
                         match['limitations'] = limitations
                         matches.append(match)
                         confidences.append(confidence)
+                        approximated_rates.append(approximated_rate)
                         adjustments.append(adjustment)
                 
-                if matches:
+                if matches and approximated_rates:
                     unit = self._get_consensus_unit(matches)
-                    rate = self._calculate_average_rate(matches)
+                    # Average LLM-calculated approximated rates from multiple approximations
+                    rate = round(sum(approximated_rates) / len(approximated_rates), 2)
+                    if rate == 0:
+                        logger.error("  ✗ LLM provided approximated_rate of 0")
+                        raise ValueError("Estimator stage approximated_rate must be > 0")
                     reference = self._build_reference_string(matches)
                     avg_confidence = round(sum(confidences) / len(confidences), 1)
                     
@@ -289,12 +305,12 @@ class RateMatcher:
         parent: Optional[str] = None,
         grandparent: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Stage 1: Matcher - Check for exact matches only."""
+        """Stage 1: Matcher - Check for exact matches and calculate recommended rate."""
         # Build target info
         target_info = self._build_target_info(target_description, target_code, parent, grandparent)
         
-        # Build candidates text
-        candidates_text = self._build_candidates_text(candidates)
+        # Build candidates text WITH RATES for the Matcher stage
+        candidates_text = self._build_candidates_text(candidates, include_rates=True)
         
         # Build prompt
         prompt = build_matcher_prompt(target_info, candidates_text)
@@ -309,12 +325,12 @@ class RateMatcher:
         parent: Optional[str] = None,
         grandparent: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Stage 2: Expert - Check for close matches with minor differences."""
+        """Stage 2: Expert - Check for close matches with minor differences and calculate recommended rate."""
         # Build target info
         target_info = self._build_target_info(target_description, target_code, parent, grandparent)
         
-        # Build candidates text
-        candidates_text = self._build_candidates_text(candidates)
+        # Build candidates text WITH RATES for the Expert stage
+        candidates_text = self._build_candidates_text(candidates, include_rates=True)
         
         # Build prompt
         prompt = build_expert_prompt(target_info, candidates_text)
@@ -329,12 +345,12 @@ class RateMatcher:
         parent: Optional[str] = None,
         grandparent: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Stage 3: Estimator - Check for approximation possibilities."""
+        """Stage 3: Estimator - Check for approximation possibilities and calculate approximated rates."""
         # Build target info
         target_info = self._build_target_info(target_description, target_code, parent, grandparent)
         
-        # Build candidates text
-        candidates_text = self._build_candidates_text(candidates)
+        # Build candidates text WITH RATES for the Estimator stage
+        candidates_text = self._build_candidates_text(candidates, include_rates=True)
         
         # Build prompt
         prompt = build_estimator_prompt(target_info, candidates_text)
@@ -350,12 +366,12 @@ class RateMatcher:
         """Call LLM with given prompt and system message."""
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini-2025-08-07",
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0,
+                temperature=1,
                 response_format={"type": "json_object"}
             )
             
@@ -393,15 +409,26 @@ class RateMatcher:
         
         return target_info
     
-    def _build_candidates_text(self, candidates: List[Dict[str, Any]]) -> str:
-        """Build candidates text for prompt."""
+    def _build_candidates_text(self, candidates: List[Dict[str, Any]], include_rates: bool = False) -> str:
+        """
+        Build candidates text for prompt.
+        
+        Args:
+            candidates: List of candidate items
+            include_rates: If True, include rate information (for Estimator stage)
+        """
         candidates_text = ""
         
         for i, cand in enumerate(candidates, 1):
             cand_parent = cand.get('parent', '')
             cand_grandparent = cand.get('grandparent', '')
+            cand_rate = cand.get('rate', 0)
             
             cand_text = f"{i}. Description: {cand['description']}\n   Unit: {cand['unit']}"
+            
+            if include_rates and cand_rate:
+                cand_text += f"\n   Rate: {cand_rate:.2f}"
+            
             if cand_parent:
                 cand_text += f"\n   Parent: {cand_parent}"
             if cand_grandparent:
@@ -493,22 +520,6 @@ class RateMatcher:
         # Return most common
         from collections import Counter
         return Counter(units).most_common(1)[0][0]
-    
-    def _calculate_average_rate(self, matches: List[Dict[str, Any]]) -> Optional[float]:
-        """
-        Calculate average rate from matched items.
-        
-        Args:
-            matches: List of matched items
-            
-        Returns:
-            Average rate (or None if no rates)
-        """
-        rates = [m.get('rate', 0) for m in matches if m.get('rate')]
-        if not rates:
-            return None
-        
-        return round(sum(rates) / len(rates), 2)
     
     def _build_reference_string(self, matches: List[Dict[str, Any]]) -> str:
         """

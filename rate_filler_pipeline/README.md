@@ -131,15 +131,17 @@ The pipeline uses a sophisticated 3-stage sequential approach with specialized L
   - If no close match → Proceeds to Stage 3
 
 #### **Stage 3: ESTIMATOR** (Approximations)
-- **Role**: Find items suitable for cost approximation
+- **Role**: Find items suitable for cost approximation and **calculate approximated rates**
 - **Model**: gpt-4o-mini, temperature=0
-- **Prompt**: Practical - "can be used for COST APPROXIMATION"
+- **Prompt**: Practical - "can be used for COST APPROXIMATION" with candidate rates provided
 - **Confidence Range**: 50-69%
 - **Output**: 
-  - If approximation possible → **Returns with adjustment guidance** (Blue cells)
-  - Includes "adjustment" field with scaling/modification instructions
+  - If approximation possible → **Returns with LLM-calculated approximated rate** (Blue cells)
+  - Includes "approximated_rate" field with adjusted rate value
+  - Includes "adjustment" field explaining the calculation (e.g., "DN250@500 scaled by ratio 200/250 = 400")
   - Includes "limitations" field with warnings
   - If no approximation possible → Returns NO_MATCH (Red cells)
+- **Rate Calculation**: LLM applies scaling/adjustment logic and returns the calculated rate (not averaged from candidates)
 
 ### Sequential Flow Diagram
 
@@ -193,7 +195,7 @@ Approximation? ──YES──→ ~ Fill (Blue) ← DONE
 - **AutoRate Reasoning**: LLM's explanation
   - Exact: Why items are identical
   - Close: What minor differences exist
-  - Approximation: How to adjust the rate and what limitations apply
+  - Approximation: How the rate was calculated and what limitations apply (includes the adjustment calculation)
 
 **Color Coding:**
 - 🟢 **Green cells**: Exact match (Stage 1: MATCHER, 100% confidence)
@@ -268,7 +270,7 @@ Customize in `excel_reader.py` if needed.
 - **AutoRate Reasoning**: LLM explanation
   - Exact: "Identical specifications and scope"
   - Close: "Very similar, differences: DN200 vs DN250"
-  - Approximation: "Can approximate, adjust by diameter ratio (250/200)"
+  - Approximation: "Candidate DN250@500.00: scaled by diameter ratio (200/250) = 400.00. Limitations: different size class"
 
 **All original formatting and formulas preserved**
 

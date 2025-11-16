@@ -222,11 +222,13 @@ def run_pipeline(
         
         # Count exact and similar matches
         exact_matches = sum(1 for i in filled_items if i['status'] == 'filled' and i.get('match_type') == 'exact')
-        similar_matches = sum(1 for i in filled_items if i['status'] == 'filled' and i.get('match_type') == 'similar')
+        close_matches = sum(1 for i in filled_items if i['status'] == 'filled' and i.get('match_type') == 'close')
+        approx_matches = sum(1 for i in filled_items if i['status'] == 'filled' and i.get('match_type') == 'approximation')
         
         print(f"\n  ✓ Sheet processed:")
         print(f"    - Exact matches: {exact_matches}")
-        print(f"    - Similar matches: {similar_matches}")
+        print(f"    - Close matches: {close_matches}")
+        print(f"    - Approximation matches: {approx_matches}")
         print(f"    - Not filled: {sum(1 for i in filled_items if i['status'] == 'not_filled')}")
     
     if total_items == 0:
@@ -247,11 +249,13 @@ def run_pipeline(
         sheet_results=sheet_results
     )
     
-    # Count total exact and similar matches
+    # Count total exact, close, and approximation matches
     total_exact = sum(sum(1 for i in result['filled_items'] if i['status'] == 'filled' and i.get('match_type') == 'exact') 
                       for result in sheet_results.values())
-    total_similar = sum(sum(1 for i in result['filled_items'] if i['status'] == 'filled' and i.get('match_type') == 'similar') 
-                        for result in sheet_results.values())
+    total_close = sum(sum(1 for i in result['filled_items'] if i['status'] == 'filled' and i.get('match_type') == 'close') 
+                      for result in sheet_results.values())
+    total_approx = sum(sum(1 for i in result['filled_items'] if i['status'] == 'filled' and i.get('match_type') == 'approximation') 
+                       for result in sheet_results.values())
     
     # Write text report
     report_file = str(output_excel).replace('.xlsx', '_report.txt')
@@ -273,14 +277,16 @@ def run_pipeline(
     print(f"   Total items processed: {total_items}")
     print(f"   Successfully filled: {total_filled} ({total_filled/total_items*100:.1f}%)")
     print(f"     - Exact matches: {total_exact} ({total_exact/total_items*100:.1f}%)")
-    print(f"     - Similar matches: {total_similar} ({total_similar/total_items*100:.1f}%)")
+    print(f"     - Close matches: {total_close} ({total_close/total_items*100:.1f}%)")
+    print(f"     - Approximation matches: {total_approx} ({total_approx/total_items*100:.1f}%)")
     print(f"   Not filled: {total_not_filled} ({total_not_filled/total_items*100:.1f}%)")
     print(f"\n📤 Output files:")
     print(f"   Excel: {output_path}")
     print(f"   Report: {report_file}")
     print(f"\n💡 Check the Excel file:")
     print(f"   🟢 Green cells = Exact match")
-    print(f"   🟡 Yellow cells = Similar match (with confidence %)")
+    print(f"   🟡 Yellow cells = Close match (70-95% confidence)")
+    print(f"   🔵 Blue cells = Approximation match (50-69% confidence)")
     print(f"   🔴 Red cells = No match found")
     
     return output_path

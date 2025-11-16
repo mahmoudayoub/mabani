@@ -140,10 +140,9 @@ Almabani/
 │   ├── output/                  # Filled files + reports
 │   ├── process_single.py        # Process one file
 │   ├── process_folder.py        # Process all files
+│   ├── test_query_preview.py    # Preview tool (no API costs)
 │   └── README.md
 │
-├── test_query_preview.py        # Preview tool (no API costs)
-├── list_sheets_in_vectorstore.py # Utility: list all sheets in Pinecone
 ├── .env                         # API keys (single file for all pipelines)
 ├── .env.example                 # Template for .env
 ├── requirements.txt             # All dependencies
@@ -427,7 +426,7 @@ python process_single.py "Project_B.xlsx" "Apron"
 # Test each pipeline individually
 cd excel_to_json_pipeline && python process_separate_sheets.py
 cd ../json_to_vectorstore && python query_vectorstore.py "test"
-cd ../rate_filler_pipeline && python ../test_query_preview.py input/Book_2.xlsx "9-PA" 5
+cd ../rate_filler_pipeline && python test_query_preview.py input/Book_2.xlsx "9-PA" 5
 ```
 
 ### Add Custom Logic

@@ -144,8 +144,8 @@ class ExcelWriter:
                     if reference_col_idx:
                         cell = ws.cell(row=excel_row, column=reference_col_idx)
                         ref_value = item.get('reference', '')
-                        # Add confidence to reference for similar matches
-                        if match_type == 'similar' and item.get('confidence'):
+                        # Add confidence to reference for close/approximation matches
+                        if match_type in ['close', 'approximation'] and item.get('confidence'):
                             ref_value = f"{ref_value} [Confidence: {item.get('confidence')}%]"
                         cell.value = ref_value
                         cell.fill = fill_color

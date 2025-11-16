@@ -33,7 +33,7 @@ class PineconeUploader:
         """
         self.api_key = api_key or os.getenv('PINECONE_API_KEY')
         self.environment = environment or os.getenv('PINECONE_ENVIRONMENT', 'us-east-1')
-        self.index_name = index_name or os.getenv('PINECONE_INDEX_NAME', 'almabani-boq')
+        self.index_name = index_name or os.getenv('PINECONE_INDEX_NAME', 'almabani')
         
         if not self.api_key:
             raise ValueError("Pinecone API key not provided and not found in environment")

@@ -23,7 +23,7 @@ def preview_queries(excel_file: str, sheet_name: str, num_samples: int = 5):
     print("=" * 80)
     
     # Read Excel
-    input_dir = Path(__file__).parent / 'rate_filler_pipeline' / 'input'
+    input_dir = Path(__file__).parent / 'input'
     input_path = input_dir / excel_file
     
     print(f"\nReading: {input_path}")

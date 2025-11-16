@@ -114,19 +114,19 @@ The pipeline uses a sophisticated 3-stage sequential approach with specialized L
 #### **Stage 1: MATCHER** (Exact Matches Only)
 - **Role**: Strict exact match detector
 - **Model**: gpt-4o-mini, temperature=0
-- **Prompt**: Very strict - "EXACTLY the same with IDENTICAL specifications"
+- **Prompt**: Very strict - "EXACTLY the same with IDENTICAL specifications" (includes candidate rates)
 - **Output**: 
-  - If exact match found → **Returns immediately** (Green cells, 100% confidence)
+  - If exact match found → **Returns immediately with `recommended_rate` from the LLM** (Green cells, 100% confidence)
   - If no exact match → Proceeds to Stage 2
 - **Benefits**: Skips expensive Expert/Estimator calls when exact match exists
 
 #### **Stage 2: EXPERT** (Close Matches)
 - **Role**: Find very similar items with minor, acceptable differences
 - **Model**: gpt-4o-mini, temperature=0
-- **Prompt**: Realistic - "VERY SIMILAR with only minor differences"
+- **Prompt**: Realistic - "VERY SIMILAR with only minor differences" (includes candidate rates)
 - **Confidence Range**: 70-95%
 - **Output**: 
-  - If close match found → **Returns with differences noted** (Yellow cells)
+  - If close match found → **Returns with differences noted and `recommended_rate` from the LLM** (Yellow cells)
   - Includes "differences" field explaining variations
   - If no close match → Proceeds to Stage 3
 
@@ -141,7 +141,8 @@ The pipeline uses a sophisticated 3-stage sequential approach with specialized L
   - Includes "adjustment" field explaining the calculation (e.g., "DN250@500 scaled by ratio 200/250 = 400")
   - Includes "limitations" field with warnings
   - If no approximation possible → Returns NO_MATCH (Red cells)
-- **Rate Calculation**: LLM applies scaling/adjustment logic and returns the calculated rate (not averaged from candidates)
+- **Rate Calculation**: LLM applies scaling/adjustment logic to candidate rates and returns the calculated rate (if multiple approximations are provided, the pipeline averages their `approximated_rate` values)
+- **References**: The reference column lists the source items used, showing each item with its original rate (the filled rate uses the LLM-calculated value).
 
 ### Sequential Flow Diagram
 

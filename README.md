@@ -243,6 +243,7 @@ Approximation? ──YES──→ ~ Fill (Blue) ← DONE
 - **Specialized Prompts**: Each stage has different strictness and criteria
 - **Transparency**: User sees which stage matched and why
 - **Practical**: Provides approximations when exact/close matches unavailable
+- **LLM-calculated rates**: Matcher/Expert return `recommended_rate`; Estimator returns `approximated_rate` using candidate rates; references list the source items with their original prices
 
 ### Hierarchical Matching
 

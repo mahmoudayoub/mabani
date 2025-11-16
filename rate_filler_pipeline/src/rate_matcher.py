@@ -65,6 +65,7 @@ class RateMatcher:
     def find_matches(
         self,
         item_description: str,
+        item_unit: str = '',
         item_code: str = '',
         parent: Optional[str] = None,
         grandparent: Optional[str] = None
@@ -80,6 +81,7 @@ class RateMatcher:
         
         Args:
             item_description: Item description to match
+            item_unit: Unit of the target item
             item_code: Optional item code
             parent: Parent description (immediate level above)
             grandparent: Grandparent description (two levels above)
@@ -99,6 +101,8 @@ class RateMatcher:
             logger.info(f"  Parent: {parent[:60]}...")
         if grandparent:
             logger.info(f"  Grandparent: {grandparent[:60]}...")
+        if item_unit:
+            logger.info(f"  Unit: {item_unit}")
         
         # Step 1: Vector search with enriched context
         candidates = self._search_similar_items(item_description, parent, grandparent)
@@ -124,6 +128,7 @@ class RateMatcher:
         logger.info("  Stage 1: MATCHER - Checking for exact matches...")
         matcher_result = self._call_matcher_stage(
             item_description,
+            item_unit,
             item_code,
             candidates,
             parent,
@@ -136,11 +141,14 @@ class RateMatcher:
             
             if matches:
                 unit = self._get_consensus_unit(matches)
-                # Get LLM-calculated recommended rate
+                # Prefer LLM-calculated recommended rate; fall back to average if missing
                 rate = matcher_result.get('recommended_rate')
                 if rate is None:
-                    logger.error("  ✗ LLM did not provide recommended_rate for exact match")
-                    raise ValueError("Matcher stage must provide recommended_rate")
+                    logger.warning("  ⚠ LLM did not provide recommended_rate for exact match; falling back to average rate")
+                    rate = self._calculate_average_rate(matches)
+                if rate is None:
+                    logger.error("  ✗ Unable to determine rate for exact match")
+                    raise ValueError("Matcher stage must return a rate")
                 reference = self._build_reference_string(matches)
                 
                 logger.info(f"  ✓ EXACT match found: {unit} @ {rate}")
@@ -163,6 +171,7 @@ class RateMatcher:
         logger.info("  Stage 2: EXPERT - Checking for close matches...")
         expert_result = self._call_expert_stage(
             item_description,
+            item_unit,
             item_code,
             candidates,
             parent,
@@ -186,14 +195,17 @@ class RateMatcher:
                         match['differences'] = differences
                         matches.append(match)
                         confidences.append(confidence)
-                
+            
                 if matches:
                     unit = self._get_consensus_unit(matches)
-                    # Get LLM-calculated recommended rate
+                    # Prefer LLM-calculated recommended rate; fall back to average if missing
                     rate = expert_result.get('recommended_rate')
                     if rate is None:
-                        logger.error("  ✗ LLM did not provide recommended_rate for close match")
-                        raise ValueError("Expert stage must provide recommended_rate")
+                        logger.warning("  ⚠ LLM did not provide recommended_rate for close match; falling back to average rate")
+                        rate = self._calculate_average_rate(matches)
+                    if rate is None:
+                        logger.error("  ✗ Unable to determine rate for close match")
+                        raise ValueError("Expert stage must return a rate")
                     reference = self._build_reference_string(matches)
                     avg_confidence = round(sum(confidences) / len(confidences), 1)
                     
@@ -218,6 +230,7 @@ class RateMatcher:
         logger.info("  Stage 3: ESTIMATOR - Checking for approximations...")
         estimator_result = self._call_estimator_stage(
             item_description,
+            item_unit,
             item_code,
             candidates,
             parent,
@@ -225,58 +238,60 @@ class RateMatcher:
         )
         
         if estimator_result['status'] == 'approximation':
+            matches = []
+            confidences = []
+            approximated_rates = []
+            adjustments = []
+            
             approximations_data = estimator_result.get('approximations', [])
             
             if approximations_data:
-                matches = []
-                confidences = []
-                approximated_rates = []
-                adjustments = []
-                
                 for approx_data in approximations_data:
                     idx = approx_data.get('index', 0)
                     confidence = approx_data.get('confidence', 0)
-                    approximated_rate = approx_data.get('approximated_rate', 0)
+                    approximated_rate = approx_data.get('approximated_rate')
                     adjustment = approx_data.get('adjustment', '')
                     limitations = approx_data.get('limitations', '')
                     
                     if 0 < idx <= len(candidates):
                         match = candidates[idx - 1].copy()
                         match['confidence'] = confidence
-                        match['approximated_rate'] = approximated_rate
+                        if approximated_rate is not None:
+                            match['approximated_rate'] = approximated_rate
                         match['adjustment'] = adjustment
                         match['limitations'] = limitations
                         matches.append(match)
                         confidences.append(confidence)
-                        approximated_rates.append(approximated_rate)
+                        if isinstance(approximated_rate, (int, float)) and approximated_rate > 0:
+                            approximated_rates.append(approximated_rate)
                         adjustments.append(adjustment)
+            
+            if matches and approximated_rates:
+                unit = self._get_consensus_unit(matches)
+                # Average LLM-calculated approximated rates from multiple approximations
+                rate = round(sum(approximated_rates) / len(approximated_rates), 2)
+                if rate == 0:
+                    logger.error("  ✗ LLM provided approximated_rate of 0")
+                    raise ValueError("Estimator stage approximated_rate must be > 0")
+                reference = self._build_reference_string(matches)
+                avg_confidence = round(sum(confidences) / len(confidences), 1)
                 
-                if matches and approximated_rates:
-                    unit = self._get_consensus_unit(matches)
-                    # Average LLM-calculated approximated rates from multiple approximations
-                    rate = round(sum(approximated_rates) / len(approximated_rates), 2)
-                    if rate == 0:
-                        logger.error("  ✗ LLM provided approximated_rate of 0")
-                        raise ValueError("Estimator stage approximated_rate must be > 0")
-                    reference = self._build_reference_string(matches)
-                    avg_confidence = round(sum(confidences) / len(confidences), 1)
-                    
-                    logger.info(f"  ~ APPROXIMATION found: {unit} @ {rate} (confidence: {avg_confidence}%)")
-                    logger.info(f"    Adjustment: {adjustments[0] if adjustments else 'N/A'}")
-                    
-                    return {
-                        'status': 'match',
-                        'match_type': 'approximation',
-                        'stage': 'estimator',
-                        'matches': matches,
-                        'unit': unit,
-                        'rate': rate,
-                        'reference': reference,
-                        'confidence': avg_confidence,
-                        'adjustment': adjustments[0] if adjustments else '',
-                        'reasoning': estimator_result.get('reasoning', ''),
-                        'candidates': candidates
-                    }
+                logger.info(f"  ~ APPROXIMATION found: {unit} @ {rate} (confidence: {avg_confidence}%)")
+                logger.info(f"    Adjustment: {adjustments[0] if adjustments else 'N/A'}")
+                
+                return {
+                    'status': 'match',
+                    'match_type': 'approximation',
+                    'stage': 'estimator',
+                    'matches': matches,
+                    'unit': unit,
+                    'rate': rate,
+                    'reference': reference,
+                    'confidence': avg_confidence,
+                    'adjustment': adjustments[0] if adjustments else '',
+                    'reasoning': estimator_result.get('reasoning', ''),
+                    'candidates': candidates
+                }
         
         # No matches found in any stage
         logger.info("  ✗ No matches found in any stage")
@@ -300,6 +315,7 @@ class RateMatcher:
     def _call_matcher_stage(
         self,
         target_description: str,
+        target_unit: str,
         target_code: str,
         candidates: List[Dict[str, Any]],
         parent: Optional[str] = None,
@@ -307,7 +323,7 @@ class RateMatcher:
     ) -> Dict[str, Any]:
         """Stage 1: Matcher - Check for exact matches and calculate recommended rate."""
         # Build target info
-        target_info = self._build_target_info(target_description, target_code, parent, grandparent)
+        target_info = self._build_target_info(target_description, target_unit, target_code, parent, grandparent)
         
         # Build candidates text WITH RATES for the Matcher stage
         candidates_text = self._build_candidates_text(candidates, include_rates=True)
@@ -320,6 +336,7 @@ class RateMatcher:
     def _call_expert_stage(
         self,
         target_description: str,
+        target_unit: str,
         target_code: str,
         candidates: List[Dict[str, Any]],
         parent: Optional[str] = None,
@@ -327,7 +344,7 @@ class RateMatcher:
     ) -> Dict[str, Any]:
         """Stage 2: Expert - Check for close matches with minor differences and calculate recommended rate."""
         # Build target info
-        target_info = self._build_target_info(target_description, target_code, parent, grandparent)
+        target_info = self._build_target_info(target_description, target_unit, target_code, parent, grandparent)
         
         # Build candidates text WITH RATES for the Expert stage
         candidates_text = self._build_candidates_text(candidates, include_rates=True)
@@ -340,6 +357,7 @@ class RateMatcher:
     def _call_estimator_stage(
         self,
         target_description: str,
+        target_unit: str,
         target_code: str,
         candidates: List[Dict[str, Any]],
         parent: Optional[str] = None,
@@ -347,7 +365,7 @@ class RateMatcher:
     ) -> Dict[str, Any]:
         """Stage 3: Estimator - Check for approximation possibilities and calculate approximated rates."""
         # Build target info
-        target_info = self._build_target_info(target_description, target_code, parent, grandparent)
+        target_info = self._build_target_info(target_description, target_unit, target_code, parent, grandparent)
         
         # Build candidates text WITH RATES for the Estimator stage
         candidates_text = self._build_candidates_text(candidates, include_rates=True)
@@ -394,13 +412,15 @@ class RateMatcher:
     def _build_target_info(
         self,
         description: str,
+        unit: str,
         code: str,
         parent: Optional[str],
         grandparent: Optional[str]
     ) -> str:
         """Build target item info string."""
         code_info = f" (Code: {code})" if code else ""
-        target_info = f"Description: {description}{code_info}"
+        unit_info = f"\nUnit: {unit}" if unit else ""
+        target_info = f"Description: {description}{code_info}{unit_info}"
         
         if parent:
             target_info = f"Parent: {parent}\n{target_info}"
@@ -415,7 +435,7 @@ class RateMatcher:
         
         Args:
             candidates: List of candidate items
-            include_rates: If True, include rate information (for Estimator stage)
+            include_rates: If True, include rate information (used in all stages so LLM can calculate the fill rate)
         """
         candidates_text = ""
         

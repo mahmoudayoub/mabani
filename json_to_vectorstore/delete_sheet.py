@@ -32,9 +32,11 @@ def delete_sheet_from_index(sheet_name: str):
     Args:
         sheet_name: Name of the sheet to delete (e.g., "1-master_no_ur", "9-PA")
     """
+    import time
+    
     # Get Pinecone credentials
     api_key = os.getenv('PINECONE_API_KEY')
-    index_name = os.getenv('PINECONE_INDEX_NAME', 'almabani-boq')
+    index_name = os.getenv('PINECONE_INDEX_NAME', 'almabani')
     
     if not api_key:
         logger.error("PINECONE_API_KEY not found in environment variables")
@@ -51,23 +53,58 @@ def delete_sheet_from_index(sheet_name: str):
         total_before = stats.total_vector_count
         logger.info(f"Total vectors in index before deletion: {total_before}")
         
+        # Verify the sheet exists by sampling
+        logger.info(f"Verifying sheet '{sheet_name}' exists...")
+        sample = index.query(
+            vector=[0.0] * 1536,
+            top_k=100,
+            include_metadata=True,
+            filter={"source_sheet": {"$eq": sheet_name}}
+        )
+        
+        if not sample.matches:
+            logger.warning(f"⚠️  No vectors found for sheet '{sheet_name}'")
+            logger.info("Getting list of available sheets...")
+            
+            # Get all unique sheets from a sample
+            all_sample = index.query(vector=[0.0] * 1536, top_k=100, include_metadata=True)
+            available_sheets = set()
+            for match in all_sample.matches:
+                sheet = match.metadata.get('source_sheet')
+                if sheet:
+                    available_sheets.add(sheet)
+            
+            if available_sheets:
+                logger.info(f"Available sheets: {', '.join(sorted(available_sheets))}")
+            return
+        
+        logger.info(f"Found {len(sample.matches)} vectors (sample) for sheet '{sheet_name}'")
+        
         # Delete vectors by metadata filter
         logger.info(f"Deleting all vectors from sheet: {sheet_name}")
         
         # Use delete with filter
-        index.delete(
+        result = index.delete(
             filter={"source_sheet": {"$eq": sheet_name}}
         )
         
-        logger.info(f"✅ Successfully deleted all vectors from sheet '{sheet_name}'")
+        logger.info(f"✅ Delete operation submitted: {result}")
+        
+        # Wait for deletion to complete (Pinecone may take a moment)
+        logger.info("Waiting 3 seconds for deletion to process...")
+        time.sleep(3)
         
         # Get index stats after deletion
         stats = index.describe_index_stats()
         total_after = stats.total_vector_count
         deleted_count = total_before - total_after
         
+        if deleted_count > 0:
+            logger.info(f"✅ Successfully deleted {deleted_count} vectors from sheet '{sheet_name}'")
+        else:
+            logger.warning(f"⚠️  No vectors were deleted. This may indicate the sheet name doesn't match.")
+        
         logger.info(f"Total vectors in index after deletion: {total_after}")
-        logger.info(f"Vectors deleted: {deleted_count}")
         
     except Exception as e:
         logger.error(f"Error deleting sheet from index: {e}")
@@ -81,7 +118,7 @@ def main():
     print("="*60 + "\n")
     
     # Ask user for sheet name
-    sheet_name = input("Enter the sheet name to delete (e.g., '1-master_no_ur', '9-PA'): ").strip()
+    sheet_name = input("Enter the sheet name to delete (e.g., '2-Terminal', '3-Hilton'): ").strip()
     
     if not sheet_name:
         logger.error("Sheet name cannot be empty")

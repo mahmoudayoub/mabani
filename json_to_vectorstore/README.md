@@ -426,22 +426,22 @@ For issues or questions:
 
 ```yaml
 excel:
-  level_column_index: 0      # ✅
-  item_column_index: 1       # ✅
-  description_column_index: 2 # ✅
-  unit_column_index: 3       # ✅
-  rate_column_index: 4       # ✅
-  data_start_row: 1          # ✅
-  skip_empty_rows: true      # ✅
+  level_column_index: 0      
+  item_column_index: 1       
+  description_column_index: 2 
+  unit_column_index: 3       
+  rate_column_index: 4       
+  data_start_row: 1          
+  skip_empty_rows: true      
 
 hierarchy:
-  subcategory_indicator: "c"           # ✅
-  numeric_level_pattern: "^[0-9]+$"    # ✅
-  item_pattern: "^[A-Za-z0-9]+.*$"     # ✅
+  subcategory_indicator: "c"           
+  numeric_level_pattern: "^[0-9]+$"    
+  item_pattern: "^[A-Za-z0-9]+.*$"     
 
 output:
-  indent: 2                  # ✅
-  ensure_ascii: false        # ✅
+  indent: 2                  
+  ensure_ascii: false        
 ```
 
 ### Configuration Options

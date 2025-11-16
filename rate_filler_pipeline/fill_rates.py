@@ -111,7 +111,8 @@ def run_pipeline(
     
     matcher = RateMatcher(
         similarity_threshold=similarity_threshold,
-        top_k=top_k
+        top_k=top_k,
+        verbose_logging=False  # Disable verbose logging for parallel processing
     )
     
     print("✓ Rate matcher ready")
@@ -144,16 +145,28 @@ def run_pipeline(
         # Process items in parallel
         filled_items = []
         
-        # Thread-safe counter for logging
+        # Thread-safe counter and logging
         progress_lock = threading.Lock()
         
         def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
             """
             Process a single item (runs in parallel thread).
-            Returns filled_item dictionary.
+            Returns filled_item dictionary with processing log.
             """
+            # Capture item processing log
+            item_log = []
+            item_log.append(f"\n{'='*80}")
+            item_log.append(f"Item: {item['item_code']} - Row {item['row_index']}")
+            item_log.append(f"Description: {item['description'][:100]}...")
+            if item.get('parent'):
+                item_log.append(f"Parent: {item['parent'][:60]}...")
+            if item.get('grandparent'):
+                item_log.append(f"Grandparent: {item['grandparent'][:60]}...")
+            item_log.append(f"{'-'*80}")
+            
             try:
                 # Search for matches with enriched context
+                # Temporarily suppress detailed logging during parallel processing
                 match_result = matcher.find_matches(
                     item_description=item['description'],
                     item_code=item['item_code'],
@@ -209,6 +222,27 @@ def run_pipeline(
                         'adjustment': match_result.get('adjustment', '') if match_type == 'approximation' else ''
                     }
                     
+                    # Log success
+                    item_log.append(f"✅ Status: MATCHED ({match_type.upper()})")
+                    item_log.append(f"Stage: {filled_item['stage']}")
+                    if item['needs_unit']:
+                        item_log.append(f"Filled Unit: {filled_item.get('filled_unit', 'N/A')}")
+                    if item['needs_rate']:
+                        item_log.append(f"Filled Rate: {filled_item.get('filled_rate', 'N/A')}")
+                    if match_type in ['close', 'approximation']:
+                        item_log.append(f"Confidence: {filled_item.get('confidence', 0)}%")
+                    if match_type == 'approximation':
+                        item_log.append(f"Adjustment: {filled_item.get('adjustment', 'N/A')}")
+                    item_log.append(f"Reference: {filled_item['reference'][:150]}...")
+                    item_log.append(f"Reasoning: {filled_item['reasoning'][:200]}...")
+                    
+                    # Add candidate details
+                    if match_result.get('candidates'):
+                        item_log.append(f"\nCandidates Found ({len(match_result['candidates'])}):")
+                        for i, cand in enumerate(match_result['candidates'], 1):
+                            item_log.append(f"  {i}. [{cand.get('project', 'Unknown')}] {cand.get('description', 'N/A')[:80]}")
+                            item_log.append(f"     Unit: {cand.get('unit', 'N/A')} | Rate: {cand.get('rate', 'N/A')} | Score: {cand.get('score', 0):.3f}")
+                    
                 else:
                     # Not filled - mark for red coloring
                     filled_item['status'] = 'not_filled'
@@ -216,13 +250,27 @@ def run_pipeline(
                     filled_item['reference'] = ''
                     filled_item['reasoning'] = match_result.get('reasoning', 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No match found by LLM')
                     filled_item['reason'] = 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No match found by LLM'
+                    
+                    # Log failure
+                    item_log.append(f"❌ Status: NOT MATCHED")
+                    item_log.append(f"Reason: {filled_item['reason']}")
+                    if match_result.get('candidates'):
+                        item_log.append(f"Candidates found: {len(match_result['candidates'])} (but none matched)")
+                        item_log.append(f"\nCandidates Found ({len(match_result['candidates'])}):")
+                        for i, cand in enumerate(match_result['candidates'], 1):
+                            item_log.append(f"  {i}. [{cand.get('project', 'Unknown')}] {cand.get('description', 'N/A')[:80]}")
+                            item_log.append(f"     Unit: {cand.get('unit', 'N/A')} | Rate: {cand.get('rate', 'N/A')} | Score: {cand.get('score', 0):.3f}")
+                    else:
+                        item_log.append(f"No candidates found above similarity threshold ({matcher.similarity_threshold})")
                 
+                # Store log with item
+                filled_item['processing_log'] = '\n'.join(item_log)
                 return filled_item
                 
             except Exception as e:
                 # Handle errors gracefully - return not_filled status
-                logger.error(f"Error processing item {item.get('item_code', 'unknown')}: {e}", exc_info=True)
-                return {
+                item_log.append(f"⚠️ ERROR: {str(e)}")
+                error_item = {
                     'row_index': item['row_index'],
                     'item_code': item['item_code'],
                     'description': item['description'],
@@ -232,8 +280,10 @@ def run_pipeline(
                     'match_type': 'error',
                     'reference': '',
                     'reasoning': f'Error during processing: {str(e)}',
-                    'reason': f'Error: {str(e)}'
+                    'reason': f'Error: {str(e)}',
+                    'processing_log': '\n'.join(item_log)
                 }
+                return error_item
         
         print(f"\n  Processing items in parallel ({max_workers} workers)...")
         
@@ -265,9 +315,15 @@ def run_pipeline(
                                 total_not_filled += 1
                         
                     except Exception as e:
-                        logger.error(f"Future failed for item at index {idx}: {e}")
                         # Create error result
                         item = items_to_fill[idx]
+                        error_log = [
+                            f"\n{'='*80}",
+                            f"Item: {item['item_code']} - Row {item['row_index']}",
+                            f"Description: {item['description'][:100]}...",
+                            f"{'-'*80}",
+                            f"⚠️ FUTURE ERROR: {str(e)}"
+                        ]
                         error_result = {
                             'row_index': item['row_index'],
                             'item_code': item['item_code'],
@@ -278,7 +334,8 @@ def run_pipeline(
                             'match_type': 'error',
                             'reference': '',
                             'reasoning': f'Processing error: {str(e)}',
-                            'reason': f'Error: {str(e)}'
+                            'reason': f'Error: {str(e)}',
+                            'processing_log': '\n'.join(error_log)
                         }
                         results_with_index.append((idx, error_result))
                         with progress_lock:
@@ -289,6 +346,12 @@ def run_pipeline(
         # Sort results by original index to maintain order
         results_with_index.sort(key=lambda x: x[0])
         filled_items = [result for _, result in results_with_index]
+        
+        # Write all item logs to file in order
+        print(f"\n  Writing detailed logs...")
+        for filled_item in filled_items:
+            if 'processing_log' in filled_item:
+                logger.info(filled_item['processing_log'])
         
         # Store results for this sheet
         sheet_results[sheet_name] = {

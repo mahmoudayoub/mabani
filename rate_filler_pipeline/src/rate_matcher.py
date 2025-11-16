@@ -32,7 +32,8 @@ class RateMatcher:
         self,
         openai_api_key: Optional[str] = None,
         similarity_threshold: float = 0.7,
-        top_k: int = 6
+        top_k: int = 6,
+        verbose_logging: bool = True
     ):
         """
         Initialize rate matcher.
@@ -41,6 +42,7 @@ class RateMatcher:
             openai_api_key: OpenAI API key
             similarity_threshold: Minimum similarity score
             top_k: Number of candidates to retrieve
+            verbose_logging: Enable detailed logging during processing
         """
         self.openai_api_key = openai_api_key or os.getenv('OPENAI_API_KEY')
         if not self.openai_api_key:
@@ -48,6 +50,7 @@ class RateMatcher:
         
         self.similarity_threshold = similarity_threshold
         self.top_k = top_k
+        self.verbose_logging = verbose_logging
         
         # Initialize OpenAI client
         self.client = OpenAI(api_key=self.openai_api_key)
@@ -97,12 +100,13 @@ class RateMatcher:
             }
         """
         logger.info(f"Finding matches for: {item_description[:60]}...")
-        if parent:
-            logger.info(f"  Parent: {parent[:60]}...")
-        if grandparent:
-            logger.info(f"  Grandparent: {grandparent[:60]}...")
-        if item_unit:
-            logger.info(f"  Unit: {item_unit}")
+        if self.verbose_logging:
+            if parent:
+                logger.info(f"  Parent: {parent[:60]}...")
+            if grandparent:
+                logger.info(f"  Grandparent: {grandparent[:60]}...")
+            if item_unit:
+                logger.info(f"  Unit: {item_unit}")
         
         # Step 1: Vector search with enriched context
         candidates = self._search_similar_items(item_description, parent, grandparent)
@@ -151,7 +155,8 @@ class RateMatcher:
                     raise ValueError("Matcher stage must return a rate")
                 reference = self._build_reference_string(matches)
                 
-                logger.info(f"  ✓ EXACT match found: {unit} @ {rate}")
+                if self.verbose_logging:
+                    logger.info(f"  ✓ EXACT match found: {unit} @ {rate}")
                 
                 return {
                     'status': 'match',
@@ -165,10 +170,12 @@ class RateMatcher:
                     'candidates': candidates
                 }
         
-        logger.info("  No exact matches found, proceeding to Expert stage...")
+        if self.verbose_logging:
+            logger.info("  No exact matches found, proceeding to Expert stage...")
         
         # STAGE 2: EXPERT - Check for close matches
-        logger.info("  Stage 2: EXPERT - Checking for close matches...")
+        if self.verbose_logging:
+            logger.info("  Stage 2: EXPERT - Checking for close matches...")
         expert_result = self._call_expert_stage(
             item_description,
             item_unit,
@@ -209,7 +216,8 @@ class RateMatcher:
                     reference = self._build_reference_string(matches)
                     avg_confidence = round(sum(confidences) / len(confidences), 1)
                     
-                    logger.info(f"  ≈ CLOSE match found: {unit} @ {rate} (confidence: {avg_confidence}%)")
+                    if self.verbose_logging:
+                        logger.info(f"  ≈ CLOSE match found: {unit} @ {rate} (confidence: {avg_confidence}%)")
                     
                     return {
                         'status': 'match',
@@ -224,10 +232,12 @@ class RateMatcher:
                         'candidates': candidates
                     }
         
-        logger.info("  No close matches found, proceeding to Estimator stage...")
+        if self.verbose_logging:
+            logger.info("  No close matches found, proceeding to Estimator stage...")
         
         # STAGE 3: ESTIMATOR - Check for approximations
-        logger.info("  Stage 3: ESTIMATOR - Checking for approximations...")
+        if self.verbose_logging:
+            logger.info("  Stage 3: ESTIMATOR - Checking for approximations...")
         estimator_result = self._call_estimator_stage(
             item_description,
             item_unit,
@@ -276,8 +286,9 @@ class RateMatcher:
                 reference = self._build_reference_string(matches)
                 avg_confidence = round(sum(confidences) / len(confidences), 1)
                 
-                logger.info(f"  ~ APPROXIMATION found: {unit} @ {rate} (confidence: {avg_confidence}%)")
-                logger.info(f"    Adjustment: {adjustments[0] if adjustments else 'N/A'}")
+                if self.verbose_logging:
+                    logger.info(f"  ~ APPROXIMATION found: {unit} @ {rate} (confidence: {avg_confidence}%)")
+                    logger.info(f"    Adjustment: {adjustments[0] if adjustments else 'N/A'}")
                 
                 return {
                     'status': 'match',
@@ -294,7 +305,8 @@ class RateMatcher:
                 }
         
         # No matches found in any stage
-        logger.info("  ✗ No matches found in any stage")
+        if self.verbose_logging:
+            logger.info("  ✗ No matches found in any stage")
         reasoning_parts = [
             f"Matcher: {matcher_result.get('reasoning', 'N/A')}",
             f"Expert: {expert_result.get('reasoning', 'N/A')}",

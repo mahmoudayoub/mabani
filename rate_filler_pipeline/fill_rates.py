@@ -19,6 +19,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from rate_filler_pipeline.src import ExcelReader, RateMatcher, ExcelWriter
 
@@ -47,7 +49,8 @@ def run_pipeline(
     sheet_name: str,
     output_excel: Optional[str] = None,
     similarity_threshold: float = 0.7,
-    top_k: int = 6
+    top_k: int = 6,
+    max_workers: int = 5
 ) -> str:
     """
     Run the rate filling pipeline on a specific sheet.
@@ -58,6 +61,7 @@ def run_pipeline(
         output_excel: Path to output Excel file (auto-generated if None)
         similarity_threshold: Minimum similarity score for candidates
         top_k: Number of candidates to retrieve
+        max_workers: Number of parallel workers for processing items (default: 5)
         
     Returns:
         Path to output Excel file
@@ -80,11 +84,12 @@ def run_pipeline(
         output_excel = str(output_dir / f"{input_path.stem}_filled_{timestamp}.xlsx")
     
     print(f"\n📥 Input:  {input_path}")
-    print(f"� Sheet:  {sheet_name}")
-    print(f"�📤 Output: {output_excel}")
+    print(f"📄 Sheet:  {sheet_name}")
+    print(f"📤 Output: {output_excel}")
     print(f"🎯 Settings:")
     print(f"   - Similarity threshold: {similarity_threshold}")
     print(f"   - Top-K candidates: {top_k}")
+    print(f"   - Parallel workers: {max_workers}")
     print(f"   - Using enriched embeddings (with parent/grandparent context)")
     
     # Step 1: Read Excel
@@ -136,79 +141,154 @@ def run_pipeline(
         print(f"    - Missing unit: {extraction_result['needs_unit']}")
         print(f"    - Missing rate: {extraction_result['needs_rate']}")
         
-        # Process each item
+        # Process items in parallel
         filled_items = []
         
-        print(f"\n  Processing items...")
-        for item in tqdm(items_to_fill, desc=f"  {sheet_name}", unit="item"):
-            # Search for matches with enriched context
-            match_result = matcher.find_matches(
-                item_description=item['description'],
-                item_code=item['item_code'],
-                parent=item.get('parent'),
-                grandparent=item.get('grandparent')
-            )
-            
-            filled_item = {
-                'row_index': item['row_index'],
-                'item_code': item['item_code'],
-                'description': item['description'],
-                'needs_unit': item['needs_unit'],
-                'needs_rate': item['needs_rate']
-            }
-            
-            if match_result['status'] == 'match':
-                # Fill unit and/or rate
-                filled_item['status'] = 'filled'
-                filled_item['match_type'] = match_result.get('match_type', 'exact')
+        # Thread-safe counter for logging
+        progress_lock = threading.Lock()
+        
+        def process_single_item(item: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Process a single item (runs in parallel thread).
+            Returns filled_item dictionary.
+            """
+            try:
+                # Search for matches with enriched context
+                match_result = matcher.find_matches(
+                    item_description=item['description'],
+                    item_code=item['item_code'],
+                    parent=item.get('parent'),
+                    grandparent=item.get('grandparent')
+                )
                 
-                if item['needs_unit'] and match_result['unit']:
-                    filled_item['filled_unit'] = match_result['unit']
-                
-                if item['needs_rate'] and match_result['rate'] is not None:
-                    filled_item['filled_rate'] = match_result['rate']
-                
-                # Add reference string
-                filled_item['reference'] = match_result.get('reference', '')
-                
-                # Add reasoning
-                filled_item['reasoning'] = match_result.get('reasoning', '')
-                
-                # Add stage information
-                filled_item['stage'] = match_result.get('stage', 'matcher')
-                
-                # Add confidence for close/approximation matches
-                match_type = match_result.get('match_type', 'exact')
-                if match_type in ['close', 'approximation']:
-                    filled_item['confidence'] = match_result.get('confidence', 0)
-                
-                # Add adjustment for approximation matches
-                if match_type == 'approximation':
-                    filled_item['adjustment'] = match_result.get('adjustment', '')
-                
-                # Add match info for report
-                filled_item['match_info'] = {
-                    'source': match_result['matches'][0].get('project', 'Unknown') if match_result['matches'] else 'Unknown',
-                    'reasoning': match_result.get('reasoning', 'Matched by LLM validation'),
-                    'num_matches': len(match_result['matches']),
-                    'match_type': match_type,
-                    'stage': match_result.get('stage', 'matcher'),
-                    'confidence': match_result.get('confidence', 100) if match_type == 'exact' else match_result.get('confidence', 0),
-                    'adjustment': match_result.get('adjustment', '') if match_type == 'approximation' else ''
+                filled_item = {
+                    'row_index': item['row_index'],
+                    'item_code': item['item_code'],
+                    'description': item['description'],
+                    'needs_unit': item['needs_unit'],
+                    'needs_rate': item['needs_rate']
                 }
                 
-                total_filled += 1
+                if match_result['status'] == 'match':
+                    # Fill unit and/or rate
+                    filled_item['status'] = 'filled'
+                    filled_item['match_type'] = match_result.get('match_type', 'exact')
+                    
+                    if item['needs_unit'] and match_result['unit']:
+                        filled_item['filled_unit'] = match_result['unit']
+                    
+                    if item['needs_rate'] and match_result['rate'] is not None:
+                        filled_item['filled_rate'] = match_result['rate']
+                    
+                    # Add reference string
+                    filled_item['reference'] = match_result.get('reference', '')
+                    
+                    # Add reasoning
+                    filled_item['reasoning'] = match_result.get('reasoning', '')
+                    
+                    # Add stage information
+                    filled_item['stage'] = match_result.get('stage', 'matcher')
+                    
+                    # Add confidence for close/approximation matches
+                    match_type = match_result.get('match_type', 'exact')
+                    if match_type in ['close', 'approximation']:
+                        filled_item['confidence'] = match_result.get('confidence', 0)
+                    
+                    # Add adjustment for approximation matches
+                    if match_type == 'approximation':
+                        filled_item['adjustment'] = match_result.get('adjustment', '')
+                    
+                    # Add match info for report
+                    filled_item['match_info'] = {
+                        'source': match_result['matches'][0].get('project', 'Unknown') if match_result['matches'] else 'Unknown',
+                        'reasoning': match_result.get('reasoning', 'Matched by LLM validation'),
+                        'num_matches': len(match_result['matches']),
+                        'match_type': match_type,
+                        'stage': match_result.get('stage', 'matcher'),
+                        'confidence': match_result.get('confidence', 100) if match_type == 'exact' else match_result.get('confidence', 0),
+                        'adjustment': match_result.get('adjustment', '') if match_type == 'approximation' else ''
+                    }
+                    
+                else:
+                    # Not filled - mark for red coloring
+                    filled_item['status'] = 'not_filled'
+                    filled_item['match_type'] = 'none'
+                    filled_item['reference'] = ''
+                    filled_item['reasoning'] = match_result.get('reasoning', 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No match found by LLM')
+                    filled_item['reason'] = 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No match found by LLM'
                 
-            else:
-                # Not filled - mark for red coloring
-                filled_item['status'] = 'not_filled'
-                filled_item['match_type'] = 'none'
-                filled_item['reference'] = ''
-                filled_item['reasoning'] = match_result.get('reasoning', 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No match found by LLM')
-                filled_item['reason'] = 'No candidates above similarity threshold' if not match_result.get('candidates') else 'No match found by LLM'
-                total_not_filled += 1
+                return filled_item
+                
+            except Exception as e:
+                # Handle errors gracefully - return not_filled status
+                logger.error(f"Error processing item {item.get('item_code', 'unknown')}: {e}", exc_info=True)
+                return {
+                    'row_index': item['row_index'],
+                    'item_code': item['item_code'],
+                    'description': item['description'],
+                    'needs_unit': item['needs_unit'],
+                    'needs_rate': item['needs_rate'],
+                    'status': 'not_filled',
+                    'match_type': 'error',
+                    'reference': '',
+                    'reasoning': f'Error during processing: {str(e)}',
+                    'reason': f'Error: {str(e)}'
+                }
+        
+        print(f"\n  Processing items in parallel ({max_workers} workers)...")
+        
+        # Use ThreadPoolExecutor for parallel processing
+        # Store results with their original index to maintain order
+        results_with_index = []
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all items and track their original order
+            future_to_index = {
+                executor.submit(process_single_item, item): idx 
+                for idx, item in enumerate(items_to_fill)
+            }
             
-            filled_items.append(filled_item)
+            # Process completed futures with progress bar
+            with tqdm(total=len(items_to_fill), desc=f"  {sheet_name}", unit="item") as pbar:
+                for future in as_completed(future_to_index):
+                    idx = future_to_index[future]
+                    try:
+                        filled_item = future.result()
+                        results_with_index.append((idx, filled_item))
+                        
+                        # Update counters
+                        if filled_item['status'] == 'filled':
+                            with progress_lock:
+                                total_filled += 1
+                        else:
+                            with progress_lock:
+                                total_not_filled += 1
+                        
+                    except Exception as e:
+                        logger.error(f"Future failed for item at index {idx}: {e}")
+                        # Create error result
+                        item = items_to_fill[idx]
+                        error_result = {
+                            'row_index': item['row_index'],
+                            'item_code': item['item_code'],
+                            'description': item['description'],
+                            'needs_unit': item['needs_unit'],
+                            'needs_rate': item['needs_rate'],
+                            'status': 'not_filled',
+                            'match_type': 'error',
+                            'reference': '',
+                            'reasoning': f'Processing error: {str(e)}',
+                            'reason': f'Error: {str(e)}'
+                        }
+                        results_with_index.append((idx, error_result))
+                        with progress_lock:
+                            total_not_filled += 1
+                    
+                    pbar.update(1)
+        
+        # Sort results by original index to maintain order
+        results_with_index.sort(key=lambda x: x[0])
+        filled_items = [result for _, result in results_with_index]
         
         # Store results for this sheet
         sheet_results[sheet_name] = {

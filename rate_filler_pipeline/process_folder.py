@@ -81,6 +81,26 @@ def main():
     print()
     mode = input("Select mode (1/2/3): ").strip()
     
+    # Ask for parallel workers
+    print()
+    print("Parallel processing:")
+    workers_input = input("Number of parallel workers (default: 5, recommended: 3-10): ").strip()
+    max_workers = 5  # default
+    if workers_input:
+        try:
+            max_workers = int(workers_input)
+            if max_workers < 1:
+                print("Invalid number, using default: 5")
+                max_workers = 5
+            elif max_workers > 20:
+                print("⚠️  Warning: High worker count may hit API rate limits. Using 20 as maximum.")
+                max_workers = 20
+        except ValueError:
+            print("Invalid input, using default: 5")
+            max_workers = 5
+    
+    print(f"Using {max_workers} parallel workers")
+    
     sheet_name = None
     process_all_sheets = False
     
@@ -142,7 +162,8 @@ def main():
                         sheet_name=sheet,
                         output_excel=None,  # Auto-generate in output folder
                         similarity_threshold=0.5,
-                        top_k=6
+                        top_k=6,
+                        max_workers=max_workers
                     )
                     
                     if output_path:

@@ -145,14 +145,11 @@ class RateMatcher:
             
             if matches:
                 unit = self._get_consensus_unit(matches)
-                # Prefer LLM-calculated recommended rate; fall back to average if missing
+                # Get LLM-calculated recommended rate (required)
                 rate = matcher_result.get('recommended_rate')
-                if rate is None:
-                    logger.warning("  ⚠ LLM did not provide recommended_rate for exact match; falling back to average rate")
-                    rate = self._calculate_average_rate(matches)
-                if rate is None:
-                    logger.error("  ✗ Unable to determine rate for exact match")
-                    raise ValueError("Matcher stage must return a rate")
+                if rate is None or rate <= 0:
+                    logger.error("  ✗ LLM did not provide valid recommended_rate for exact match")
+                    raise ValueError("Matcher stage must return a valid recommended_rate > 0")
                 reference = self._build_reference_string(matches)
                 
                 if self.verbose_logging:
@@ -205,14 +202,11 @@ class RateMatcher:
             
                 if matches:
                     unit = self._get_consensus_unit(matches)
-                    # Prefer LLM-calculated recommended rate; fall back to average if missing
+                    # Get LLM-calculated recommended rate (required)
                     rate = expert_result.get('recommended_rate')
-                    if rate is None:
-                        logger.warning("  ⚠ LLM did not provide recommended_rate for close match; falling back to average rate")
-                        rate = self._calculate_average_rate(matches)
-                    if rate is None:
-                        logger.error("  ✗ Unable to determine rate for close match")
-                        raise ValueError("Expert stage must return a rate")
+                    if rate is None or rate <= 0:
+                        logger.error("  ✗ LLM did not provide valid recommended_rate for close match")
+                        raise ValueError("Expert stage must return a valid recommended_rate > 0")
                     reference = self._build_reference_string(matches)
                     avg_confidence = round(sum(confidences) / len(confidences), 1)
                     
@@ -248,61 +242,50 @@ class RateMatcher:
         )
         
         if estimator_result['status'] == 'approximation':
-            matches = []
-            confidences = []
-            approximated_rates = []
-            adjustments = []
-            
             approximations_data = estimator_result.get('approximations', [])
-            
-            if approximations_data:
-                for approx_data in approximations_data:
-                    idx = approx_data.get('index', 0)
-                    confidence = approx_data.get('confidence', 0)
-                    approximated_rate = approx_data.get('approximated_rate')
-                    adjustment = approx_data.get('adjustment', '')
-                    limitations = approx_data.get('limitations', '')
-                    
-                    if 0 < idx <= len(candidates):
-                        match = candidates[idx - 1].copy()
-                        match['confidence'] = confidence
-                        if approximated_rate is not None:
-                            match['approximated_rate'] = approximated_rate
-                        match['adjustment'] = adjustment
-                        match['limitations'] = limitations
-                        matches.append(match)
-                        confidences.append(confidence)
-                        if isinstance(approximated_rate, (int, float)) and approximated_rate > 0:
-                            approximated_rates.append(approximated_rate)
-                        adjustments.append(adjustment)
-            
-            if matches and approximated_rates:
-                unit = self._get_consensus_unit(matches)
-                # Average LLM-calculated approximated rates from multiple approximations
-                rate = round(sum(approximated_rates) / len(approximated_rates), 2)
-                if rate == 0:
-                    logger.error("  ✗ LLM provided approximated_rate of 0")
-                    raise ValueError("Estimator stage approximated_rate must be > 0")
-                reference = self._build_reference_string(matches)
-                avg_confidence = round(sum(confidences) / len(confidences), 1)
-                
-                if self.verbose_logging:
-                    logger.info(f"  ~ APPROXIMATION found: {unit} @ {rate} (confidence: {avg_confidence}%)")
-                    logger.info(f"    Adjustment: {adjustments[0] if adjustments else 'N/A'}")
-                
-                return {
-                    'status': 'match',
-                    'match_type': 'approximation',
-                    'stage': 'estimator',
-                    'matches': matches,
-                    'unit': unit,
-                    'rate': rate,
-                    'reference': reference,
-                    'confidence': avg_confidence,
-                    'adjustment': adjustments[0] if adjustments else '',
-                    'reasoning': estimator_result.get('reasoning', ''),
-                    'candidates': candidates
-                }
+            best_entry = None
+
+            # Pick the highest-confidence approximation that has a valid rate
+            for approx_data in approximations_data:
+                approx_rate = approx_data.get('approximated_rate')
+                if isinstance(approx_rate, (int, float)) and approx_rate > 0:
+                    if best_entry is None or approx_data.get('confidence', 0) > best_entry.get('confidence', 0):
+                        best_entry = approx_data
+
+            if best_entry:
+                idx = best_entry.get('index', 0)
+                if 0 < idx <= len(candidates):
+                    match = candidates[idx - 1].copy()
+                    match['confidence'] = best_entry.get('confidence', 0)
+                    match['approximated_rate'] = best_entry.get('approximated_rate')
+                    match['adjustment'] = best_entry.get('adjustment', '')
+                    match['limitations'] = best_entry.get('limitations', '')
+
+                    unit = self._get_consensus_unit([match])
+                    rate = round(float(match['approximated_rate']), 2)
+                    if rate == 0:
+                        logger.error("  ✗ LLM provided approximated_rate of 0")
+                        raise ValueError("Estimator stage approximated_rate must be > 0")
+                    reference = self._build_reference_string([match])
+                    confidence = match.get('confidence', 0)
+
+                    if self.verbose_logging:
+                        logger.info(f"  ~ APPROXIMATION found: {unit} @ {rate} (confidence: {confidence}%)")
+                        logger.info(f"    Adjustment: {match.get('adjustment', 'N/A')}")
+
+                    return {
+                        'status': 'match',
+                        'match_type': 'approximation',
+                        'stage': 'estimator',
+                        'matches': [match],
+                        'unit': unit,
+                        'rate': rate,
+                        'reference': reference,
+                        'confidence': confidence,
+                        'adjustment': match.get('adjustment', ''),
+                        'reasoning': estimator_result.get('reasoning', ''),
+                        'candidates': candidates
+                    }
         
         # No matches found in any stage
         if self.verbose_logging:

@@ -232,13 +232,6 @@ ESTIMATION METHOD (BASED ON INPUT DATA):
      - adjusted_rate = candidate_rate × (1 ± percentage_adjustment)
    - Any percentage adjustment MUST be moderate and justified qualitatively (e.g., "slightly smaller size, -10%", "more demanding installation, +15%") and clearly stated in the “adjustment” explanation.
 
-4. MULTIPLE CANDIDATES (IF USED)
-   - If you use more than one candidate for approximation:
-     - Compute a separate adjusted rate from each candidate using the above logic.
-     - You may then average these adjusted rates, OR
-       choose the most appropriate one as the final approximated_rate.
-     - Clearly explain in "adjustment" which candidate(s) were used and how you combined/selected them.
-
 APPROXIMATION CRITERIA (aim for a reasonable, defensible relationship):
 
 1. RELATED WORK TYPE
@@ -268,16 +261,16 @@ CONFIDENCE SCORING (50–69%, INTEGER VALUES ONLY):
 
 RULES:
 - Only suggest approximations that a responsible estimator could justify as a starting point, not a final answer.
-- You MUST calculate the approximated_rate by applying your adjustment logic directly to the candidate rate(s) from {candidates_text} using ratios or percentage factors derived from input data.
+- You MUST calculate a single approximated_rate by applying your adjustment logic directly to the candidate rate(s) from {candidates_text} using ratios or percentage factors derived from input data. This is the FINAL target rate that will be filled (no averaging is done by the caller).
 - You MUST explain the calculation in "adjustment" (e.g., "Candidate DN250@500.00: scaled by diameter ratio (200/250) = 400.00").
 - You MUST specify important caveats in "limitations" (e.g., different material, different environment, different installation difficulty).
 - If work type is entirely different or there is no clear way to scale or relate costs, choose "no_match".
 - When uncertain, you may still propose a low-confidence approximation (e.g., 50–55) if the work type and cost drivers are clearly related and you clearly state the risks.
-- If multiple candidates are used, you may calculate approximated rates from each and then average them, OR pick the most reliable one. Explain your choice.
+- If you consider multiple candidates, PICK ONE best candidate/logic path and return only that final approximated_rate (highest confidence, most defensible). Do NOT rely on the caller to average multiple values.
 - The approximated_rate you return must be in the TARGET UNIT; if units are incompatible or conversion is not rational, choose "no_match".
 - Do NOT invent base rates or dimensional data that are not provided; every numeric step in your calculation must trace back to the input data in {target_info} and {candidates_text}.
 
-OUTPUT FORMAT (strict JSON ONLY, no extra text, no markdown):
+OUTPUT FORMAT (strict JSON ONLY, no extra text, no markdown) — return exactly ONE approximation object if you find a usable approximation:
 {{
     "status": "approximation" or "no_match",
     "approximations": [
@@ -293,8 +286,8 @@ OUTPUT FORMAT (strict JSON ONLY, no extra text, no markdown):
 }}
 
 ADDITIONAL RULES FOR OUTPUT:
-- "approximations" must be a JSON array of objects with keys: "index" (1-based integer), "confidence" (integer 50–69), "approximated_rate" (float), "adjustment" (string), and "limitations" (string).
-- "approximated_rate" MUST be a calculated numeric value (e.g., 400.00), NOT the original candidate rate.
+- "approximations" must be a JSON array with exactly ONE object when status="approximation", with keys: "index" (1-based integer), "confidence" (integer 50–69), "approximated_rate" (float), "adjustment" (string), and "limitations" (string).
+- "approximated_rate" MUST be the final calculated target rate (e.g., 400.00), NOT the original candidate rate. It will be used directly with no further averaging.
 - If there is no reasonable approximation, set "status" to "no_match" and "approximations" to [].
 - Do NOT include any keys other than "status", "approximations", and "reasoning".
 - Do NOT output example text outside the JSON.

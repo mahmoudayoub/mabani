@@ -27,20 +27,6 @@ from rate_filler_pipeline.src import ExcelReader, RateMatcher, ExcelWriter
 # Load environment variables from root .env
 load_dotenv(Path(__file__).parent.parent / '.env')
 
-# Setup logging - logs go to rate_filler_pipeline/logs/
-log_dir = Path(__file__).parent / 'logs'
-log_dir.mkdir(parents=True, exist_ok=True)
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_file = log_dir / f"rate_filler_{timestamp}.log"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
 logger = logging.getLogger(__name__)
 
 
@@ -75,13 +61,32 @@ def run_pipeline(
     if not input_path.exists():
         raise FileNotFoundError(f"Input file not found: {input_excel}")
     
-    # Generate output filename if not provided
+    # Generate output filename and log filename if not provided
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
     if output_excel is None:
         output_dir = Path(__file__).parent / 'output'
         output_dir.mkdir(exist_ok=True)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_excel = str(output_dir / f"{input_path.stem}_filled_{timestamp}.xlsx")
+    
+    # Setup logging with same name as output file
+    log_dir = Path(__file__).parent / 'logs'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Extract base name from output excel (without extension)
+    output_base = Path(output_excel).stem
+    log_file = log_dir / f"{output_base}.log"
+    
+    # Configure logging for this run
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, mode='w'),  # Overwrite mode
+            logging.StreamHandler(sys.stdout)
+        ],
+        force=True  # Force reconfiguration
+    )
     
     print(f"\n📥 Input:  {input_path}")
     print(f"📄 Sheet:  {sheet_name}")

@@ -434,7 +434,7 @@ def run_pipeline(
     print(f"\n💡 Check the Excel file:")
     print(f"   🟢 Green cells = Exact match")
     print(f"   🟡 Yellow cells = Close match (70-95% confidence)")
-    print(f"   🔵 Blue cells = Approximation match (50-69% confidence)")
+    print(f"   � Orange cells = Approximation match (50-69% confidence)")
     print(f"   🔴 Red cells = No match found")
     
     return output_path

@@ -21,7 +21,7 @@ class ExcelWriter:
         self.logger = logger
         self.green_fill = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')  # Exact match
         self.yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')  # Close match
-        self.blue_fill = PatternFill(start_color='ADD8E6', end_color='ADD8E6', fill_type='solid')  # Approximation
+        self.blue_fill = PatternFill(start_color='FFA500', end_color='FFA500', fill_type='solid')  # Approximation (orange)
         self.red_fill = PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid')  # Not filled
     
     def write_filled_excel(

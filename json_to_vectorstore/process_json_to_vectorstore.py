@@ -7,6 +7,8 @@ import sys
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 # Set up path for package imports
 json_to_vectorstore_dir = Path(__file__).parent
@@ -116,18 +118,32 @@ def main():
     print(f"   Estimated cost: ${cost_info['estimated_cost_usd']:.4f} USD")
     
     # Confirm before proceeding
-    response = input("\n⚠️  Proceed with embedding generation and upload? (y/n): ")
+    print()
+    workers_input = input("Number of parallel workers for processing (default: 5, recommended: 3-10): ").strip()
+    max_workers = 5
+    if workers_input:
+        try:
+            max_workers = int(workers_input)
+            if max_workers < 1:
+                print("Invalid number, using default: 5")
+                max_workers = 5
+            elif max_workers > 20:
+                print("⚠️  Warning: High worker count may hit API rate limits. Using 20 as maximum.")
+                max_workers = 20
+        except ValueError:
+            print("Invalid input, using default: 5")
+            max_workers = 5
+    
+    print(f"Using {max_workers} parallel workers")
+    print()
+    
+    response = input("⚠️  Proceed with embedding generation and upload? (y/n): ")
     if response.lower() != 'y':
         print("❌ Cancelled by user")
         return 0
     
-    # Generate embeddings
-    print(f"\n🔄 Step 5: Generating embeddings...")
-    items_with_embeddings = embedder.embed_items(items, show_progress=True)
-    print(f"✓ Generated {len(items_with_embeddings):,} embeddings")
-    
-    # Initialize Pinecone
-    print(f"\n📤 Step 6: Initializing Pinecone...")
+    # Initialize Pinecone first
+    print(f"\n📤 Step 5: Initializing Pinecone...")
     uploader = PineconeUploader()
     
     # Create/connect to index
@@ -137,23 +153,101 @@ def main():
         metric='cosine'
     )
     
-    # Upload to Pinecone
-    print(f"\n⬆️  Step 7: Uploading to Pinecone...")
-    result = uploader.upload_vectors(
-        items_with_embeddings,
-        batch_size=100,
-        show_progress=True
-    )
+    # Split items into chunks for parallel processing
+    chunk_size = max(100, len(items) // max_workers)  # At least 100 items per chunk
+    chunks = [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
+    
+    print(f"\n🔄 Step 6: Processing {len(chunks)} chunks in parallel ({max_workers} workers)...")
+    print(f"   Chunk size: ~{chunk_size} items per chunk")
+    
+    # Thread-safe counters
+    progress_lock = threading.Lock()
+    total_embedded = 0
+    total_uploaded = 0
+    
+    def process_chunk(chunk_items, chunk_idx):
+        """Process a chunk: generate embeddings and upload to Pinecone."""
+        try:
+            # Generate embeddings for this chunk
+            chunk_with_embeddings = embedder.embed_items(chunk_items, show_progress=False)
+            
+            # Upload to Pinecone immediately
+            chunk_result = uploader.upload_vectors(
+                chunk_with_embeddings,
+                batch_size=100,
+                show_progress=False
+            )
+            
+            return {
+                'chunk_idx': chunk_idx,
+                'embedded': len(chunk_with_embeddings),
+                'uploaded': chunk_result['uploaded_count'],
+                'success': True
+            }
+        except Exception as e:
+            return {
+                'chunk_idx': chunk_idx,
+                'embedded': 0,
+                'uploaded': 0,
+                'success': False,
+                'error': str(e)
+            }
+    
+    # Process chunks in parallel with progress tracking
+    from tqdm import tqdm
+    
+    results = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all chunks
+        future_to_chunk = {
+            executor.submit(process_chunk, chunk, idx): idx
+            for idx, chunk in enumerate(chunks)
+        }
+        
+        # Track progress
+        with tqdm(total=len(items), desc="  Processing items", unit="item") as pbar:
+            for future in as_completed(future_to_chunk):
+                result = future.result()
+                results.append(result)
+                
+                if result['success']:
+                    with progress_lock:
+                        total_embedded += result['embedded']
+                        total_uploaded += result['uploaded']
+                    pbar.update(result['embedded'])
+                else:
+                    print(f"\n⚠️  Chunk {result['chunk_idx']} failed: {result.get('error', 'Unknown error')}")
+                    pbar.update(len(chunks[result['chunk_idx']]))
+    
+    # Check for failures
+    failed_chunks = [r for r in results if not r['success']]
+    if failed_chunks:
+        print(f"\n⚠️  Warning: {len(failed_chunks)} chunks failed")
+        for failed in failed_chunks:
+            print(f"   Chunk {failed['chunk_idx']}: {failed.get('error', 'Unknown error')}")
+    
+    print(f"\n✓ Embedded: {total_embedded:,} items")
+    print(f"✓ Uploaded: {total_uploaded:,} vectors")
+    
+    # Get final index stats
+    print(f"\n📊 Step 7: Getting final index stats...")
+    if uploader.index is None:
+        raise RuntimeError("Pinecone index not initialized")
+    index_stats = uploader.index.describe_index_stats()
+    total_in_index = index_stats.total_vector_count
     
     # Summary
     print("\n" + "=" * 80)
     print("✅ SUCCESS!")
     print("=" * 80)
     print(f"\n📊 Upload Summary:")
-    print(f"   Uploaded: {result['uploaded_count']:,} vectors")
-    print(f"   Index: {result['index_name']}")
-    print(f"   Total vectors in index: {result['total_vectors_in_index']:,}")
+    print(f"   Embedded: {total_embedded:,} items")
+    print(f"   Uploaded: {total_uploaded:,} vectors")
+    print(f"   Index: {uploader.index_name}")
+    print(f"   Total vectors in index: {total_in_index:,}")
     print(f"   Dimensions: {embedder.get_dimensions()}")
+    if failed_chunks:
+        print(f"   ⚠️  Failed chunks: {len(failed_chunks)}")
     print(f"\n🎉 Your enriched vector store is ready!")
     print(f"   All items now include parent/grandparent context in embeddings")
     print(f"\nNext steps:")

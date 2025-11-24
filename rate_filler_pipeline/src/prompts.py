@@ -92,7 +92,7 @@ OUTPUT FORMAT (strict JSON ONLY, no extra text, no comments, no markdown):
     "status": "exact_match" or "no_exact_match",
     "exact_matches": [1, 2],  // 1-based indices from CANDIDATE ITEMS (empty if none)
     "recommended_rate": 450.00,  // REQUIRED when exact matches exist; use the item rate if one match, otherwise average/select the most reliable and explain
-    "reasoning": "Clear, concise explanation of why specific items are exact matches or why no exact match exists. If multiple matches, explain how you determined the recommended rate."
+    "reasoning": "Compact analysis: Match → Similarities (work/specs/scope/unit identical). No match → Key difference(s) preventing exact match. Multiple matches → Rate calculation method."
 }}
 
 ADDITIONAL RULES FOR OUTPUT:
@@ -101,6 +101,10 @@ ADDITIONAL RULES FOR OUTPUT:
 - If there are no exact matches, set "status" to "no_exact_match", "exact_matches" to [], and omit "recommended_rate".
 - Do NOT include any keys other than "status", "exact_matches", "recommended_rate" (if matches exist), and "reasoning".
 - Do NOT include trailing comments or example text in the JSON.
+- REASONING FORMAT:
+  * For EXACT MATCH: "Candidate X: Same [work/material/size/specs/scope/unit]. Rate: [calculation if multiple]"
+  * For NO MATCH: "No exact match: [key difference, e.g., 'DN200 vs DN250', 'different scope', 'missing specs']"
+  * Keep reasoning under 2 sentences maximum.
 
 EXAMPLES:
 EXACT: "HDPE Pipe DN200 PN16" = "200mm HDPE Pipe PN16" (same pipe, same size, same pressure, same material).
@@ -177,19 +181,23 @@ OUTPUT FORMAT (strict JSON ONLY, no extra text, no markdown):
 {{
     "status": "close_match" or "no_close_match",
     "close_matches": [
-        {{"index": 3, "confidence": 85, "rate": 450.00, "differences": "DN200 vs DN250, same material and pressure, same application"}},
-        {{"index": 5, "confidence": 78, "rate": 480.00, "differences": "C30 vs C40 concrete, similar structural application; grade slightly different"}}
+        {{"index": 3, "confidence": 85, "rate": 450.00, "differences": "DN200→DN250 (same material/pressure)"}},
+        {{"index": 5, "confidence": 78, "rate": 480.00, "differences": "C30→C40 concrete (similar use, higher grade)"}}
     ],
     "recommended_rate": 457.00,
-    "reasoning": "Explain which items are close matches and why (key similarities and differences), and how you determined the recommended rate (e.g., average, weighted by confidence, or picked most reliable)"
+    "reasoning": "Compact analysis: Similarities → [key matching aspects]. Differences → [what changed & impact]. Rate: [calculation method]"
 }}
 
 ADDITIONAL RULES FOR OUTPUT:
-- "close_matches" must be a JSON array of objects with keys: "index" (1-based integer), "confidence" (integer 70–95), "rate" (float - the candidate's rate), and "differences" (string).
+- "close_matches" must be a JSON array of objects with keys: "index" (1-based integer), "confidence" (integer 70–95), "rate" (float - the candidate's rate), and "differences" (concise string, max 10 words).
 - "recommended_rate" is REQUIRED if there are close matches. Calculate based on the rates and confidences (can be simple average, weighted average, or pick most reliable - explain in reasoning). Ensure that recommended_rate reflects the direction and magnitude of the differences where they affect cost.
 - If there are no close matches, set "status" to "no_close_match", "close_matches" to [], and omit "recommended_rate".
 - Do NOT include any keys other than "status", "close_matches", "recommended_rate" (if matches exist), and "reasoning".
 - Do NOT output example text outside the JSON.
+- REASONING FORMAT:
+  * For CLOSE MATCH: "Similarities: [work/material/scope]. Differences: [size/spec changes]. Rate: [avg/weighted/adjusted + direction]"
+  * For NO MATCH: "No close match: [fundamental difference preventing match]"
+  * Keep reasoning under 2 sentences maximum.
 
 EXAMPLES:
 CLOSE MATCH (88%): "HDPE Pipe DN200 PN16" ≈ "HDPE Pipe DN250 PN16" (similar size range, same material/pressure/scope; recommended_rate slightly adjusted from candidate rate if DN difference affects cost).
@@ -318,19 +326,23 @@ OUTPUT FORMAT (strict JSON ONLY, no extra text, no markdown) — return exactly 
             "index": 2,
             "confidence": 65,
             "approximated_rate": 400.00,
-            "adjustment": "Candidate DN250@500.00: scaled by diameter ratio (200/250) = 400.00",
-            "limitations": "Wall thickness, pressure class, and installation conditions may differ; treat as a starting reference only"
+            "adjustment": "DN250@500→DN200: ×(200/250)=400",
+            "limitations": "Wall thickness/pressure/conditions may differ"
         }}
     ],
-    "reasoning": "Explain which items can be used for approximation, how you calculated the approximated rate, and key risks, or why no approximation is possible"
+    "reasoning": "Compact analysis: Similarity → [work type/specs]. Calculation → [formula]. Limitations → [key risks]"
 }}
 
 ADDITIONAL RULES FOR OUTPUT:
-- "approximations" must be a JSON array with exactly ONE object when status="approximation", with keys: "index" (1-based integer), "confidence" (integer 50–69), "approximated_rate" (float), "adjustment" (string), and "limitations" (string).
+- "approximations" must be a JSON array with exactly ONE object when status="approximation", with keys: "index" (1-based integer), "confidence" (integer 50–69), "approximated_rate" (float), "adjustment" (concise formula/calculation, max 15 words), and "limitations" (concise risks, max 12 words).
 - "approximated_rate" MUST be the final calculated target rate (e.g., 400.00), NOT the original candidate rate. It will be used directly with no further averaging.
 - If there is no reasonable approximation, set "status" to "no_match" and "approximations" to [].
 - Do NOT include any keys other than "status", "approximations", and "reasoning".
 - Do NOT output example text outside the JSON.
+- REASONING FORMAT:
+  * For APPROXIMATION: "Similarity: [work match]. Calc: [scaling logic]. Caution: [main limitation]"
+  * For NO MATCH: "No approximation: [why scaling impossible, e.g., 'unrelated work', 'no size relationship']"
+  * Keep reasoning under 2 sentences maximum.
 
 EXAMPLES:
 APPROXIMATION (65%): Target "Excavation depth 2m", Candidate "Excavation depth 2.5m @ 50.00/m³" → approximated_rate: 40.00 (scaled by depth ratio 2/2.5 = 0.8).

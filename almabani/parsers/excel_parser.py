@@ -194,6 +194,9 @@ class ExcelParser:
             level_str = str(level_val).strip()
             if self.numeric_pattern.match(level_str):
                 return ItemType.NUMERIC_LEVEL
+            # Treat level indicator (e.g., 'c') as subcategory when no numeric match
+            if level_str.lower() == self.subcategory_indicator:
+                return ItemType.SUBCATEGORY
         
         # Check if item is subcategory indicator
         if item_val is not None:

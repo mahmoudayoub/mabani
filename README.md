@@ -21,9 +21,10 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_CHAT_MODEL=gpt-4o-mini
 PINECONE_ENVIRONMENT=us-east-1
 PINECONE_INDEX_NAME=almabani
-SIMILARITY_THRESHOLD=0.7
+SIMILARITY_THRESHOLD=0.5
 TOP_K=6
 BATCH_SIZE=500
+PINECONE_BATCH_SIZE=300
 MAX_WORKERS=5
 ```
 
@@ -44,9 +45,9 @@ Outputs a filled Excel file (timestamped if `--output` is a directory) and logs 
 
 ## CLI Reference
 - `almabani parse INPUT_FILE [--output PATH] [--mode single|multiple] [--sheets a,b,c] [--log PATH]`
-- `almabani index INPUT_PATH [--namespace NS] [--batch-size N] [--create] [--log PATH]`
-- `almabani fill INPUT_FILE SHEET_NAME [--output PATH] [--namespace NS] [--threshold FLOAT] [--top-k N] [--workers N] [--log PATH]`
-- `almabani query "text to search" [--namespace NS] [--top-k N] [--threshold FLOAT]`
+- `almabani index INPUT_PATH [--namespace NS] [--batch-size N] [--create] [--log PATH]` (defaults pulled from .env if flags omitted)
+- `almabani fill INPUT_FILE SHEET_NAME [--output PATH] [--namespace NS] [--threshold FLOAT] [--top-k N] [--workers N] [--log PATH]` (defaults pulled from .env if flags omitted)
+- `almabani query "text to search" [--namespace NS] [--top-k N] [--threshold FLOAT]` (defaults pulled from .env if flags omitted)
 - `almabani delete-index [--force]`
 - `almabani delete-sheet SHEET_NAME [--force]`
 - `almabani version`

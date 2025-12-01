@@ -9,7 +9,9 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from almabani.core.excel import ExcelIO
-from almabani.core.models import MatchResult, MatchStatus, ProcessingReport
+from almabani.core.models import MatchResult, MatchStatus, ProcessingReport, ItemType
+from almabani.parsers.excel_parser import ExcelParser
+from almabani.parsers.hierarchy_processor import HierarchyProcessor
 from almabani.rate_matcher.matcher import RateMatcher
 
 logger = logging.getLogger(__name__)
@@ -18,15 +20,18 @@ logger = logging.getLogger(__name__)
 class RateFillerPipeline:
     """Main pipeline for filling missing rates in BOQ Excel files."""
     
-    def __init__(self, rate_matcher: RateMatcher):
+    def __init__(self, rate_matcher: RateMatcher, subcategory_indicator: str = 'c'):
         """
         Initialize the pipeline.
         
         Args:
             rate_matcher: Configured RateMatcher instance
+            subcategory_indicator: Character indicating subcategory levels
         """
         self.rate_matcher = rate_matcher
         self.excel_io = ExcelIO()
+        self.excel_parser = ExcelParser(subcategory_indicator=subcategory_indicator)
+        self.hierarchy_processor = HierarchyProcessor(subcategory_indicator=subcategory_indicator)
         
         logger.info("Rate Filler Pipeline initialized")
     
@@ -73,7 +78,8 @@ class RateFillerPipeline:
         logger.info(f"Detected columns: {columns}")
         
         # Extract items needing filling
-        items_to_fill = self._extract_items_for_filling(df, header_row_idx, columns)
+        parent_map = self._build_parent_map(df, header_row_idx, columns)
+        items_to_fill = self._extract_items_for_filling(df, header_row_idx, columns, parent_map)
         
         logger.info(f"Found {len(items_to_fill)} items needing rate filling")
         
@@ -158,7 +164,8 @@ class RateFillerPipeline:
         self,
         df,
         header_row_idx: int,
-        columns: Dict[str, str]
+        columns: Dict[str, str],
+        parent_map: Dict[int, Dict[str, Optional[str]]]
     ) -> List[Dict[str, Any]]:
         """
         Extract items that need rate filling.
@@ -172,10 +179,6 @@ class RateFillerPipeline:
         desc_col = columns.get('description')
         unit_col = columns.get('unit')
         rate_col = columns.get('rate')
-        
-        # Parent tracking stacks
-        level_stack = []
-        c_level_stack = []
         
         for idx in range(header_row_idx + 1, len(df)):
             row = df.iloc[idx]
@@ -194,36 +197,13 @@ class RateFillerPipeline:
             unit_val = None if pd.isna(unit_val) else unit_val
             rate_val = None if pd.isna(rate_val) else rate_val
             
-            # Update parent stacks
-            if level_val is not None:
-                level_str = str(level_val).strip()
-                
-                # Check if numeric level
-                if level_str.isdigit():
-                    # Update level stack
-                    level_num = int(level_str)
-                    while level_stack and level_stack[-1][0] >= level_num:
-                        level_stack.pop()
-                    if desc_val:
-                        level_stack.append((level_num, desc_val))
-                    c_level_stack = []
-                
-                # Check if c-level
-                elif level_str.lower() == 'c':
-                    if desc_val:
-                        c_level_stack.append(desc_val)
-            
             # Extract items needing filling (Level is empty, has Item)
             if (level_val is None or str(level_val).strip() == '') and item_val is not None:
-                # Get parent/grandparent
-                parent = c_level_stack[-1] if c_level_stack else (level_stack[-1][1] if level_stack else None)
+                parent = None
                 grandparent = None
-                if len(c_level_stack) >= 2:
-                    grandparent = c_level_stack[-2]
-                elif c_level_stack and len(level_stack) >= 1:
-                    grandparent = level_stack[-1][1]
-                elif len(level_stack) >= 2:
-                    grandparent = level_stack[-2][1]
+                if idx in parent_map:
+                    parent = parent_map[idx].get('parent')
+                    grandparent = parent_map[idx].get('grandparent')
                 
                 items.append({
                     'row_index': idx,
@@ -236,6 +216,47 @@ class RateFillerPipeline:
                 })
         
         return items
+    
+    def _build_parent_map(
+        self,
+        df,
+        header_row_idx: int,
+        columns: Dict[str, str]
+    ) -> Dict[int, Dict[str, Optional[str]]]:
+        """
+        Build a mapping of row_index -> {'parent': ..., 'grandparent': ...}
+        using the same hierarchy logic as the parser.
+        """
+        parser = self.excel_parser
+        hierarchy_processor = self.hierarchy_processor
+        
+        raw_items = parser._extract_raw_items(df, columns, header_row_idx)
+        tree = hierarchy_processor._build_hierarchy(raw_items)
+        
+        parent_map: Dict[int, Dict[str, Optional[str]]] = {}
+        
+        def walk(nodes: List, parent_desc: Optional[str], grandparent_desc: Optional[str]):
+            for node in nodes:
+                node_parent = parent_desc
+                node_grandparent = grandparent_desc
+                
+                # Update lineage if this node is a parent type
+                if node.item_type in (ItemType.NUMERIC_LEVEL, ItemType.SUBCATEGORY):
+                    node_grandparent = parent_desc
+                    node_parent = node.description
+                
+                if node.item_type == ItemType.ITEM and node.row_number is not None:
+                    parent_map[node.row_number] = {
+                        'parent': parent_desc,
+                        'grandparent': grandparent_desc
+                    }
+                
+                # Recurse into children
+                if node.children:
+                    walk(node.children, node_parent, node_grandparent)
+        
+        walk(tree, None, None)
+        return parent_map
     
     def _process_single_item(self, item: Dict[str, Any], namespace: str) -> tuple:
         """

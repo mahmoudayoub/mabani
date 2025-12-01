@@ -241,7 +241,8 @@ class VectorStoreIndexer:
     def index_documents(
         self,
         documents: List[VectorStoreDocument],
-        batch_size: int = 500,
+        embedding_batch_size: int = 500,
+        upsert_batch_size: int = 300,
         namespace: str = '',
         max_workers: int = 5
     ) -> Dict[str, Any]:
@@ -250,7 +251,8 @@ class VectorStoreIndexer:
         
         Args:
             documents: List of documents to index
-            batch_size: Batch size for processing
+            embedding_batch_size: Batch size for embedding generation
+            upsert_batch_size: Batch size for Pinecone upserts
             namespace: Pinecone namespace
             max_workers: Number of threads for embedding and upload
             
@@ -276,7 +278,7 @@ class VectorStoreIndexer:
         # Upload to vector store
         result = self.vector_store.upload_vectors(
             items_with_embeddings,
-            batch_size=batch_size,
+            batch_size=upsert_batch_size,
             show_progress=True,
             namespace=namespace,
             max_workers=max_workers

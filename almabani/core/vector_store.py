@@ -190,7 +190,7 @@ class VectorStoreService:
     def upload_vectors(
         self,
         items: List[Dict[str, Any]],
-        batch_size: int = 500,
+        batch_size: int = 300,
         show_progress: bool = True,
         namespace: str = '',
         max_workers: int = 5

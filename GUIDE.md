@@ -31,9 +31,10 @@ PINECONE_ENVIRONMENT=us-east-1
 ```bash
 OPENAI_CHAT_MODEL=gpt-4o-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-SIMILARITY_THRESHOLD=0.7
+SIMILARITY_THRESHOLD=0.5
 TOP_K=6
 BATCH_SIZE=500
+PINECONE_BATCH_SIZE=300
 MAX_WORKERS=5
 ```
 
@@ -80,7 +81,7 @@ almabani parse input.xlsx -l logs/parse.log
 - `-o, --output PATH` - Output directory (default: `data/output`)
 - `-m, --mode TEXT` - `single` or `multiple` (default: `multiple`)
 - `-s, --sheets TEXT` - Comma-separated sheet names to process
-- `-l, --log PATH` - Log file path
+- `-l, --log PATH` - Log file path (can be a directory; defaults from .env when omitted)
 
 ### Output
 **Multiple mode** (default):
@@ -162,10 +163,11 @@ almabani index data/output/ -l logs/index.log
 
 ### Options
 - `INPUT_PATH` - JSON file or directory (required)
-- `-n, --namespace TEXT` - Pinecone namespace (default: empty)
-- `-b, --batch-size INT` - Upload batch size (default: 500)
+- `-n, --namespace TEXT` - Pinecone namespace (default from .env)
+- `-b, --batch-size INT` - Embedding batch size (default from .env)
+- `-u, --upsert-batch-size INT` - Pinecone upload batch size (default from .env)
 - `-c, --create` - Create index if doesn't exist
-- `-l, --log PATH` - Log file path
+- `-l, --log PATH` - Log file path (can be a directory; defaults from .env when omitted)
 
 ### What Happens
 1. **Loads JSON files** - Reads hierarchical BOQ data
@@ -236,8 +238,8 @@ almabani fill new_project.xlsx "Terminal" -l logs/fill.log
 - `INPUT_FILE` - Excel BOQ file (required)
 - `SHEET_NAME` - Sheet name to process (required)
 - `-o, --output PATH` - Output file path
-- `-n, --namespace TEXT` - Pinecone namespace (default: empty)
-- `-l, --log PATH` - Log file path
+- `-n, --namespace TEXT` - Pinecone namespace (default from .env)
+- `-l, --log PATH` - Log file path (can be a directory; defaults from .env when omitted)
 
 ### How It Works - 3-Stage LLM Matching
 
@@ -331,7 +333,7 @@ almabani query "concrete" -n production
 ### Options
 - `QUERY_TEXT` - Search text (required)
 - `--top-k INT` - Number of results (default: 10)
-- `--threshold FLOAT` - Similarity threshold (default: 0.7)
+- `--threshold FLOAT` - Similarity threshold (default: 0.5)
 - `-n, --namespace TEXT` - Pinecone namespace
 
 ### Output Example

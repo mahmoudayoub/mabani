@@ -10,6 +10,7 @@ from openai import OpenAI
 
 from almabani.core.embeddings import EmbeddingsService
 from almabani.core.vector_store import VectorStoreService
+from almabani.core.rate_limits import chat_rate_limiter
 from almabani.rate_matcher.prompts import (
     build_matcher_prompt,
     build_expert_prompt,
@@ -30,7 +31,7 @@ class RateMatcher:
         openai_client: OpenAI,
         embeddings_service: EmbeddingsService,
         vector_store_service: VectorStoreService,
-        similarity_threshold: float = 0.7,
+        similarity_threshold: float = 0.5,
         top_k: int = 6,
         model: str = "gpt-4o-mini",
         verbose_logging: bool = True
@@ -54,6 +55,7 @@ class RateMatcher:
         self.top_k = top_k
         self.model = model
         self.verbose_logging = verbose_logging
+        self.rate_limiter = chat_rate_limiter
         
         logger.info(f"Rate matcher initialized with 3-stage approach")
         logger.info(f"  - Similarity threshold: {similarity_threshold}")
@@ -342,13 +344,15 @@ class RateMatcher:
     def _call_llm_stage(self, system_message: str, prompt: str) -> Dict[str, Any]:
         """Call LLM and parse JSON response."""
         try:
+            # Enforce chat RPM limit
+            self.rate_limiter.acquire()
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.0
+                temperature=1
             )
             
             content = response.choices[0].message.content

@@ -45,12 +45,17 @@ class Settings(BaseSettings):
     pinecone_cloud: str = Field(default='aws', env='PINECONE_CLOUD')
     
     # ==================== Vector Search Settings ====================
-    similarity_threshold: float = Field(default=0.7, env='SIMILARITY_THRESHOLD')
+    similarity_threshold: float = Field(default=0.5, env='SIMILARITY_THRESHOLD')
     top_k: int = Field(default=6, env='TOP_K')
     
     # ==================== Processing Settings ====================
     batch_size: int = Field(default=500, env='BATCH_SIZE')
     max_workers: int = Field(default=5, env='MAX_WORKERS')
+    pinecone_batch_size: int = Field(default=300, env='PINECONE_BATCH_SIZE')
+    
+    # ==================== Rate Limits ====================
+    embeddings_rpm: int = Field(default=3000, env='EMBEDDINGS_RPM')
+    chat_rpm: int = Field(default=5000, env='CHAT_RPM')
     
     # ==================== Logging Settings ====================
     log_level: str = Field(default='INFO', env='LOG_LEVEL')
@@ -86,6 +91,7 @@ class Settings(BaseSettings):
         env_file = '.env'
         env_file_encoding = 'utf-8'
         case_sensitive = False
+        extra = 'ignore'
         # Look for .env in project root
         env_file = str(Path(__file__).parent.parent.parent / '.env')
 

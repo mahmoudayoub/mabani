@@ -71,10 +71,11 @@ def parse(
 @app.command()
 def index(
     input_path: Path = typer.Argument(..., help="JSON file or directory to index"),
-    namespace: str = typer.Option("", "--namespace", "-n", help="Pinecone namespace"),
-    batch_size: int = typer.Option(500, "--batch-size", "-b", help="Batch size for processing"),
+    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Pinecone namespace"),
+    batch_size: Optional[int] = typer.Option(None, "--batch-size", "-b", help="Embedding batch size"),
+    upsert_batch_size: Optional[int] = typer.Option(None, "--upsert-batch-size", "-u", help="Pinecone upsert batch size"),
     create_index: bool = typer.Option(False, "--create", "-c", help="Create index if doesn't exist"),
-    workers: int = typer.Option(5, "--workers", "-w", help="Number of parallel workers"),
+    workers: Optional[int] = typer.Option(None, "--workers", "-w", help="Number of parallel workers"),
     log_file: Optional[Path] = typer.Option(None, "--log", "-l", help="Log file path")
 ):
     """📊 Index JSON BOQ data into vector store."""
@@ -94,6 +95,12 @@ def index(
         settings = get_settings()
         openai_client = get_openai_client()
         pinecone_client = get_pinecone_client()
+        
+        # Apply defaults from settings when CLI values are not provided
+        namespace = namespace if namespace is not None else (settings.pinecone_namespace or "")
+        batch_size = batch_size if batch_size is not None else settings.batch_size
+        upsert_batch_size = upsert_batch_size if upsert_batch_size is not None else settings.pinecone_batch_size
+        workers = workers if workers is not None else settings.max_workers
         
         # Create services
         embeddings_service = EmbeddingsService(
@@ -134,7 +141,8 @@ def index(
         indexer = VectorStoreIndexer(embeddings_service, vector_store_service)
         result = indexer.index_documents(
             documents,
-            batch_size=batch_size,
+            embedding_batch_size=batch_size,
+            upsert_batch_size=upsert_batch_size,
             namespace=namespace,
             max_workers=workers
         )
@@ -154,10 +162,10 @@ def fill(
     input_file: Path = typer.Argument(..., help="Excel BOQ file to fill"),
     sheet_name: Optional[str] = typer.Argument(None, help="Sheet name to process (defaults to first sheet)"),
     output_file: Optional[Path] = typer.Option(None, "--output", "-o", help="Output Excel file"),
-    namespace: str = typer.Option("", "--namespace", "-n", help="Pinecone namespace"),
-    threshold: float = typer.Option(0.7, "--threshold", "-t", help="Similarity threshold"),
-    top_k: int = typer.Option(6, "--top-k", "-k", help="Number of candidates"),
-    workers: int = typer.Option(5, "--workers", "-w", help="Number of parallel workers"),
+    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Pinecone namespace"),
+    threshold: Optional[float] = typer.Option(None, "--threshold", "-t", help="Similarity threshold"),
+    top_k: Optional[int] = typer.Option(None, "--top-k", "-k", help="Number of candidates"),
+    workers: Optional[int] = typer.Option(None, "--workers", "-w", help="Number of parallel workers"),
     log_file: Optional[Path] = typer.Option(None, "--log", "-l", help="Log file path")
 ):
     """💰 Fill missing rates in Excel BOQ using LLM matching."""
@@ -180,6 +188,11 @@ def fill(
         pinecone_client = get_pinecone_client()
         
         # Create services
+        namespace = namespace if namespace is not None else (settings.pinecone_namespace or "")
+        threshold = threshold if threshold is not None else settings.similarity_threshold
+        top_k = top_k if top_k is not None else settings.top_k
+        workers = workers if workers is not None else settings.max_workers
+        
         embeddings_service = EmbeddingsService(
             client=openai_client,
             model=settings.openai_embedding_model
@@ -234,9 +247,9 @@ def fill(
 @app.command()
 def query(
     search_text: str = typer.Argument(..., help="Text to search for"),
-    namespace: str = typer.Option("", "--namespace", "-n", help="Pinecone namespace"),
-    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results"),
-    threshold: float = typer.Option(0.0, "--threshold", "-t", help="Minimum similarity score")
+    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Pinecone namespace"),
+    top_k: Optional[int] = typer.Option(None, "--top-k", "-k", help="Number of results"),
+    threshold: Optional[float] = typer.Option(None, "--threshold", "-t", help="Minimum similarity score")
 ):
     """🔍 Query the vector store for similar items."""
     console.print(Panel.fit(
@@ -251,6 +264,10 @@ def query(
         settings = get_settings()
         openai_client = get_openai_client()
         pinecone_client = get_pinecone_client()
+        
+        namespace = namespace if namespace is not None else (settings.pinecone_namespace or "")
+        top_k = top_k if top_k is not None else settings.top_k
+        threshold = threshold if threshold is not None else settings.similarity_threshold
         
         # Create services
         embeddings_service = EmbeddingsService(
@@ -360,13 +377,31 @@ def delete_sheet(
         pc = get_pinecone_client()
         index = pc.Index(settings.pinecone_index_name)
         
-        # Query to find all IDs for this sheet
         console.print(f"\n[cyan]Finding vectors for sheet '{sheet_name}'...[/cyan]")
+        total_for_sheet = None
+        stats_supported = True
+        try:
+            stats = index.describe_index_stats(filter={"sheet_name": {"$eq": sheet_name}})
+            total_for_sheet = stats.get('namespaces', {}).get('', {}).get('vector_count', 0)
+        except Exception:
+            stats_supported = False
+            console.print("[yellow]ℹ️  This index cannot report counts by metadata filter; proceeding without a pre-check.[/yellow]")
         
-        # Delete by metadata filter
-        index.delete(filter={"sheet_name": {"$eq": sheet_name}})
+        if stats_supported and total_for_sheet == 0:
+            console.print(f"[yellow]ℹ️  No vectors found for sheet '{sheet_name}'. Nothing to delete.[/yellow]")
+            raise typer.Exit(0)
         
-        console.print(f"[green]✓ All vectors from sheet '{sheet_name}' deleted successfully![/green]")
+        try:
+            index.delete(filter={"sheet_name": {"$eq": sheet_name}})
+        except Exception as del_err:
+            console.print(f"[red]✗ Delete failed:[/red] {del_err}")
+            raise typer.Exit(1)
+        
+        if stats_supported and total_for_sheet is not None:
+            console.print(f"[green]✓ Deleted {total_for_sheet} vector(s) from sheet '{sheet_name}'.[/green]")
+        else:
+            console.print(f"[green]✓ Delete request sent for sheet '{sheet_name}'.[/green] [yellow](Count verification not supported by this index type.)[/yellow]")
+        
         console.print(f"\n[yellow]Run 'almabani index' with the sheet's JSON to re-index it[/yellow]")
         
     except Exception as e:

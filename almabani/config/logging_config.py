@@ -54,22 +54,30 @@ def setup_logging(
     if log_file:
         log_file = Path(log_file)
         
+        # If a directory is provided, create a file name inside it
+        if log_file.is_dir() or log_file.suffix == '':
+            target_dir = log_file
+            filename = f"app.log"
+        else:
+            target_dir = log_file.parent
+            filename = log_file.name
+        
         # Add timestamp to filename if requested
         if include_timestamp:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            stem = log_file.stem
-            suffix = log_file.suffix
-            log_file = log_file.parent / f"{stem}_{timestamp}{suffix}"
+            stem = Path(filename).stem
+            suffix = Path(filename).suffix or ".log"
+            filename = f"{stem}_{timestamp}{suffix}"
         
-        # Create log directory if needed
-        log_file.parent.mkdir(parents=True, exist_ok=True)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        final_path = target_dir / filename
         
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler = logging.FileHandler(final_path, encoding='utf-8')
         file_handler.setLevel(numeric_level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
         
-        root_logger.info(f"Logging to file: {log_file}")
+        root_logger.info(f"Logging to file: {final_path}")
     
     return root_logger
 

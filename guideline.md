@@ -14,12 +14,12 @@
 2. **Index JSON → Pinecone**
    - Run: `almabani index data/output --create` (only on first build; omit `--create` otherwise)
    - Takes: JSON file or directory.
-   - Defaults: `--batch-size 500`, `--namespace ""` (default namespace), `--log` none.
+   - Defaults: from `.env` if set; otherwise `--batch-size 500` (embeddings), `--upsert-batch-size 300` (Pinecone), `--namespace ""`, `--log` none.
    - Outputs: Vectors uploaded to Pinecone; reports uploaded count and total in index.
 3. **Fill BOQ rates**
    - Run: `almabani fill new.xlsx "Sheet Name" --output data/output`
    - Takes: Excel file + target sheet name; requires existing Pinecone index.
-   - Defaults: `--threshold 0.7`, `--top-k 6`, `--workers 5`, `--namespace ""`, `--log` none; output path auto-names a timestamped file if a directory is given.
+   - Defaults: from `.env` if set; otherwise `--threshold 0.5`, `--top-k 6`, `--workers 5`, `--namespace ""`, `--log` none; output path auto-names a timestamped file if a directory is given.
    - Outputs: Filled Excel (adds AutoRate Reference/Reasoning columns if missing), processing stats in logs.
 4. **Query for sanity checks**
    - Run: `almabani query "search text" --top-k 5 --threshold 0.0`

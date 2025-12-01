@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 import time
+from almabani.core.rate_limits import embedding_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,8 @@ class EmbeddingsService:
         api_key: Optional[str] = None,
         model: str = "text-embedding-3-small",
         batch_size: int = 500,
-        max_workers: int = 5
+        max_workers: int = 5,
+        rate_limiter=embedding_rate_limiter
     ):
         """
         Initialize embeddings service.
@@ -50,6 +52,7 @@ class EmbeddingsService:
             model: Embedding model to use
             batch_size: Number of texts to process at once
             max_workers: Number of threads for parallel embedding calls
+            rate_limiter: Rate limiter enforcing RPM constraints per batch request
         """
         if client:
             self.client = client
@@ -61,6 +64,7 @@ class EmbeddingsService:
         self.model = model
         self.batch_size = batch_size
         self.max_workers = max_workers
+        self.rate_limiter = rate_limiter
         
         logger.info(f"Initialized embeddings service: {model}")
         logger.info(f"Dimensions: {self.get_dimensions()}, Batch size: {batch_size}")
@@ -142,6 +146,8 @@ class EmbeddingsService:
         def _embed_batch(batch: List[str]) -> List[List[float]]:
             for attempt in range(max_retries):
                 try:
+                    # Respect embeddings RPM limit (one request per batch)
+                    self.rate_limiter.acquire()
                     response = self.client.embeddings.create(
                         model=self.model,
                         input=batch

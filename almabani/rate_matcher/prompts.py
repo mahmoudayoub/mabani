@@ -316,38 +316,37 @@ RULES:
 - If you consider multiple candidates, PICK ONE best candidate/logic path and return only that final approximated_rate (highest confidence, most defensible). Do NOT rely on the caller to average multiple values.
 - The approximated_rate you return must be in the TARGET UNIT; if units are incompatible or conversion is not rational, choose "no_match".
 - Do NOT invent base rates or dimensional data that are not provided; every numeric step in your calculation must trace back to the input data in {target_info} and {candidates_text}.
-- If you cannot confidently infer a reasonable numeric relationship from the data, you MUST set "status" to "no_match" and "approximations" to [].
+- If you cannot confidently infer a reasonable numeric relationship from the data, you MUST set "status" to "no_match" (no approximated_rate).
 
-OUTPUT FORMAT (strict JSON ONLY, no extra text, no markdown) — return exactly ONE approximation object if you find a usable approximation:
+OUTPUT FORMAT (strict JSON ONLY, no extra text, no markdown):
 {{
-    "status": "approximation" or "no_match",
-    "approximations": [
-        {{
-            "index": 2,
-            "confidence": 65,
-            "approximated_rate": 400.00,
-            "adjustment": "DN250@500→DN200: ×(200/250)=400",
-            "limitations": "Wall thickness/pressure/conditions may differ"
-        }}
-    ],
-    "reasoning": "Compact analysis: Similarity → [work type/specs]. Calculation → [formula]. Limitations → [key risks]"
+    "status": "approximated" or "no_match",
+    "approximated_rate": 400.00,           // REQUIRED when status="approximated"
+    "reference_items": [2],                // 1-based indices from CANDIDATE ITEMS (empty if none)
+    "unit": "m",                           // Unit for the returned rate (optional; default to target unit)
+    "adjustment": "DN250@500->DN200: x(200/250)=400",
+    "limitations": "Wall thickness/pressure/conditions may differ",
+    "confidence": 65,                      // Integer 50–69
+    "reasoning": "Similarity -> ... Calc -> ... Limitations -> ..."
 }}
 
 ADDITIONAL RULES FOR OUTPUT:
-- "approximations" must be a JSON array with exactly ONE object when status="approximation", with keys: "index" (1-based integer), "confidence" (integer 50–69), "approximated_rate" (float), "adjustment" (concise formula/calculation, max 15 words), and "limitations" (concise risks, max 12 words).
+- Use status="approximated" (not "approximation"); status="no_match" when no usable approximation exists.
 - "approximated_rate" MUST be the final calculated target rate (e.g., 400.00), NOT the original candidate rate. It will be used directly with no further averaging.
-- If there is no reasonable approximation, set "status" to "no_match" and "approximations" to [].
-- Do NOT include any keys other than "status", "approximations", and "reasoning".
-- Do NOT output example text outside the JSON.
+- "reference_items" should list which candidate indices informed the calculation (empty if none).
+- "adjustment" concisely states the numeric scaling/percentage logic; "limitations" lists key caveats (max ~12 words).
+- "confidence" is an integer 50–69 reflecting approximation strength.
+- If there is no reasonable approximation, set status="no_match", omit approximated_rate and leave reference_items=[], adjustment="", limitations="", confidence=None.
+- Do NOT include any keys other than the ones specified above.
 - REASONING FORMAT:
-  * For APPROXIMATION: "Similarity: [work match]. Calc: [scaling logic]. Caution: [main limitation]"
+  * For APPROXIMATED: "Similarity: [work match]. Calc: [scaling logic]. Caution: [main limitation]"
   * For NO MATCH: "No approximation: [why scaling impossible, e.g., 'unrelated work', 'no size relationship']"
   * Keep reasoning under 2 sentences maximum.
 
 EXAMPLES:
-APPROXIMATION (65%): Target "Excavation depth 2m", Candidate "Excavation depth 2.5m @ 50.00/m³" → approximated_rate: 40.00 (scaled by depth ratio 2/2.5 = 0.8).
-APPROXIMATION (60%): Target "HDPE DN200 PN10", Candidate "HDPE DN250 PN16 @ 500.00/m" → approximated_rate: 400.00 (scaled by diameter ratio 200/250 = 0.8).
-APPROXIMATION (55%): Target "Cast in-situ concrete slab", Candidate "Cast in-situ concrete beam @ 150.00/m³" → approximated_rate: 150.00 (same m³ rate, but note geometry difference).
+APPROXIMATED (65%): Target "Excavation depth 2m", Candidate "Excavation depth 2.5m @ 50.00/m3" -> approximated_rate: 40.00 (scaled by depth ratio 2/2.5 = 0.8).
+APPROXIMATED (60%): Target "HDPE DN200 PN10", Candidate "HDPE DN250 PN16 @ 500.00/m" -> approximated_rate: 400.00 (scaled by diameter ratio 200/250 = 0.8).
+APPROXIMATED (55%): Target "Cast in-situ concrete slab", Candidate "Cast in-situ concrete beam @ 150.00/m3" -> approximated_rate: 150.00 (same m3 rate, but note geometry difference).
 NO MATCH: "Concrete work" vs "Steel fabrication" (completely different work types and cost drivers).
 NO MATCH: "Supply equipment" vs "Civil earthworks" (no reasonable relationship for scaling).
 

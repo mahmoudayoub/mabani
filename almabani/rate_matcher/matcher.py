@@ -2,15 +2,16 @@
 Rate Matcher - LLM-powered 3-stage matching system.
 Stages: 1) Matcher (exact), 2) Expert (close), 3) Estimator (approximation)
 """
+import asyncio
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import OpenAI
+from openai import AsyncOpenAI
 
+from almabani.config.settings import get_settings
 from almabani.core.embeddings import EmbeddingsService
 from almabani.core.vector_store import VectorStoreService
-from almabani.core.rate_limits import chat_rate_limiter
+from almabani.core.rate_limits import async_chat_rate_limiter
 from almabani.rate_matcher.prompts import (
     build_matcher_prompt,
     build_expert_prompt,
@@ -28,41 +29,50 @@ class RateMatcher:
     
     def __init__(
         self,
-        openai_client: OpenAI,
         embeddings_service: EmbeddingsService,
         vector_store_service: VectorStoreService,
+        async_openai_client: Optional[AsyncOpenAI] = None,
         similarity_threshold: float = 0.5,
         top_k: int = 6,
-        model: str = "gpt-4o-mini",
-        verbose_logging: bool = True
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        verbose_logging: bool = True,
+        async_rate_limiter=async_chat_rate_limiter
     ):
         """
         Initialize rate matcher.
         
         Args:
-            openai_client: OpenAI client instance
             embeddings_service: Service for generating embeddings
             vector_store_service: Service for vector store operations
             similarity_threshold: Minimum similarity score
             top_k: Number of candidates to retrieve
-            model: OpenAI model for LLM calls
+            model: OpenAI model for LLM calls (defaults to settings.openai_chat_model)
+            temperature: LLM temperature (defaults to settings.openai_temperature)
             verbose_logging: Enable detailed logging
         """
-        self.client = openai_client
+        settings = get_settings()
+        self.async_client = async_openai_client or AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.openai_timeout,
+            max_retries=settings.openai_max_retries
+        )
         self.embeddings = embeddings_service
         self.vector_store = vector_store_service
         self.similarity_threshold = similarity_threshold
         self.top_k = top_k
-        self.model = model
+        self.model = model if model is not None else settings.openai_chat_model
+        self.temperature = temperature if temperature is not None else settings.openai_temperature
         self.verbose_logging = verbose_logging
-        self.rate_limiter = chat_rate_limiter
+        self.async_rate_limiter = async_rate_limiter
         
         logger.info(f"Rate matcher initialized with 3-stage approach")
         logger.info(f"  - Similarity threshold: {similarity_threshold}")
         logger.info(f"  - Top-K candidates: {top_k}")
-        logger.info(f"  - Model: {model}")
+        logger.info(f"  - Model: {self.model}")
+        logger.info(f"  - Temperature: {self.temperature}")
     
-    def find_match(
+    async def find_match(
         self,
         item_description: str,
         item_unit: str = '',
@@ -98,8 +108,8 @@ class RateMatcher:
             if item_unit:
                 logger.info(f"  Unit: {item_unit}")
         
-        # Step 1: Vector search with enriched context
-        candidates = self._search_similar_items(
+        # Step 1: Vector search with enriched context (async)
+        candidates = await self._search_similar_items_async(
             item_description, parent, grandparent, namespace
         )
         
@@ -117,15 +127,28 @@ class RateMatcher:
         
         logger.info(f"  Found {len(candidates)} candidates")
         
-        # Step 2: 3-Stage LLM Validation
-        logger.info("  Starting 3-stage LLM validation...")
+        # Step 2: 3-Stage LLM Validation - RUN ALL IN PARALLEL for speed
+        logger.info("  Running 3-stage LLM validation in parallel...")
         
-        # STAGE 1: MATCHER - Check for exact matches
-        logger.info("  Stage 1: MATCHER - Checking for exact matches...")
-        matcher_result = self._call_matcher_stage(
+        # Run all 3 stages concurrently
+        matcher_task = self._call_matcher_stage_async(
+            item_description, item_unit, item_code, candidates, parent, grandparent
+        )
+        expert_task = self._call_expert_stage_async(
+            item_description, item_unit, item_code, candidates, parent, grandparent
+        )
+        estimator_task = self._call_estimator_stage_async(
             item_description, item_unit, item_code, candidates, parent, grandparent
         )
         
+        # Wait for all to complete
+        matcher_result, expert_result, estimator_result = await asyncio.gather(
+            matcher_task, expert_task, estimator_task
+        )
+        
+        # Process results in priority order: exact > close > approximation
+        
+        # STAGE 1: Check MATCHER result (exact matches)
         if matcher_result['status'] == 'exact_match':
             match_indices = matcher_result.get('exact_matches', [])
             matches = [candidates[i-1] for i in match_indices if 0 < i <= len(candidates)]
@@ -151,16 +174,7 @@ class RateMatcher:
                     'candidates': candidates
                 }
         
-        if self.verbose_logging:
-            logger.info("  No exact matches found, proceeding to Expert stage...")
-        
-        # STAGE 2: EXPERT - Check for close matches
-        if self.verbose_logging:
-            logger.info("  Stage 2: EXPERT - Checking for close matches...")
-        expert_result = self._call_expert_stage(
-            item_description, item_unit, item_code, candidates, parent, grandparent
-        )
-        
+        # STAGE 2: Check EXPERT result (close matches)
         if expert_result['status'] == 'close_match':
             close_matches_data = expert_result.get('close_matches', [])
             
@@ -199,16 +213,7 @@ class RateMatcher:
                         'candidates': candidates
                     }
         
-        if self.verbose_logging:
-            logger.info("  No close matches found, proceeding to Estimator stage...")
-        
-        # STAGE 3: ESTIMATOR - Approximate from similar items
-        if self.verbose_logging:
-            logger.info("  Stage 3: ESTIMATOR - Approximating rate...")
-        estimator_result = self._call_estimator_stage(
-            item_description, item_unit, item_code, candidates, parent, grandparent
-        )
-        
+        # STAGE 3: Check ESTIMATOR result (approximation)
         if estimator_result['status'] == 'approximated':
             rate = estimator_result.get('approximated_rate')
             unit = estimator_result.get('unit', item_unit)
@@ -243,38 +248,35 @@ class RateMatcher:
             'reasoning': 'No acceptable match found at any stage',
             'candidates': candidates
         }
+
     
-    def _search_similar_items(
+    async def _search_similar_items_async(
         self,
         description: str,
         parent: Optional[str],
         grandparent: Optional[str],
         namespace: str
     ) -> List[Dict[str, Any]]:
-        """Search vector store for similar items."""
-        # Build enriched query (matching vector store format)
+        """Async wrapper around vector search using asyncio.to_thread."""
+        # Build enriched query text
         query_parts = []
-        
         if grandparent:
             query_parts.append(f"Category: {grandparent}")
         if parent:
             query_parts.append(f"Category: {parent}")
-        
         query_parts.append(description)
         query_text = '. '.join(query_parts)
         
-        # Generate embedding for query
-        query_embedding = self.embeddings.generate_embedding(query_text)
+        query_embedding = await self.embeddings.generate_embedding_async(query_text)
         
-        # Search vector store
-        results = self.vector_store.search(
+        results = await self.vector_store.search(
             query_embedding=query_embedding,
             top_k=self.top_k,
+            filter_dict=None,
             namespace=namespace,
             include_metadata=True
         )
         
-        # Filter by similarity threshold and format
         candidates = []
         for result in results:
             if result['score'] >= self.similarity_threshold:
@@ -287,10 +289,9 @@ class RateMatcher:
                     'category': result['metadata'].get('category_path', ''),
                     'metadata': result['metadata']
                 })
-        
         return candidates
     
-    def _call_matcher_stage(
+    async def _call_matcher_stage_async(
         self,
         description: str,
         unit: str,
@@ -299,15 +300,12 @@ class RateMatcher:
         parent: Optional[str],
         grandparent: Optional[str]
     ) -> Dict[str, Any]:
-        """Call Stage 1: Matcher."""
         target_info = self._build_target_info(description, unit, item_code, parent, grandparent)
         candidates_text = self._build_candidates_text(candidates)
-        
         prompt = build_matcher_prompt(target_info, candidates_text)
-        
-        return self._call_llm_stage(MATCHER_SYSTEM_MESSAGE, prompt)
+        return await self._call_llm_stage_async(MATCHER_SYSTEM_MESSAGE, prompt, stage_name="MATCHER")
     
-    def _call_expert_stage(
+    async def _call_expert_stage_async(
         self,
         description: str,
         unit: str,
@@ -316,15 +314,12 @@ class RateMatcher:
         parent: Optional[str],
         grandparent: Optional[str]
     ) -> Dict[str, Any]:
-        """Call Stage 2: Expert."""
         target_info = self._build_target_info(description, unit, item_code, parent, grandparent)
         candidates_text = self._build_candidates_text(candidates)
-        
         prompt = build_expert_prompt(target_info, candidates_text)
-        
-        return self._call_llm_stage(EXPERT_SYSTEM_MESSAGE, prompt)
+        return await self._call_llm_stage_async(EXPERT_SYSTEM_MESSAGE, prompt, stage_name="EXPERT")
     
-    def _call_estimator_stage(
+    async def _call_estimator_stage_async(
         self,
         description: str,
         unit: str,
@@ -333,50 +328,53 @@ class RateMatcher:
         parent: Optional[str],
         grandparent: Optional[str]
     ) -> Dict[str, Any]:
-        """Call Stage 3: Estimator."""
         target_info = self._build_target_info(description, unit, item_code, parent, grandparent)
         candidates_text = self._build_candidates_text(candidates)
-        
         prompt = build_estimator_prompt(target_info, candidates_text)
-        
-        return self._call_llm_stage(ESTIMATOR_SYSTEM_MESSAGE, prompt)
+        return await self._call_llm_stage_async(ESTIMATOR_SYSTEM_MESSAGE, prompt, stage_name="ESTIMATOR")
     
-    def _call_llm_stage(self, system_message: str, prompt: str) -> Dict[str, Any]:
-        """Call LLM and parse JSON response."""
+    async def _call_llm_stage_async(self, system_message: str, prompt: str, stage_name: str = "LLM") -> Dict[str, Any]:
+        """Async LLM call with JSON parsing and timing instrumentation."""
+        import time
+        start_time = time.perf_counter()
+        logger.info(f"  [{stage_name}] ⏱ Started at {start_time:.3f}")
         try:
-            # Enforce chat RPM limit
-            self.rate_limiter.acquire()
-            response = self.client.chat.completions.create(
+            await self.async_rate_limiter.acquire()
+            acquire_time = time.perf_counter()
+            logger.info(f"  [{stage_name}] Rate limiter acquired after {(acquire_time - start_time)*1000:.1f}ms")
+            
+            response = await self.async_client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=1
+                temperature=self.temperature
             )
+            api_time = time.perf_counter()
+            logger.info(f"  [{stage_name}] API responded after {(api_time - acquire_time)*1000:.1f}ms")
             
             content = response.choices[0].message.content
-            
-            # Try to parse JSON
+            if not content:
+                logger.error(f"[{stage_name}] LLM returned empty content")
+                return {'status': 'no_match'}
             try:
                 result = json.loads(content)
+                end_time = time.perf_counter()
+                logger.info(f"  [{stage_name}] ✓ Completed in {(end_time - start_time)*1000:.1f}ms total")
                 return result
             except json.JSONDecodeError:
-                # Try to extract JSON from markdown code blocks
                 if "```json" in content:
                     json_str = content.split("```json")[1].split("```")[0].strip()
-                    result = json.loads(json_str)
-                    return result
+                    return json.loads(json_str)
                 elif "```" in content:
                     json_str = content.split("```")[1].split("```")[0].strip()
-                    result = json.loads(json_str)
-                    return result
-                else:
-                    logger.error(f"Failed to parse LLM response: {content}")
-                    return {'status': 'no_match'}
-        
+                    return json.loads(json_str)
+                logger.error(f"[{stage_name}] Failed to parse LLM response: {content}")
+                return {'status': 'no_match'}
         except Exception as e:
-            logger.error(f"LLM call failed: {e}")
+            end_time = time.perf_counter()
+            logger.error(f"[{stage_name}] LLM call failed after {(end_time - start_time)*1000:.1f}ms: {e}")
             return {'status': 'no_match'}
     
     def _build_target_info(
@@ -429,19 +427,19 @@ class RateMatcher:
         return ' | '.join(refs)
 
 
-def process_items_parallel(
+async def process_items_parallel(
     rate_matcher: RateMatcher,
     items: List[Dict[str, Any]],
-    max_workers: int = 5,
+    max_workers: int = 100,
     namespace: str = ''
 ) -> List[Dict[str, Any]]:
     """
-    Process multiple items in parallel using ThreadPoolExecutor.
+    Process multiple items in parallel using asyncio.
     
     Args:
         rate_matcher: RateMatcher instance
         items: List of items to process
-        max_workers: Number of parallel workers
+        max_workers: Number of parallel workers (concurrency limit)
         namespace: Pinecone namespace
         
     Returns:
@@ -449,37 +447,31 @@ def process_items_parallel(
     """
     logger.info(f"Processing {len(items)} items with {max_workers} workers...")
     
-    results = []
+    results: List[Dict[str, Any]] = []
+    semaphore = asyncio.Semaphore(max_workers)
     
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        future_to_item = {
-            executor.submit(
-                rate_matcher.find_match,
-                item['description'],
-                item.get('unit', ''),
-                item.get('item_code', ''),
-                item.get('parent'),
-                item.get('grandparent'),
-                namespace
-            ): item
-            for item in items
-        }
-        
-        # Collect results as they complete
-        for future in as_completed(future_to_item):
-            item = future_to_item[future]
+    async def process_item(item: Dict[str, Any]) -> Dict[str, Any]:
+        async with semaphore:
             try:
-                result = future.result()
+                result = await rate_matcher.find_match(
+                    item_description=item['description'],
+                    item_unit=item.get('unit', ''),
+                    item_code=item.get('item_code', ''),
+                    parent=item.get('parent'),
+                    grandparent=item.get('grandparent'),
+                    namespace=namespace
+                )
                 result['item'] = item
-                results.append(result)
+                return result
             except Exception as e:
                 logger.error(f"Error processing item: {e}")
-                results.append({
+                return {
                     'status': 'error',
                     'item': item,
                     'error': str(e)
-                })
+                }
+    
+    results = await asyncio.gather(*[process_item(item) for item in items])
     
     logger.info(f"✓ Processed {len(results)} items")
-    return results
+    return list(results)

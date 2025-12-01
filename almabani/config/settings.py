@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     
     # ==================== Processing Settings ====================
     batch_size: int = Field(default=500, env='BATCH_SIZE')
-    max_workers: int = Field(default=5, env='MAX_WORKERS')
+    max_workers: int = Field(default=100, env='MAX_WORKERS')
     pinecone_batch_size: int = Field(default=300, env='PINECONE_BATCH_SIZE')
     
     # ==================== Rate Limits ====================

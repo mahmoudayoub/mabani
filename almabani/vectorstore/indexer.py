@@ -221,68 +221,47 @@ class JSONProcessor:
 
 
 class VectorStoreIndexer:
-    """Index items into vector store with embeddings."""
+    """Index items into vector store with embeddings (async only)."""
     
     def __init__(
         self,
         embeddings_service: EmbeddingsService,
         vector_store_service: VectorStoreService
     ):
-        """
-        Initialize the indexer.
-        
-        Args:
-            embeddings_service: Service for generating embeddings
-            vector_store_service: Service for vector store operations
-        """
         self.embeddings = embeddings_service
         self.vector_store = vector_store_service
     
-    def index_documents(
+    async def index_documents(
         self,
         documents: List[VectorStoreDocument],
         embedding_batch_size: int = 500,
         upsert_batch_size: int = 300,
         namespace: str = '',
-        max_workers: int = 5
+        max_workers: int = 100
     ) -> Dict[str, Any]:
         """
-        Index documents into vector store.
-        
-        Args:
-            documents: List of documents to index
-            embedding_batch_size: Batch size for embedding generation
-            upsert_batch_size: Batch size for Pinecone upserts
-            namespace: Pinecone namespace
-            max_workers: Number of threads for embedding and upload
-            
-        Returns:
-            Indexing statistics
+        Async variant of index_documents using async embeddings and uploads.
         """
-        logger.info(f"Indexing {len(documents)} documents...")
+        logger.info(f"[async] Indexing {len(documents)} documents...")
         
-        # Collect all items from all documents
         all_items = []
         for doc in documents:
             all_items.extend([item.model_dump() for item in doc.items])
         
-        logger.info(f"Total items to index: {len(all_items)}")
+        logger.info(f"[async] Total items to index: {len(all_items)}")
         
-        # Generate embeddings
-        items_with_embeddings = self.embeddings.embed_items(
+        items_with_embeddings = await self.embeddings.embed_items(
             all_items,
             text_field='text',
             max_workers=max_workers
         )
         
-        # Upload to vector store
-        result = self.vector_store.upload_vectors(
+        result = await self.vector_store.upload_vectors(
             items_with_embeddings,
             batch_size=upsert_batch_size,
-            show_progress=True,
             namespace=namespace,
             max_workers=max_workers
         )
         
-        logger.info(f"✓ Indexing complete!")
+        logger.info(f"[async] ✓ Indexing complete!")
         return result

@@ -2,6 +2,7 @@
 Unified CLI for Almabani BOQ Management System.
 Provides commands for parsing, indexing, and rate filling.
 """
+import asyncio
 import typer
 from pathlib import Path
 from typing import Optional
@@ -9,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich import print as rprint
 import logging
+from openai import AsyncOpenAI
 
 from almabani.config.settings import get_settings, get_openai_client, get_pinecone_client
 from almabani.config.logging_config import setup_logging
@@ -94,6 +96,11 @@ def index(
         # Get settings and clients
         settings = get_settings()
         openai_client = get_openai_client()
+        openai_async = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.openai_timeout,
+            max_retries=settings.openai_max_retries
+        )
         pinecone_client = get_pinecone_client()
         
         # Apply defaults from settings when CLI values are not provided
@@ -104,7 +111,7 @@ def index(
         
         # Create services
         embeddings_service = EmbeddingsService(
-            client=openai_client,
+            async_client=openai_async,
             model=settings.openai_embedding_model,
             batch_size=batch_size,
             max_workers=workers
@@ -118,10 +125,10 @@ def index(
         
         # Create or connect to index
         if create_index:
-            vector_store_service.create_index(
+            asyncio.run(vector_store_service.create_index(
                 dimension=settings.pinecone_dimension,
                 metric=settings.pinecone_metric
-            )
+            ))
         else:
             vector_store_service.get_index()
         
@@ -137,15 +144,15 @@ def index(
             console.print("[yellow]⚠[/yellow] No documents found to index")
             return
         
-        # Index documents
+        # Index documents (async)
         indexer = VectorStoreIndexer(embeddings_service, vector_store_service)
-        result = indexer.index_documents(
+        result = asyncio.run(indexer.index_documents(
             documents,
             embedding_batch_size=batch_size,
             upsert_batch_size=upsert_batch_size,
             namespace=namespace,
             max_workers=workers
-        )
+        ))
         
         console.print(f"\n[green]✓[/green] Indexing complete!")
         console.print(f"  • Uploaded: {result['uploaded_count']} vectors")
@@ -185,6 +192,11 @@ def fill(
         # Get settings and clients
         settings = get_settings()
         openai_client = get_openai_client()
+        openai_async = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.openai_timeout,
+            max_retries=settings.openai_max_retries
+        )
         pinecone_client = get_pinecone_client()
         
         # Create services
@@ -194,8 +206,9 @@ def fill(
         workers = workers if workers is not None else settings.max_workers
         
         embeddings_service = EmbeddingsService(
-            client=openai_client,
-            model=settings.openai_embedding_model
+            async_client=openai_async,
+            model=settings.openai_embedding_model,
+            max_workers=workers
         )
         
         vector_store_service = VectorStoreService(
@@ -206,7 +219,7 @@ def fill(
         
         # Create rate matcher
         rate_matcher = RateMatcher(
-            openai_client=openai_client,
+            async_openai_client=openai_async,
             embeddings_service=embeddings_service,
             vector_store_service=vector_store_service,
             similarity_threshold=threshold,
@@ -218,14 +231,14 @@ def fill(
         # Create pipeline
         pipeline = RateFillerPipeline(rate_matcher)
         
-        # Process file
-        result = pipeline.process_file(
+        # Process file (async)
+        result = asyncio.run(pipeline.process_file(
             input_file=input_file,
             sheet_name=sheet_name,
             output_file=output_file,
             namespace=namespace,
             workers=workers
-        )
+        ))
         
         # Display report
         report = result['report']
@@ -237,6 +250,7 @@ def fill(
         console.print(f"  • No matches: {report['no_matches']}")
         console.print(f"  • Errors: {report['errors']}")
         console.print(f"  • Output: {result['output_file']}")
+        console.print(f"  • Summary: {result.get('summary_file', 'N/A')}")
         
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")
@@ -263,6 +277,11 @@ def query(
         # Get settings and clients
         settings = get_settings()
         openai_client = get_openai_client()
+        openai_async = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.openai_timeout,
+            max_retries=settings.openai_max_retries
+        )
         pinecone_client = get_pinecone_client()
         
         namespace = namespace if namespace is not None else (settings.pinecone_namespace or "")
@@ -271,7 +290,7 @@ def query(
         
         # Create services
         embeddings_service = EmbeddingsService(
-            client=openai_client,
+            async_client=openai_async,
             model=settings.openai_embedding_model
         )
         
@@ -281,16 +300,17 @@ def query(
             environment=settings.pinecone_environment
         )
         
-        # Generate embedding
-        query_embedding = embeddings_service.generate_embedding(search_text)
+        async def run_query():
+            query_embedding = await embeddings_service.generate_embedding(search_text)
+            results = await vector_store_service.search(
+                query_embedding=query_embedding,
+                top_k=top_k,
+                namespace=namespace,
+                include_metadata=True
+            )
+            return results
         
-        # Search
-        results = vector_store_service.search(
-            query_embedding=query_embedding,
-            top_k=top_k,
-            namespace=namespace,
-            include_metadata=True
-        )
+        results = asyncio.run(run_query())
         
         # Display results
         console.print(f"\n[cyan]Found {len(results)} results:[/cyan]\n")

@@ -36,6 +36,7 @@ output/
 *.xlsx
 *.json
 *.jsonl
+*.txt
 
 # OS
 .DS_Store

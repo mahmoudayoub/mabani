@@ -1,15 +1,14 @@
 """
 Vector store service using Pinecone.
 Handles index management, uploading, and querying.
+Includes async helpers (uses asyncio.to_thread for Pinecone ops).
 """
+import asyncio
 import logging
 import re
 import unicodedata
 from typing import List, Dict, Any, Optional
 from pinecone import Pinecone, ServerlessSpec
-from tqdm import tqdm
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +73,7 @@ class VectorStoreService:
         
         return ascii_str
     
-    def create_index(
+    async def create_index(
         self,
         dimension: int = 1536,
         metric: str = 'cosine',
@@ -82,35 +81,26 @@ class VectorStoreService:
         region: Optional[str] = None
     ):
         """
-        Create a new Pinecone index (serverless).
-        
-        Args:
-            dimension: Embedding dimension
-            metric: Distance metric ('cosine', 'euclidean', 'dotproduct')
-            cloud: Cloud provider
-            region: Cloud region (uses self.environment if None)
+        Create a new Pinecone index (async wrapper).
         """
         if region is None:
             region = self.environment
         
-        # Check if index already exists
-        existing_indexes = self.pc.list_indexes()
+        existing_indexes = await asyncio.to_thread(self.pc.list_indexes)
         index_names = [idx.name for idx in existing_indexes]
         
         if self.index_name in index_names:
             logger.info(f"Index '{self.index_name}' already exists")
             self.index = self.pc.Index(self.index_name)
-            
-            # Get index stats
-            stats = self.index.describe_index_stats()
+            stats = await asyncio.to_thread(self.index.describe_index_stats)
             logger.info(f"Current index stats: {stats.get('total_vector_count', 0)} vectors")
             return
         
         logger.info(f"Creating new index '{self.index_name}'...")
         logger.info(f"Dimension: {dimension}, Metric: {metric}")
         
-        # Create serverless index
-        self.pc.create_index(
+        await asyncio.to_thread(
+            self.pc.create_index,
             name=self.index_name,
             dimension=dimension,
             metric=metric,
@@ -120,10 +110,14 @@ class VectorStoreService:
             )
         )
         
-        # Wait for index to be ready
         logger.info("Waiting for index to be ready...")
-        while not self.pc.describe_index(self.index_name).status['ready']:
-            time.sleep(1)
+        while True:
+            ready = await asyncio.to_thread(
+                lambda: self.pc.describe_index(self.index_name).status['ready']
+            )
+            if ready:
+                break
+            await asyncio.sleep(1)
         
         self.index = self.pc.Index(self.index_name)
         logger.info(f"Index '{self.index_name}' created successfully")
@@ -187,64 +181,32 @@ class VectorStoreService:
         
         return vectors
     
-    def upload_vectors(
+    async def upload_vectors(
         self,
         items: List[Dict[str, Any]],
         batch_size: int = 300,
-        show_progress: bool = True,
         namespace: str = '',
-        max_workers: int = 5
+        max_workers: int = 100
     ) -> Dict[str, Any]:
         """
-        Upload vectors to Pinecone.
-        
-        Args:
-            items: List of items with embeddings
-            batch_size: Number of vectors per batch
-            show_progress: Show progress bar
-            namespace: Pinecone namespace (for data isolation)
-            max_workers: Number of threads for parallel uploads
-            
-        Returns:
-            Upload statistics
+        Async upload using asyncio.to_thread for Pinecone calls.
         """
         index = self.get_index()
-        
-        logger.info(f"Preparing {len(items)} vectors for upload...")
+        logger.info(f"[async] Preparing {len(items)} vectors for upload...")
         vectors = self.prepare_vectors(items)
-        
-        logger.info(f"Uploading {len(vectors)} vectors to Pinecone...")
-        
-        # Upload in batches
-        uploaded_count = 0
+        logger.info(f"[async] Uploading {len(vectors)} vectors to Pinecone...")
         batches = [vectors[i:i + batch_size] for i in range(0, len(vectors), batch_size)]
-        effective_workers = max(1, max_workers)
+        semaphore = asyncio.Semaphore(max(1, max_workers))
         
-        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
-            future_to_len = {
-                executor.submit(
-                    index.upsert,
-                    vectors=batch,
-                    namespace=namespace
-                ): len(batch)
-                for batch in batches
-            }
-            
-            iterator = as_completed(future_to_len)
-            if show_progress:
-                iterator = tqdm(iterator, total=len(future_to_len), desc="Uploading to Pinecone", unit="batch")
-            
-            for future in iterator:
-                try:
-                    future.result()
-                    uploaded_count += future_to_len[future]
-                except Exception as e:
-                    logger.error(f"Error uploading batch: {e}")
-                    raise
+        async def _upsert_batch(batch):
+            async with semaphore:
+                await asyncio.to_thread(index.upsert, vectors=batch, namespace=namespace)
+                return len(batch)
         
-        # Get final stats
-        stats = index.describe_index_stats()
+        uploaded_counts = await asyncio.gather(*[_upsert_batch(batch) for batch in batches])
+        uploaded_count = sum(uploaded_counts)
         
+        stats = await asyncio.to_thread(index.describe_index_stats)
         result = {
             'uploaded_count': uploaded_count,
             'total_vectors_in_index': stats.get('total_vector_count', 0),
@@ -252,12 +214,11 @@ class VectorStoreService:
             'namespace': namespace
         }
         
-        logger.info(f"Upload complete! {uploaded_count} vectors uploaded")
-        logger.info(f"Total vectors in index: {result['total_vectors_in_index']}")
-        
+        logger.info(f"[async] Upload complete! {uploaded_count} vectors uploaded")
+        logger.info(f"[async] Total vectors in index: {result['total_vectors_in_index']}")
         return result
     
-    def search(
+    async def search(
         self,
         query_embedding: List[float],
         top_k: int = 5,
@@ -266,21 +227,11 @@ class VectorStoreService:
         include_metadata: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Search for similar vectors.
-        
-        Args:
-            query_embedding: Query vector
-            top_k: Number of results to return
-            filter_dict: Metadata filters
-            namespace: Namespace to search
-            include_metadata: Include metadata in results
-            
-        Returns:
-            List of matches with scores and metadata
+        Search for similar vectors (async wrapper over Pinecone client).
         """
         index = self.get_index()
-        
-        results = index.query(
+        results = await asyncio.to_thread(
+            index.query,
             vector=query_embedding,
             top_k=top_k,
             filter=filter_dict,
@@ -289,7 +240,6 @@ class VectorStoreService:
         )
         
         matches = []
-        # Handle both dict-like and object-like responses
         result_matches = results.matches if hasattr(results, 'matches') else results.get('matches', [])
         
         for match in result_matches:

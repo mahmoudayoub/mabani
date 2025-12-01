@@ -1,30 +1,29 @@
 """
-Thread-safe rate limiter utilities.
-Enforces a maximum number of requests per rolling minute window.
+Async rate limiter utilities (RPM-based sliding one-minute windows).
+RPM values are pulled from .env via settings so they can be tuned without code changes.
 """
+import asyncio
 import time
 from collections import deque
-from threading import Condition
 
 from almabani.config.settings import get_settings
 
 
-class RateLimiter:
-    """Simple sliding-window rate limiter."""
+class AsyncRateLimiter:
+    """Asyncio-friendly sliding-window limiter."""
     
     def __init__(self, max_requests_per_minute: int):
         self.max_requests = max_requests_per_minute
         self.window_seconds = 60.0
         self._timestamps = deque()
-        self._condition = Condition()
+        self._condition = asyncio.Condition()
     
-    def acquire(self):
-        """Block until a request slot is available."""
-        with self._condition:
+    async def acquire(self):
+        """Await until a request slot is available."""
+        async with self._condition:
             while True:
                 now = time.monotonic()
                 
-                # Drop timestamps outside the window
                 while self._timestamps and (now - self._timestamps[0]) > self.window_seconds:
                     self._timestamps.popleft()
                 
@@ -33,12 +32,14 @@ class RateLimiter:
                     self._condition.notify_all()
                     return
                 
-                # Wait until the oldest timestamp falls out of the window
                 earliest = self._timestamps[0]
                 sleep_for = self.window_seconds - (now - earliest)
-                self._condition.wait(timeout=max(sleep_for, 0.001))
+                try:
+                    await asyncio.wait_for(self._condition.wait(), timeout=max(sleep_for, 0.001))
+                except asyncio.TimeoutError:
+                    continue
 
 
 _settings = get_settings()
-embedding_rate_limiter = RateLimiter(max_requests_per_minute=_settings.embeddings_rpm)
-chat_rate_limiter = RateLimiter(max_requests_per_minute=_settings.chat_rpm)
+async_embedding_rate_limiter = AsyncRateLimiter(max_requests_per_minute=_settings.embeddings_rpm)
+async_chat_rate_limiter = AsyncRateLimiter(max_requests_per_minute=_settings.chat_rpm)

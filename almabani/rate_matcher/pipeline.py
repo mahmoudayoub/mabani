@@ -1,13 +1,15 @@
 """
 Rate Filler Pipeline - Fill missing rates in BOQ Excel files.
 Uses Excel I/O, vector search, and 3-stage LLM matching.
+Supports async processing to better utilize OpenAI RPM-limited throughput.
 """
+import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+from almabani.config.settings import get_settings
 from almabani.core.excel import ExcelIO
 from almabani.core.models import MatchResult, MatchStatus, ProcessingReport, ItemType
 from almabani.parsers.excel_parser import ExcelParser
@@ -35,80 +37,56 @@ class RateFillerPipeline:
         
         logger.info("Rate Filler Pipeline initialized")
     
-    def process_file(
+    async def process_file(
         self,
         input_file: Path,
         sheet_name: Optional[str] = None,
         output_file: Optional[Path] = None,
         namespace: str = '',
-        workers: int = 5
+        workers: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Process a single Excel file and fill missing rates.
-        
-        Args:
-            input_file: Path to input Excel file
-            sheet_name: Name of the sheet to process (None = first sheet)
-            output_file: Path to output file (auto-generated if None)
-            namespace: Pinecone namespace for searching
-            workers: Number of threads for parallel matching
-            
-        Returns:
-            Processing results and statistics
+        Async variant of process_file using asyncio + RateMatcher async calls.
         """
-        logger.info(f"Processing file: {input_file}")
-        logger.info(f"Sheet: {sheet_name if sheet_name else 'first sheet'}")
+        settings = get_settings()
+        workers = workers if workers is not None else settings.max_workers
         
-        # Read Excel file
-        sheets_data = self.excel_io.read_excel(str(input_file), sheet_name=sheet_name)
-        
+        logger.info(f"[async] Processing file: {input_file}")
+        logger.info(f"[async] Using {workers} workers")
+        sheets_data = await asyncio.to_thread(self.excel_io.read_excel, str(input_file), sheet_name=sheet_name)
         if not sheets_data:
             raise ValueError(f"No sheets found in {input_file}")
         
-        selected_sheet = sheet_name
-        if selected_sheet is None:
-            selected_sheet = next(iter(sheets_data.keys()))
-        
+        selected_sheet = sheet_name or next(iter(sheets_data.keys()))
         if selected_sheet not in sheets_data:
             raise ValueError(f"Sheet '{selected_sheet}' not found in {input_file}")
         
         df, header_row_idx = sheets_data[selected_sheet]
         columns = self.excel_io.detect_columns(df)
         
-        logger.info(f"Detected columns: {columns}")
-        
-        # Extract items needing filling
-        parent_map = self._build_parent_map(df, header_row_idx, columns)
-        items_to_fill = self._extract_items_for_filling(df, header_row_idx, columns, parent_map)
-        
-        logger.info(f"Found {len(items_to_fill)} items needing rate filling")
+        parent_map = await asyncio.to_thread(self._build_parent_map, df, header_row_idx, columns)
+        items_to_fill = await asyncio.to_thread(self._extract_items_for_filling, df, header_row_idx, columns, parent_map)
         
         if not items_to_fill:
-            logger.warning("No items need filling")
+            logger.warning("[async] No items need filling")
             return {
                 'input_file': str(input_file),
-                'sheet_name': sheet_name,
+                'sheet_name': selected_sheet,
                 'items_processed': 0,
                 'output_file': None
             }
         
-        # Process items (find matches)
-        filled_items = []
         report = ProcessingReport(total_items=len(items_to_fill))
-        
         worker_count = max(1, workers)
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            future_to_item = {
-                executor.submit(self._process_single_item, item, namespace): item
-                for item in items_to_fill
-            }
-            
-            for future in as_completed(future_to_item):
-                item = future_to_item[future]
+        semaphore = asyncio.Semaphore(worker_count)
+        filled_items: List[Dict[str, Any]] = []
+        
+        async def handle_item(item: Dict[str, Any]):
+            nonlocal filled_items
+            async with semaphore:
                 try:
-                    filled_item, result = future.result()
+                    filled_item, result = await self._process_single_item_async(item, namespace)
                     filled_items.append(filled_item)
-                    
                     report.processed_items += 1
                     if result['status'] == 'match':
                         if result['match_type'] == 'exact':
@@ -120,16 +98,16 @@ class RateFillerPipeline:
                     else:
                         report.no_matches += 1
                 except Exception as e:
-                    logger.error(f"Error processing item {item.get('row_index')}: {e}")
+                    logger.error(f"[async] Error processing item {item.get('row_index')}: {e}")
                     report.errors += 1
                     report.error_items.append(str(item.get('row_index')))
         
-        # Generate output file path if not provided
+        await asyncio.gather(*(handle_item(item) for item in items_to_fill))
+        
         if output_file is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = input_file.parent / f"{input_file.stem}_filled_{timestamp}.xlsx"
         
-        # Write filled Excel
         sheet_results = {
             selected_sheet: {
                 'header_row_index': header_row_idx,
@@ -138,25 +116,29 @@ class RateFillerPipeline:
             }
         }
         
-        output_path = self.excel_io.write_filled_excel(
+        output_path = await asyncio.to_thread(
+            self.excel_io.write_filled_excel,
             str(input_file),
             str(output_file),
             sheet_results
         )
         
-        logger.info(f"✓ Pipeline complete!")
-        logger.info(f"  Processed: {report.processed_items}/{report.total_items}")
-        logger.info(f"  Exact matches: {report.exact_matches}")
-        logger.info(f"  Expert matches: {report.expert_matches}")
-        logger.info(f"  Estimates: {report.estimates}")
-        logger.info(f"  No matches: {report.no_matches}")
-        logger.info(f"  Errors: {report.errors}")
-        logger.info(f"  Output: {output_path}")
+        # Generate summary file
+        summary_file = output_file.with_suffix('.txt')
+        summary_content = self._generate_summary(
+            input_file=input_file,
+            output_file=output_file,
+            sheet_name=selected_sheet,
+            report=report
+        )
+        await asyncio.to_thread(self._write_summary_file, summary_file, summary_content)
         
+        logger.info(f"[async] ✓ Pipeline complete!")
         return {
             'input_file': str(input_file),
             'sheet_name': selected_sheet,
             'output_file': output_path,
+            'summary_file': str(summary_file),
             'report': report.to_dict()
         }
     
@@ -247,8 +229,8 @@ class RateFillerPipeline:
                 
                 if node.item_type == ItemType.ITEM and node.row_number is not None:
                     parent_map[node.row_number] = {
-                        'parent': parent_desc,
-                        'grandparent': grandparent_desc
+                        'parent': node_parent,
+                        'grandparent': node_grandparent
                     }
                 
                 # Recurse into children
@@ -258,14 +240,11 @@ class RateFillerPipeline:
         walk(tree, None, None)
         return parent_map
     
-    def _process_single_item(self, item: Dict[str, Any], namespace: str) -> tuple:
+    async def _process_single_item_async(self, item: Dict[str, Any], namespace: str) -> tuple:
         """
-        Process a single item through the rate matcher.
-        
-        Returns:
-            Tuple of (filled_item, match_result)
+        Async variant of _process_single_item.
         """
-        result = self.rate_matcher.find_match(
+        result = await self.rate_matcher.find_match(
             item_description=item['description'],
             item_unit=item.get('current_unit', ''),
             item_code=item.get('item_code', ''),
@@ -273,7 +252,6 @@ class RateFillerPipeline:
             grandparent=item.get('grandparent'),
             namespace=namespace
         )
-        
         filled_item = self._process_match_result(item, result)
         return filled_item, result
     
@@ -299,3 +277,62 @@ class RateFillerPipeline:
             filled_item['reference'] = result.get('reference', '')
         
         return filled_item
+
+    def _generate_summary(
+        self,
+        input_file: Path,
+        output_file: Path,
+        sheet_name: str,
+        report: ProcessingReport
+    ) -> str:
+        """Generate a text summary of the processing results."""
+        lines = []
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Header
+        lines.append("=" * 70)
+        lines.append("ALMABANI BOQ RATE FILLER - PROCESSING SUMMARY")
+        lines.append("=" * 70)
+        lines.append("")
+        
+        # File info
+        lines.append("FILE INFORMATION")
+        lines.append("-" * 40)
+        lines.append(f"  Input File:    {input_file.name}")
+        lines.append(f"  Output File:   {output_file.name}")
+        lines.append(f"  Sheet:         {sheet_name}")
+        lines.append(f"  Generated:     {timestamp}")
+        lines.append("")
+        
+        # Statistics
+        lines.append("PROCESSING STATISTICS")
+        lines.append("-" * 40)
+        lines.append(f"  Total Items:     {report.total_items}")
+        lines.append(f"  Processed:       {report.processed_items}")
+        lines.append(f"  Exact Matches:   {report.exact_matches}")
+        lines.append(f"  Expert Matches:  {report.expert_matches}")
+        lines.append(f"  Estimates:       {report.estimates}")
+        lines.append(f"  No Matches:      {report.no_matches}")
+        lines.append(f"  Errors:          {report.errors}")
+        lines.append("")
+        
+        # Success rate
+        if report.processed_items > 0:
+            filled = report.exact_matches + report.expert_matches + report.estimates
+            success_rate = (filled / report.processed_items) * 100
+            lines.append(f"  Fill Rate:       {success_rate:.1f}%")
+            lines.append("")
+        
+        # Footer
+        lines.append("=" * 70)
+        lines.append("END OF SUMMARY")
+        lines.append("=" * 70)
+        
+        return "\n".join(lines)
+    
+    def _write_summary_file(self, file_path: Path, content: str) -> None:
+        """Write summary content to a text file."""
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        logger.info(f"Summary written to: {file_path}")
+

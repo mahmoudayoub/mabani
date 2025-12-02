@@ -3,6 +3,7 @@ Centralized logging configuration.
 Sets up consistent logging across all modules.
 """
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -10,7 +11,7 @@ from datetime import datetime
 
 
 def setup_logging(
-    log_level: str = "INFO",
+    log_level: Optional[str] = None,
     log_file: Optional[Path] = None,
     log_format: Optional[str] = None,
     include_timestamp: bool = True
@@ -20,13 +21,24 @@ def setup_logging(
     
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+                   If None, reads from LOG_LEVEL env var, defaults to INFO
         log_file: Optional path to log file
+                  If None, reads from LOG_FILE env var
         log_format: Custom log format string
         include_timestamp: Include timestamp in log filenames
     
     Returns:
         Configured root logger
     """
+    # Read from environment variables if not provided
+    if log_level is None:
+        log_level = os.getenv("LOG_LEVEL", "INFO")
+    
+    if log_file is None:
+        env_log_file = os.getenv("LOG_FILE")
+        if env_log_file:
+            log_file = Path(env_log_file)
+    
     # Default format
     if log_format is None:
         log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

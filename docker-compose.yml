@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  almabani:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: almabani-boq
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      # Persist data across container restarts
+      - almabani-uploads:/app/app/data/uploads
+      - almabani-fills:/app/app/data/fills
+      - almabani-indexes:/app/app/data/indexes
+      - almabani-logs:/app/data/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  almabani-uploads:
+  almabani-fills:
+  almabani-indexes:
+  almabani-logs:

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Parse Excel - Almabani BOQ System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-file-excel"></i> Parse Excel to JSON</h1>
+    <p>Convert Excel BOQ files into structured hierarchical JSON format</p>
+</div>
+
+<div class="form-container">
+    <form id="parse-form" enctype="multipart/form-data">
+        <div class="form-section">
+            <h3><i class="fas fa-upload"></i> Upload File</h3>
+            <div class="file-upload" id="file-drop-zone">
+                <input type="file" id="file-input" name="file" accept=".xlsx,.xls" required>
+                <div class="file-upload-content">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>Drag & drop Excel file here or click to browse</p>
+                    <span class="file-types">Supported: .xlsx, .xls</span>
+                </div>
+                <div class="file-selected hidden" id="file-selected">
+                    <i class="fas fa-file-excel"></i>
+                    <span id="selected-filename"></span>
+                    <button type="button" class="btn-remove" onclick="clearFile()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3><i class="fas fa-cog"></i> Options</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="sheets">Specific Sheets (optional)</label>
+                    <input type="text" id="sheets" name="sheets" placeholder="Sheet1, Sheet2, ...">
+                    <small>Comma-separated list of sheet names to process. Leave empty for all sheets.</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-play"></i> Parse File
+            </button>
+        </div>
+    </form>
+</div>
+
+<div id="result-container" class="result-container hidden">
+    <div class="result-header">
+        <h3><i class="fas fa-check-circle"></i> Parsing Complete</h3>
+    </div>
+    <div class="result-content">
+        <div class="result-stats">
+            <div class="result-stat">
+                <span class="label">Input File:</span>
+                <span id="result-input" class="value"></span>
+            </div>
+            <div class="result-stat">
+                <span class="label">Output Directory:</span>
+                <span id="result-output-dir" class="value"></span>
+            </div>
+            <div class="result-stat">
+                <span class="label">Files Generated:</span>
+                <span id="result-count" class="value"></span>
+            </div>
+        </div>
+        <div class="result-files">
+            <h4>Generated Files:</h4>
+            <ul id="result-files-list"></ul>
+        </div>
+        <div class="result-actions">
+            <a href="{{ url_for('index_page') }}" class="btn btn-primary">
+                <i class="fas fa-arrow-right"></i> Proceed to Index
+            </a>
+            <button type="button" class="btn btn-secondary" onclick="resetForm()">
+                <i class="fas fa-redo"></i> Parse Another
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('parse-form');
+    const fileInput = document.getElementById('file-input');
+    const dropZone = document.getElementById('file-drop-zone');
+    const fileSelected = document.getElementById('file-selected');
+    const selectedFilename = document.getElementById('selected-filename');
+    const uploadContent = dropZone.querySelector('.file-upload-content');
+
+    // File input change
+    fileInput.addEventListener('change', function(e) {
+        if (this.files.length > 0) {
+            showSelectedFile(this.files[0]);
+        }
+    });
+
+    // Drag and drop
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            showSelectedFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    function showSelectedFile(file) {
+        selectedFilename.textContent = file.name;
+        uploadContent.classList.add('hidden');
+        fileSelected.classList.remove('hidden');
+    }
+
+    window.clearFile = function() {
+        fileInput.value = '';
+        uploadContent.classList.remove('hidden');
+        fileSelected.classList.add('hidden');
+    };
+
+    window.resetForm = function() {
+        form.reset();
+        clearFile();
+        document.getElementById('result-container').classList.add('hidden');
+    };
+
+    // Form submission
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        showLoading('Parsing Excel file...');
+
+        try {
+            const response = await fetch('/api/parse', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                showResult(data);
+            } else {
+                showError(data.error || 'Unknown error occurred');
+            }
+        } catch (error) {
+            hideLoading();
+            showError('Network error: ' + error.message);
+        }
+    });
+
+    function showResult(data) {
+        document.getElementById('result-input').textContent = data.input_file;
+        document.getElementById('result-output-dir').textContent = data.output_dir;
+        document.getElementById('result-count').textContent = data.output_files.length;
+
+        const filesList = document.getElementById('result-files-list');
+        filesList.innerHTML = '';
+        data.output_files.forEach(file => {
+            const li = document.createElement('li');
+            li.innerHTML = `<i class="fas fa-file-code"></i> ${file}`;
+            filesList.appendChild(li);
+        });
+
+        document.getElementById('result-container').classList.remove('hidden');
+        document.getElementById('result-container').scrollIntoView({ behavior: 'smooth' });
+    }
+});
+</script>
+{% endblock %}

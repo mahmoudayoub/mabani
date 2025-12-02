@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Almabani BOQ System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-cog"></i> System Settings</h1>
+    <p>View current configuration loaded from environment variables</p>
+</div>
+
+<div class="settings-grid">
+    <div class="settings-section">
+        <h3><i class="fas fa-robot"></i> OpenAI Configuration</h3>
+        <div class="settings-list">
+            <div class="setting-item">
+                <span class="setting-label">Chat Model</span>
+                <span class="setting-value">{{ settings.openai_chat_model }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Embedding Model</span>
+                <span class="setting-value">{{ settings.openai_embedding_model }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Temperature</span>
+                <span class="setting-value">{{ settings.openai_temperature }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Timeout</span>
+                <span class="setting-value">{{ settings.openai_timeout }}s</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Max Retries</span>
+                <span class="setting-value">{{ settings.openai_max_retries }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3><i class="fas fa-database"></i> Pinecone Configuration</h3>
+        <div class="settings-list">
+            <div class="setting-item">
+                <span class="setting-label">Index Name</span>
+                <span class="setting-value">{{ settings.pinecone_index_name }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Environment</span>
+                <span class="setting-value">{{ settings.pinecone_environment }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Dimension</span>
+                <span class="setting-value">{{ settings.pinecone_dimension }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Metric</span>
+                <span class="setting-value">{{ settings.pinecone_metric }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Batch Size</span>
+                <span class="setting-value">{{ settings.pinecone_batch_size }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3><i class="fas fa-search"></i> Search Settings</h3>
+        <div class="settings-list">
+            <div class="setting-item">
+                <span class="setting-label">Similarity Threshold</span>
+                <span class="setting-value">{{ settings.similarity_threshold }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Top-K Candidates</span>
+                <span class="setting-value">{{ settings.top_k }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3><i class="fas fa-tachometer-alt"></i> Performance Settings</h3>
+        <div class="settings-list">
+            <div class="setting-item">
+                <span class="setting-label">Max Workers</span>
+                <span class="setting-value">{{ settings.max_workers }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Batch Size</span>
+                <span class="setting-value">{{ settings.batch_size }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Embeddings RPM</span>
+                <span class="setting-value">{{ settings.embeddings_rpm }}</span>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Chat RPM</span>
+                <span class="setting-value">{{ settings.chat_rpm }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if index_stats %}
+<div class="stats-section">
+    <h2><i class="fas fa-chart-pie"></i> Vector Store Statistics</h2>
+    <div class="stats-grid">
+        <div class="stat-card large">
+            <div class="stat-value">{{ index_stats.total_vectors | default(0) | int }}</div>
+            <div class="stat-label">Total Vectors</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ index_stats.dimension | default(0) }}</div>
+            <div class="stat-label">Dimensions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ index_stats.index_name }}</div>
+            <div class="stat-label">Index Name</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="info-section">
+    <h3><i class="fas fa-info-circle"></i> Configuration Notes</h3>
+    <div class="info-content">
+        <p>Settings are loaded from the <code>.env</code> file in the project root. To modify settings:</p>
+        <ol>
+            <li>Edit the <code>.env</code> file</li>
+            <li>Restart the application</li>
+        </ol>
+        <p class="note"><i class="fas fa-lightbulb"></i> Changes to settings require an application restart to take effect.</p>
+    </div>
+</div>
+{% endblock %}

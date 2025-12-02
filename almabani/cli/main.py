@@ -29,15 +29,13 @@ console = Console()
 def parse(
     input_file: Path = typer.Argument(..., help="Excel BOQ file to parse"),
     output_dir: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory"),
-    mode: str = typer.Option("multiple", "--mode", "-m", help="Output mode: 'single' or 'multiple'"),
     sheets: Optional[str] = typer.Option(None, "--sheets", "-s", help="Comma-separated sheet names"),
     log_file: Optional[Path] = typer.Option(None, "--log", "-l", help="Log file path")
 ):
-    """📄 Parse Excel BOQ file into hierarchical JSON."""
+    """📄 Parse Excel BOQ file into hierarchical JSON (one JSON per sheet)."""
     console.print(Panel.fit(
         f"[bold cyan]Excel to JSON Parser[/bold cyan]\n"
-        f"Input: {input_file}\n"
-        f"Mode: {mode}",
+        f"Input: {input_file}",
         border_style="cyan"
     ))
     
@@ -52,10 +50,10 @@ def parse(
         # Create pipeline
         pipeline = ExcelToJsonPipeline()
         
-        # Process file
+        # Process file (always multiple mode - one JSON per sheet)
         output_files = pipeline.process_file(
             input_file=input_file,
-            output_mode=mode,
+            output_mode="multiple",
             output_dir=output_dir,
             sheets=sheet_list
         )
@@ -424,6 +422,38 @@ def delete_sheet(
         
         console.print(f"\n[yellow]Run 'almabani index' with the sheet's JSON to re-index it[/yellow]")
         
+    except Exception as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def gui(
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind to"),
+    port: int = typer.Option(5000, "--port", "-p", help="Port to bind to"),
+    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode"),
+):
+    """🌐 Start the web GUI interface."""
+    console.print(Panel.fit(
+        f"[bold cyan]Almabani Web GUI[/bold cyan]\n"
+        f"Starting server on http://{host}:{port}",
+        border_style="cyan"
+    ))
+    
+    try:
+        import sys
+        from pathlib import Path
+        # Add project root to path so 'app' module can be found
+        project_root = Path(__file__).parent.parent.parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+        
+        from app.main import run_app
+        run_app(host=host, port=port, debug=debug)
+    except ImportError as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
+        console.print("[yellow]Make sure Flask is installed: pip install flask[/yellow]")
+        raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")
         raise typer.Exit(1)

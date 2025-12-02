@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}Fill Rates - Almabani BOQ System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-magic"></i> Fill Missing Rates</h1>
+    <p>Automatically fill missing rates in BOQ files using AI-powered 3-stage matching</p>
+</div>
+
+<div class="info-banner">
+    <i class="fas fa-robot"></i>
+    <div>
+        <strong>AI Model:</strong> {{ settings.openai_chat_model }} | 
+        <strong>Threshold:</strong> {{ settings.similarity_threshold }} |
+        <strong>Top-K:</strong> {{ settings.top_k }}
+    </div>
+</div>
+
+<div class="form-container">
+    <form id="fill-form" enctype="multipart/form-data">
+        <div class="form-section">
+            <h3><i class="fas fa-upload"></i> Upload BOQ File</h3>
+            <div class="file-upload" id="file-drop-zone">
+                <input type="file" id="file-input" name="file" accept=".xlsx,.xls" required>
+                <div class="file-upload-content">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>Drag & drop Excel BOQ file here or click to browse</p>
+                    <span class="file-types">Supported: .xlsx, .xls (with empty rates to fill)</span>
+                </div>
+                <div class="file-selected hidden" id="file-selected">
+                    <i class="fas fa-file-excel"></i>
+                    <span id="selected-filename"></span>
+                    <button type="button" class="btn-remove" onclick="clearFile()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3><i class="fas fa-sliders-h"></i> Matching Options</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="sheet_name">Sheet Name (optional)</label>
+                    <input type="text" id="sheet_name" name="sheet_name" placeholder="First sheet">
+                    <small>Leave empty to process the first sheet</small>
+                </div>
+                <div class="form-group">
+                    <label for="namespace">Namespace (optional)</label>
+                    <input type="text" id="namespace" name="namespace" placeholder="default">
+                    <small>Pinecone namespace to search in</small>
+                </div>
+                <div class="form-group">
+                    <label for="threshold">Similarity Threshold</label>
+                    <input type="number" id="threshold" name="threshold" step="0.1" min="0" max="1" 
+                           placeholder="{{ settings.similarity_threshold }}">
+                    <small>Minimum similarity score (0-1)</small>
+                </div>
+                <div class="form-group">
+                    <label for="top_k">Top-K Candidates</label>
+                    <input type="number" id="top_k" name="top_k" min="1" max="20" 
+                           placeholder="{{ settings.top_k }}">
+                    <small>Number of candidates to retrieve</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-play"></i> Start Rate Filling
+            </button>
+        </div>
+    </form>
+</div>
+
+<div id="result-container" class="result-container hidden">
+    <div class="result-header success">
+        <h3><i class="fas fa-check-circle"></i> Rate Filling Complete</h3>
+    </div>
+    <div class="result-content">
+        <div class="result-stats-grid">
+            <div class="stat-box">
+                <div class="stat-number" id="result-total">0</div>
+                <div class="stat-label">Total Items</div>
+            </div>
+            <div class="stat-box exact">
+                <div class="stat-number" id="result-exact">0</div>
+                <div class="stat-label">Exact Matches</div>
+            </div>
+            <div class="stat-box expert">
+                <div class="stat-number" id="result-expert">0</div>
+                <div class="stat-label">Expert Matches</div>
+            </div>
+            <div class="stat-box estimate">
+                <div class="stat-number" id="result-estimates">0</div>
+                <div class="stat-label">Estimates</div>
+            </div>
+            <div class="stat-box no-match">
+                <div class="stat-number" id="result-no-match">0</div>
+                <div class="stat-label">No Match</div>
+            </div>
+            <div class="stat-box error">
+                <div class="stat-number" id="result-errors">0</div>
+                <div class="stat-label">Errors</div>
+            </div>
+        </div>
+        
+        <div class="fill-rate-bar">
+            <div class="fill-rate-label">Fill Rate: <span id="fill-rate">0%</span></div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="download-section">
+            <h4><i class="fas fa-download"></i> Download Results</h4>
+            <div class="download-buttons">
+                <a id="download-excel" href="#" class="btn btn-primary">
+                    <i class="fas fa-file-excel"></i> Download Filled Excel
+                </a>
+                <a id="download-summary" href="#" class="btn btn-secondary">
+                    <i class="fas fa-file-alt"></i> Download Summary
+                </a>
+            </div>
+        </div>
+
+        <div class="result-actions">
+            <button type="button" class="btn btn-secondary" onclick="resetForm()">
+                <i class="fas fa-redo"></i> Fill Another File
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('fill-form');
+    const fileInput = document.getElementById('file-input');
+    const dropZone = document.getElementById('file-drop-zone');
+    const fileSelected = document.getElementById('file-selected');
+    const selectedFilename = document.getElementById('selected-filename');
+    const uploadContent = dropZone.querySelector('.file-upload-content');
+
+    // File handling
+    fileInput.addEventListener('change', function(e) {
+        if (this.files.length > 0) {
+            showSelectedFile(this.files[0]);
+        }
+    });
+
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            showSelectedFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    function showSelectedFile(file) {
+        selectedFilename.textContent = file.name;
+        uploadContent.classList.add('hidden');
+        fileSelected.classList.remove('hidden');
+    }
+
+    window.clearFile = function() {
+        fileInput.value = '';
+        uploadContent.classList.remove('hidden');
+        fileSelected.classList.add('hidden');
+    };
+
+    window.resetForm = function() {
+        form.reset();
+        clearFile();
+        document.getElementById('result-container').classList.add('hidden');
+    };
+
+    // Form submission
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        showLoading('Processing BOQ file with AI matching... This may take several minutes.');
+
+        try {
+            const response = await fetch('/api/fill', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                showResult(data);
+            } else {
+                showError(data.error || 'Unknown error occurred');
+            }
+        } catch (error) {
+            hideLoading();
+            showError('Network error: ' + error.message);
+        }
+    });
+
+    function showResult(data) {
+        const report = data.report;
+        
+        document.getElementById('result-total').textContent = report.total_items;
+        document.getElementById('result-exact').textContent = report.exact_matches;
+        document.getElementById('result-expert').textContent = report.expert_matches;
+        document.getElementById('result-estimates').textContent = report.estimates;
+        document.getElementById('result-no-match').textContent = report.no_matches;
+        document.getElementById('result-errors').textContent = report.errors;
+
+        // Calculate fill rate
+        const filled = report.exact_matches + report.expert_matches + report.estimates;
+        const fillRate = report.processed_items > 0 ? 
+            Math.round((filled / report.processed_items) * 100) : 0;
+        
+        document.getElementById('fill-rate').textContent = fillRate + '%';
+        document.getElementById('progress-fill').style.width = fillRate + '%';
+
+        // Set download links
+        document.getElementById('download-excel').href = '/download/fills/' + data.output_file;
+        if (data.summary_file) {
+            document.getElementById('download-summary').href = '/download/fills/' + data.summary_file;
+            document.getElementById('download-summary').classList.remove('hidden');
+        }
+
+        document.getElementById('result-container').classList.remove('hidden');
+        document.getElementById('result-container').scrollIntoView({ behavior: 'smooth' });
+    }
+});
+</script>
+{% endblock %}

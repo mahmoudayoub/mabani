@@ -42,7 +42,7 @@ class ExcelToJsonPipeline:
         
         Args:
             input_file: Path to input Excel file
-            output_mode: 'single' for one JSON file, 'multiple' for one per sheet
+            output_mode: Deprecated, always uses 'multiple' (one JSON per sheet)
             output_dir: Output directory (if None, uses input file directory)
             sheets: Optional list of specific sheet names to process
             
@@ -50,7 +50,6 @@ class ExcelToJsonPipeline:
             List of paths to generated JSON files
         """
         logger.info(f"Processing file: {input_file}")
-        logger.info(f"Output mode: {output_mode}")
         
         try:
             # Step 1: Parse the Excel file
@@ -67,17 +66,13 @@ class ExcelToJsonPipeline:
             for sheet in workbook.sheets:
                 self.processor.process_sheet(sheet)
             
-            # Step 3: Export to JSON
+            # Step 3: Export to JSON (one file per sheet)
             logger.info("Step 3: Exporting to JSON...")
             
             if output_dir is None:
                 output_dir = input_file.parent / 'output'
             
-            if output_mode == 'single':
-                output_file = output_dir / f"{input_file.stem}.json"
-                output_files = [self.exporter.export_single_file(workbook, output_file)]
-            else:
-                output_files = self.exporter.export_multiple_files(workbook, output_dir)
+            output_files = self.exporter.export_multiple_files(workbook, output_dir)
             
             logger.info(f"✓ Pipeline complete! Generated {len(output_files)} JSON file(s)")
             return output_files
@@ -89,7 +84,6 @@ class ExcelToJsonPipeline:
     def process_directory(
         self,
         input_dir: Path,
-        output_mode: str = 'multiple',
         output_dir: Optional[Path] = None,
         file_pattern: str = '*.xlsx'
     ) -> List[Path]:
@@ -98,7 +92,6 @@ class ExcelToJsonPipeline:
         
         Args:
             input_dir: Directory containing Excel files
-            output_mode: 'single' or 'multiple'
             output_dir: Output directory
             file_pattern: Glob pattern for files to process
             
@@ -115,7 +108,7 @@ class ExcelToJsonPipeline:
         
         for excel_file in excel_files:
             try:
-                output_files = self.process_file(excel_file, output_mode, output_dir)
+                output_files = self.process_file(excel_file, output_dir=output_dir)
                 all_output_files.extend(output_files)
             except Exception as e:
                 logger.error(f"Failed to process {excel_file}: {e}")

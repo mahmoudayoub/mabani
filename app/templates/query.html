@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Query - Almabani BOQ System{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-search"></i> Query Vector Store</h1>
+    <p>Search the indexed BOQ database for similar items and their rates</p>
+</div>
+
+<div class="form-container">
+    <form id="query-form">
+        <div class="form-section">
+            <h3><i class="fas fa-keyboard"></i> Search Query</h3>
+            <div class="form-group">
+                <label for="query">Item Description</label>
+                <textarea id="query" name="query" rows="3" required
+                    placeholder="Enter item description to search for...&#10;Example: SUPPLY AND INSTALL LED FLOODLIGHT 400W"></textarea>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3><i class="fas fa-filter"></i> Search Options</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="namespace">Namespace</label>
+                    <input type="text" id="namespace" name="namespace" placeholder="default">
+                </div>
+                <div class="form-group">
+                    <label for="top_k">Number of Results</label>
+                    <input type="number" id="top_k" name="top_k" value="10" min="1" max="50">
+                </div>
+                <div class="form-group">
+                    <label for="threshold">Minimum Similarity</label>
+                    <input type="number" id="threshold" name="threshold" value="0.5" step="0.1" min="0" max="1">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-search"></i> Search
+            </button>
+        </div>
+    </form>
+</div>
+
+<div id="results-container" class="results-container hidden">
+    <div class="results-header">
+        <h3><i class="fas fa-list"></i> Search Results</h3>
+        <span class="results-count">Found <span id="results-count">0</span> matches</span>
+    </div>
+    
+    <div class="results-list" id="results-list">
+        <!-- Results will be inserted here -->
+    </div>
+</div>
+
+<div id="no-results" class="empty-state hidden">
+    <i class="fas fa-search"></i>
+    <p>No matching items found. Try adjusting your search query or lowering the similarity threshold.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('query-form');
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const data = {
+            query: formData.get('query'),
+            namespace: formData.get('namespace') || '',
+            top_k: parseInt(formData.get('top_k')) || 10,
+            threshold: parseFloat(formData.get('threshold')) || 0.5
+        };
+
+        showLoading('Searching vector store...');
+
+        try {
+            const response = await fetch('/api/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            hideLoading();
+
+            if (result.success) {
+                showResults(result);
+            } else {
+                showError(result.error || 'Unknown error occurred');
+            }
+        } catch (error) {
+            hideLoading();
+            showError('Network error: ' + error.message);
+        }
+    });
+
+    function showResults(data) {
+        const resultsContainer = document.getElementById('results-container');
+        const noResults = document.getElementById('no-results');
+        const resultsList = document.getElementById('results-list');
+        const resultsCount = document.getElementById('results-count');
+
+        if (data.results.length === 0) {
+            resultsContainer.classList.add('hidden');
+            noResults.classList.remove('hidden');
+            return;
+        }
+
+        noResults.classList.add('hidden');
+        resultsContainer.classList.remove('hidden');
+        resultsCount.textContent = data.results.length;
+
+        resultsList.innerHTML = '';
+        data.results.forEach((result, index) => {
+            const scorePercent = Math.round(result.score * 100);
+            const scoreClass = scorePercent >= 80 ? 'high' : (scorePercent >= 60 ? 'medium' : 'low');
+            
+            const resultCard = document.createElement('div');
+            resultCard.className = 'result-card';
+            resultCard.innerHTML = `
+                <div class="result-rank">#${index + 1}</div>
+                <div class="result-content">
+                    <div class="result-description">${result.description}</div>
+                    <div class="result-meta">
+                        <span class="meta-item">
+                            <i class="fas fa-ruler"></i> ${result.unit || 'N/A'}
+                        </span>
+                        <span class="meta-item rate">
+                            <i class="fas fa-tag"></i> ${result.rate ? result.rate.toLocaleString() : 'N/A'}
+                        </span>
+                        <span class="meta-item">
+                            <i class="fas fa-file"></i> ${result.source || 'Unknown'}
+                        </span>
+                    </div>
+                    ${result.category ? `<div class="result-category"><i class="fas fa-folder"></i> ${result.category}</div>` : ''}
+                </div>
+                <div class="result-score ${scoreClass}">
+                    <div class="score-value">${scorePercent}%</div>
+                    <div class="score-label">match</div>
+                </div>
+            `;
+            resultsList.appendChild(resultCard);
+        });
+
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+});
+</script>
+{% endblock %}

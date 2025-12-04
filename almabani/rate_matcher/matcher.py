@@ -127,15 +127,7 @@ class RateMatcher:
         candidates = await self._search_similar_items_async(
             item_description, item_unit, parent, grandparent, namespace
         )
-        
-        # Enforce strict unit matching: drop any candidates whose unit does not
-        # exactly match the target unit (after stripping whitespace).
-        unit_str = str(item_unit).strip()
-        candidates = [
-            c for c in candidates
-            if str(c.get('unit', '')).strip() == unit_str
-        ]
-        
+
         if not candidates:
             logger.info("  No candidates found above threshold")
             return {

@@ -5,67 +5,81 @@ All environment variables and settings are defined here.
 import os
 from pathlib import Path
 from typing import Optional
-from pydantic import Field
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+from dotenv import load_dotenv
+
+
+def _find_and_load_dotenv():
+    """Find and load .env file from multiple possible locations."""
+    possible_paths = [
+        Path.cwd() / '.env',  # Current working directory
+        Path(__file__).parent.parent.parent / '.env',  # Project root
+        Path(__file__).parent.parent.parent.parent / '.env',  # One more level up
+    ]
+    
+    for path in possible_paths:
+        if path.exists():
+            load_dotenv(path, override=True)
+            print(f"[Settings] Loaded .env from: {path}")
+            return path
+    
+    print("[Settings] Warning: No .env file found, using environment variables only")
+    return None
+
+
+# Load .env BEFORE importing pydantic_settings
+_env_path = _find_and_load_dotenv()
+
+# Now import pydantic after env is loaded
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Application settings loaded from environment variables.
+    
+    Pydantic-settings automatically maps:
+    - OPENAI_API_KEY env var -> openai_api_key field
+    - PINECONE_API_KEY env var -> pinecone_api_key field
+    etc. (case-insensitive matching)
+    """
     
     # ==================== API Keys ====================
-    openai_api_key: str = Field(..., env='OPENAI_API_KEY')
-    pinecone_api_key: str = Field(..., env='PINECONE_API_KEY')
+    openai_api_key: str
+    pinecone_api_key: str
     
     # ==================== OpenAI Settings ====================
-    openai_embedding_model: str = Field(
-        default='text-embedding-3-small',
-        env='OPENAI_EMBEDDING_MODEL'
-    )
-    openai_chat_model: str = Field(
-        default='gpt-4o-mini',
-        env='OPENAI_CHAT_MODEL'
-    )
-    openai_temperature: float = Field(default=0.0, env='OPENAI_TEMPERATURE')
-    openai_max_retries: int = Field(default=3, env='OPENAI_MAX_RETRIES')
-    openai_timeout: int = Field(default=60, env='OPENAI_TIMEOUT')
+    openai_embedding_model: str = 'text-embedding-3-small'
+    openai_chat_model: str = 'gpt-4o-mini'
+    openai_temperature: float = 0.0
+    openai_max_retries: int = 3
+    openai_timeout: int = 60
     
     # ==================== Pinecone Settings ====================
-    pinecone_environment: str = Field(
-        default='us-east-1',
-        env='PINECONE_ENVIRONMENT'
-    )
-    pinecone_index_name: str = Field(
-        default='almabani',
-        env='PINECONE_INDEX_NAME'
-    )
-    pinecone_namespace: Optional[str] = Field(default=None, env='PINECONE_NAMESPACE')
-    pinecone_dimension: int = Field(default=1536, env='PINECONE_DIMENSION')
-    pinecone_metric: str = Field(default='cosine', env='PINECONE_METRIC')
-    pinecone_cloud: str = Field(default='aws', env='PINECONE_CLOUD')
+    pinecone_environment: str = 'us-east-1'
+    pinecone_index_name: str = 'almabani'
+    pinecone_namespace: Optional[str] = None
+    pinecone_dimension: int = 1536
+    pinecone_metric: str = 'cosine'
+    pinecone_cloud: str = 'aws'
     
     # ==================== Vector Search Settings ====================
-    similarity_threshold: float = Field(default=0.5, env='SIMILARITY_THRESHOLD')
-    top_k: int = Field(default=6, env='TOP_K')
+    similarity_threshold: float = 0.5
+    top_k: int = 6
     
     # ==================== Processing Settings ====================
-    batch_size: int = Field(default=500, env='BATCH_SIZE')
-    max_workers: int = Field(default=100, env='MAX_WORKERS')
-    pinecone_batch_size: int = Field(default=300, env='PINECONE_BATCH_SIZE')
+    batch_size: int = 500
+    max_workers: int = 100
+    pinecone_batch_size: int = 300
     
     # ==================== Rate Limits ====================
-    embeddings_rpm: int = Field(default=3000, env='EMBEDDINGS_RPM')
-    chat_rpm: int = Field(default=5000, env='CHAT_RPM')
+    embeddings_rpm: int = 3000
+    chat_rpm: int = 5000
     
     # ==================== Logging Settings ====================
-    log_level: str = Field(default='INFO', env='LOG_LEVEL')
-    log_format: str = Field(
-        default='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        env='LOG_FORMAT'
-    )
+    log_level: str = 'INFO'
+    log_format: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     
     # ==================== File Paths ====================
-    # These are computed from the project root
     @property
     def project_root(self) -> Path:
         """Get project root directory."""
@@ -87,25 +101,38 @@ class Settings(BaseSettings):
         return self.project_root / "logs"
     
     class Config:
-        """Pydantic configuration."""
+        """Pydantic-settings v2 configuration."""
         env_file = '.env'
         env_file_encoding = 'utf-8'
         case_sensitive = False
         extra = 'ignore'
-        # Look for .env in project root
-        env_file = str(Path(__file__).parent.parent.parent / '.env')
 
 
-@lru_cache()
+# Use a simple cache - don't use @lru_cache as it can cause issues
+_settings_instance: Optional[Settings] = None
+
+
 def get_settings() -> Settings:
     """
-    Get cached settings instance.
-    This ensures we only load settings once and reuse the same instance.
+    Get settings instance (created once, reused after).
     """
-    return Settings()
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+        # Debug: print loaded values
+        print(f"[Settings] OpenAI Model: {_settings_instance.openai_chat_model}")
+        print(f"[Settings] Pinecone Index: {_settings_instance.pinecone_index_name}")
+        print(f"[Settings] Max Workers: {_settings_instance.max_workers}")
+        print(f"[Settings] Top K: {_settings_instance.top_k}")
+    return _settings_instance
 
 
-# Convenience function to get specific setting values
+def reset_settings():
+    """Reset settings cache (useful for testing or reloading)."""
+    global _settings_instance
+    _settings_instance = None
+
+
 def get_openai_client():
     """Get configured OpenAI client."""
     from openai import OpenAI

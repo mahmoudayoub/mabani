@@ -466,31 +466,27 @@ class RateMatcher:
         """
         Build candidates text for LLM prompts.
         
-        Structure matches the target format for consistency:
+        Structure matches the target format exactly:
         - Index
+        - Hierarchy (grandparent > parent) - only 2 levels, same as target
         - Description
-        - Hierarchy (grandparent > parent > category)
-        - Unit (emphasized to match TARGET UNIT)
+        - Unit
         - Rate
         - Similarity score
         """
         lines = []
         for i, cand in enumerate(candidates, 1):
-            category = cand.get('category') or ''
             parent = cand.get('parent') or ''
             grandparent = cand.get('grandparent') or ''
             
-            # Build hierarchy string (same format as target)
+            # Build hierarchy string - only 2 levels (grandparent > parent), same as target
             hierarchy_parts = []
             if grandparent:
                 hierarchy_parts.append(grandparent)
             if parent and parent not in hierarchy_parts:
                 hierarchy_parts.append(parent)
-            if category and category not in hierarchy_parts:
-                hierarchy_parts.append(category)
             
-            hierarchy_str = ' > '.join([p for p in hierarchy_parts if p])
-            hierarchy_segment = f" | Hierarchy: {hierarchy_str}" if hierarchy_str else ""
+            hierarchy_str = ' > '.join(hierarchy_parts) if hierarchy_parts else ''
             
             # Unit is required - show N/A if missing
             unit_val = cand.get('unit', '')
@@ -500,13 +496,19 @@ class RateMatcher:
             rate_val = cand.get('rate')
             rate_str = f"{rate_val}" if rate_val is not None else 'N/A'
             
-            lines.append(
-                f"{i}. {cand['description']}{hierarchy_segment} | "
-                f"Unit: {unit_str} | "
-                f"Rate: {rate_str} | "
-                f"Similarity: {cand.get('similarity', 0):.2f}"
-            )
-        return '\n'.join(lines)
+            # Format: same structure as target (Hierarchy, Description, Unit)
+            if hierarchy_str:
+                lines.append(
+                    f"[{i}] Hierarchy: {hierarchy_str}\n"
+                    f"    Description: {cand['description']}\n"
+                    f"    Unit: {unit_str} | Rate: {rate_str} | Similarity: {cand.get('similarity', 0):.2f}"
+                )
+            else:
+                lines.append(
+                    f"[{i}] Description: {cand['description']}\n"
+                    f"    Unit: {unit_str} | Rate: {rate_str} | Similarity: {cand.get('similarity', 0):.2f}"
+                )
+        return '\n\n'.join(lines)
     
     def _get_consensus_unit(self, matches: List[Dict]) -> str:
         """Get consensus unit from matches."""

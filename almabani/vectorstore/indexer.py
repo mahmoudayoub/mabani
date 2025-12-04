@@ -172,11 +172,17 @@ class JSONProcessor:
             return None
         
         # Build comprehensive text for embedding
+        # Use only 2 levels (grandparent > parent) to match query structure
         text_parts = []
         
-        # Add category path if exists
-        if category_path:
-            text_parts.append(f"Category: {' > '.join(category_path)}")
+        # Add category (only grandparent + parent, max 2 levels)
+        category_segments = []
+        if grandparent_description:
+            category_segments.append(grandparent_description)
+        if parent_description and parent_description not in category_segments:
+            category_segments.append(parent_description)
+        if category_segments:
+            text_parts.append(f"Category: {' > '.join(category_segments)}")
         
         # Add description
         text_parts.append(description)

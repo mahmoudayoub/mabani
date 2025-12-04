@@ -20,10 +20,8 @@ def _find_and_load_dotenv():
     for path in possible_paths:
         if path.exists():
             load_dotenv(path, override=True)
-            print(f"[Settings] Loaded .env from: {path}")
             return path
     
-    print("[Settings] Warning: No .env file found, using environment variables only")
     return None
 
 
@@ -119,11 +117,6 @@ def get_settings() -> Settings:
     global _settings_instance
     if _settings_instance is None:
         _settings_instance = Settings()
-        # Debug: print loaded values
-        print(f"[Settings] OpenAI Model: {_settings_instance.openai_chat_model}")
-        print(f"[Settings] Pinecone Index: {_settings_instance.pinecone_index_name}")
-        print(f"[Settings] Max Workers: {_settings_instance.max_workers}")
-        print(f"[Settings] Top K: {_settings_instance.top_k}")
     return _settings_instance
 
 

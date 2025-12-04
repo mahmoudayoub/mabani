@@ -36,6 +36,8 @@ TARGET ITEM TO MATCH:
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
 
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²=sqm, nr=No.=each) can be considered for matching.
+
 YOUR ROLE: MATCHER 
 Identify items that describe the SAME BOQ item with the SAME key characteristics, specifications, and cost-driving factors.
 You should be strict about contradictions or uncertainties, and only tolerate minor harmless omissions or wording differences when the overall meaning, specifications, and expected cost level are clearly identical.
@@ -70,11 +72,11 @@ EXACT MATCH CRITERIA (for this stage, treat items as exact ONLY when all key asp
    - Minor wording differences that do not realistically change cost/responsibility (e.g., “including testing” vs “tested and commissioned” for the same unit) may still be treated as an exact match if everything else is identical and cost level is clearly the same.
 
 4. COMPATIBLE AND CONSISTENT UNITS
-   - Units must be equivalent or clear synonyms:
+   - Units must be exactly the same as the TARGET UNIT or clear synonyms:
      - m² = sqm = m^2
      - m³ = cum = m^3
      - nr = No. = each
-   - Different measurement bases (m vs m², m² vs lump sum, item vs m) → NO MATCH.
+   - Any candidate whose unit is different from the TARGET UNIT (including different measurement bases such as m vs m², m² vs lump sum, item vs m) MUST be treated as not usable and effectively ignored.
    - If the unit is missing in one but obvious from the description and clearly identical in context, you may treat as exact **only** if there is no doubt about the unit and all other aspects align.
 
 GENERAL PRINCIPLES (STRICT STAGE):
@@ -135,6 +137,8 @@ TARGET ITEM TO MATCH:
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
 
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²=sqm, nr=No.=each) can be considered as close matches. Candidates with different units must be IGNORED.
+
 YOUR ROLE: EXPERT 
 The matcher found no exact matches. Now find items that are VERY SIMILAR and could reasonably be used as the same or nearly the same thing with small, explainable adjustments to the rate.
 
@@ -155,7 +159,7 @@ CLOSE MATCH CRITERIA (use engineering judgment; most of these should be satisfie
    - Scope must be the same or very similar:
      - "Supply & Install" vs "Supply & Installation" is okay.
      - "Supply only" vs "Supply & Install" vs "Install only" is usually NOT a close match because cost responsibility is materially different.
-   - Units must be compatible (m = m; m² = m²; m³ = m³; No. = each). Different measurement bases are not close matches.
+   - Units must match the TARGET UNIT exactly or be clear synonyms (m = m; m² = m²; m³ = m³; No. = each). Any candidate with a different or incompatible unit is NOT a close match and must be ignored.
    - Missing details are acceptable if everything else points to strong similarity; treat gaps as justification for lower confidence.
    - If you cannot reasonably expect similar cost behavior, do NOT call it a close match.
 
@@ -228,6 +232,8 @@ TARGET ITEM TO MATCH:
 
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
+
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. The approximated_rate you return MUST be in this TARGET UNIT. Only candidates with the SAME unit (or rationally convertible units) can be used for approximation. Candidates with incompatible units must be IGNORED.
 
 YOUR ROLE: ESTIMATOR 
 No exact or close matches were found. Now decide whether any candidate items can serve as a REASONABLE REFERENCE for estimating the cost of the target item, and CALCULATE an approximated rate by applying adjustments to the candidate rate(s).

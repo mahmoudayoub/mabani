@@ -261,7 +261,6 @@ class RateFillerPipeline:
             'row_index': item['row_index'],
             'item_code': item['item_code'],
             'description': item['description'],
-            'filled_unit': None,
             'filled_rate': None,
             'status': 'not_filled',
             'match_type': result.get('match_type', 'none'),
@@ -272,7 +271,6 @@ class RateFillerPipeline:
         
         if result['status'] == 'match':
             filled_item['status'] = 'filled'
-            filled_item['filled_unit'] = result.get('unit', item.get('current_unit'))
             filled_item['filled_rate'] = result.get('rate')
             filled_item['reference'] = result.get('reference', '')
         

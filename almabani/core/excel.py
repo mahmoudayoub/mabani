@@ -223,7 +223,6 @@ class ExcelIO:
                                 'row_index': int,
                                 'item_code': str,
                                 'description': str,
-                                'filled_unit': str or None,
                                 'filled_rate': float or None,
                                 'status': 'filled' or 'not_filled',
                                 'match_type': 'exact' or 'close' or 'approximation',
@@ -254,7 +253,6 @@ class ExcelIO:
             filled_items = result.get('filled_items', [])
             
             # Get column indices (1-based for openpyxl)
-            unit_col_idx = self._get_column_index_in_ws(ws, columns.get('unit'), header_row_idx)
             rate_col_idx = self._get_column_index_in_ws(ws, columns.get('rate'), header_row_idx)
             reference_col_idx = self._get_column_index_in_ws(ws, columns.get('reference'), header_row_idx)
             reasoning_col_idx = self._get_column_index_in_ws(ws, columns.get('reasoning'), header_row_idx)
@@ -284,12 +282,6 @@ class ExcelIO:
                 }.get(match_type, self.GREEN_FILL)
                 
                 if item['status'] == 'filled':
-                    # Fill unit if needed
-                    if item.get('filled_unit') and unit_col_idx:
-                        cell = ws.cell(row=excel_row, column=unit_col_idx)
-                        cell.value = item['filled_unit']
-                        cell.fill = fill_color
-                    
                     # Fill rate if needed
                     if item.get('filled_rate') is not None and rate_col_idx:
                         cell = ws.cell(row=excel_row, column=rate_col_idx)
@@ -309,9 +301,7 @@ class ExcelIO:
                         cell = ws.cell(row=excel_row, column=reasoning_col_idx)
                         cell.value = item.get('reasoning', '')
                 
-                else:  # not filled
-                    if unit_col_idx:
-                        ws.cell(row=excel_row, column=unit_col_idx).fill = self.RED_FILL
+                else:  # not filled - mark rate cell as red
                     if rate_col_idx:
                         ws.cell(row=excel_row, column=rate_col_idx).fill = self.RED_FILL
         

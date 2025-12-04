@@ -107,11 +107,34 @@ class RateMatcher:
                 logger.info(f"  Parent: {parent[:60]}...")
             if item_unit:
                 logger.info(f"  Unit: {item_unit}")
+            else:
+                logger.info("  ⚠ Target has no unit; will be treated as no_match without LLM calls")
+        
+        # If the target does not have a unit, we cannot safely compare or reuse rates.
+        # In this case, short-circuit and treat as no match without invoking any LLM stages.
+        if not item_unit or not str(item_unit).strip():
+            return {
+                'status': 'no_match',
+                'match_type': 'none',
+                'matches': [],
+                'unit': None,
+                'rate': None,
+                'reasoning': 'Target item has no unit; strict unit matching requires a defined unit',
+                'candidates': []
+            }
         
         # Step 1: Vector search with enriched context (async)
         candidates = await self._search_similar_items_async(
-            item_description, parent, grandparent, namespace
+            item_description, item_unit, parent, grandparent, namespace
         )
+        
+        # Enforce strict unit matching: drop any candidates whose unit does not
+        # exactly match the target unit (after stripping whitespace).
+        unit_str = str(item_unit).strip()
+        candidates = [
+            c for c in candidates
+            if str(c.get('unit', '')).strip() == unit_str
+        ]
         
         if not candidates:
             logger.info("  No candidates found above threshold")
@@ -253,18 +276,34 @@ class RateMatcher:
     async def _search_similar_items_async(
         self,
         description: str,
+        unit: str,
         parent: Optional[str],
         grandparent: Optional[str],
         namespace: str
     ) -> List[Dict[str, Any]]:
-        """Async wrapper around vector search using asyncio.to_thread."""
-        # Build enriched query text
+        """
+        Async wrapper around vector search.
+        
+        Builds the query text using the same structure as vector-store embeddings:
+        "Category: A > B. Description. Unit: X"
+        """
+        # Build enriched query text aligned with embedding format
         query_parts = []
+        
+        category_segments: List[str] = []
         if grandparent:
-            query_parts.append(f"Category: {grandparent}")
-        if parent:
-            query_parts.append(f"Category: {parent}")
+            category_segments.append(str(grandparent))
+        if parent and parent not in category_segments:
+            category_segments.append(str(parent))
+        if category_segments:
+            query_parts.append(f"Category: {' > '.join(category_segments)}")
+        
         query_parts.append(description)
+        
+        unit_str = str(unit).strip()
+        if unit_str:
+            query_parts.append(f"Unit: {unit_str}")
+        
         query_text = '. '.join(query_parts)
         
         query_embedding = await self.embeddings.generate_embedding_async(query_text)
@@ -280,14 +319,17 @@ class RateMatcher:
         candidates = []
         for result in results:
             if result['score'] >= self.similarity_threshold:
+                meta = result['metadata']
                 candidates.append({
-                    'description': result['metadata'].get('description', result['text']),
-                    'unit': result['metadata'].get('unit', ''),
-                    'rate': result['metadata'].get('rate'),
+                    'description': meta.get('description', result['text']),
+                    'unit': meta.get('unit', ''),
+                    'rate': meta.get('rate'),
                     'similarity': result['score'],
-                    'source': result['metadata'].get('sheet_name', ''),
-                    'category': result['metadata'].get('category_path', ''),
-                    'metadata': result['metadata']
+                    'source': meta.get('sheet_name', ''),
+                    'category': meta.get('category_path', ''),
+                    'parent': meta.get('parent', ''),
+                    'grandparent': meta.get('grandparent', ''),
+                    'metadata': meta
                 })
         return candidates
     
@@ -385,26 +427,83 @@ class RateMatcher:
         parent: Optional[str],
         grandparent: Optional[str]
     ) -> str:
-        """Build target item information string."""
-        parts = [f"Description: {description}"]
+        """
+        Build target item information string for LLM prompts.
+        
+        Structure matches the candidate format for consistency:
+        - Hierarchy (grandparent > parent)
+        - Description
+        - Unit (required and emphasized)
+        - Item Code (optional)
+        """
+        parts = []
+        
+        # Build hierarchy string (same format as candidates)
+        hierarchy_parts = []
+        if grandparent:
+            hierarchy_parts.append(str(grandparent))
+        if parent:
+            hierarchy_parts.append(str(parent))
+        if hierarchy_parts:
+            parts.append(f"Hierarchy: {' > '.join(hierarchy_parts)}")
+        
+        # Description (required)
+        parts.append(f"Description: {description}")
+        
+        # Unit (required and emphasized - this is the TARGET UNIT that candidates must match)
         if unit:
-            parts.append(f"Unit: {unit}")
+            parts.append(f"TARGET UNIT: {unit}")
+        else:
+            parts.append("TARGET UNIT: (not specified)")
+        
+        # Item code (optional)
         if item_code:
             parts.append(f"Item Code: {item_code}")
-        if parent:
-            parts.append(f"Parent Category: {parent}")
-        if grandparent:
-            parts.append(f"Grandparent Category: {grandparent}")
+        
         return '\n'.join(parts)
     
     def _build_candidates_text(self, candidates: List[Dict]) -> str:
-        """Build candidates text for LLM."""
+        """
+        Build candidates text for LLM prompts.
+        
+        Structure matches the target format for consistency:
+        - Index
+        - Description
+        - Hierarchy (grandparent > parent > category)
+        - Unit (emphasized to match TARGET UNIT)
+        - Rate
+        - Similarity score
+        """
         lines = []
         for i, cand in enumerate(candidates, 1):
+            category = cand.get('category') or ''
+            parent = cand.get('parent') or ''
+            grandparent = cand.get('grandparent') or ''
+            
+            # Build hierarchy string (same format as target)
+            hierarchy_parts = []
+            if grandparent:
+                hierarchy_parts.append(grandparent)
+            if parent and parent not in hierarchy_parts:
+                hierarchy_parts.append(parent)
+            if category and category not in hierarchy_parts:
+                hierarchy_parts.append(category)
+            
+            hierarchy_str = ' > '.join([p for p in hierarchy_parts if p])
+            hierarchy_segment = f" | Hierarchy: {hierarchy_str}" if hierarchy_str else ""
+            
+            # Unit is required - show N/A if missing
+            unit_val = cand.get('unit', '')
+            unit_str = str(unit_val).strip() if unit_val else 'N/A'
+            
+            # Rate - show actual value or N/A
+            rate_val = cand.get('rate')
+            rate_str = f"{rate_val}" if rate_val is not None else 'N/A'
+            
             lines.append(
-                f"{i}. {cand['description']} | "
-                f"Unit: {cand.get('unit', 'N/A')} | "
-                f"Rate: {cand.get('rate', 'N/A')} | "
+                f"{i}. {cand['description']}{hierarchy_segment} | "
+                f"Unit: {unit_str} | "
+                f"Rate: {rate_str} | "
                 f"Similarity: {cand.get('similarity', 0):.2f}"
             )
         return '\n'.join(lines)

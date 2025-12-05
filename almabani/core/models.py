@@ -239,6 +239,12 @@ class ProcessingReport(BaseModel):
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
+        total = self.total_items or 0
+        def ratio(count: int) -> Optional[float]:
+            if total == 0:
+                return None
+            return round((count / total) * 100, 1)
+        
         return {
             "total_items": self.total_items,
             "processed_items": self.processed_items,
@@ -250,5 +256,12 @@ class ProcessingReport(BaseModel):
             "avg_confidence": self.avg_confidence,
             "avg_similarity": self.avg_similarity,
             "processing_time_seconds": self.processing_time_seconds,
-            "error_items": self.error_items
+            "error_items": self.error_items,
+            "ratios_over_total": {
+                "exact": ratio(self.exact_matches),
+                "expert": ratio(self.expert_matches),
+                "estimates": ratio(self.estimates),
+                "no_match": ratio(self.no_matches),
+                "errors": ratio(self.errors)
+            }
         }

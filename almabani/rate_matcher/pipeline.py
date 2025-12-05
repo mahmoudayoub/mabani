@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import time
 
 from almabani.config.settings import get_settings
 from almabani.core.excel import ExcelIO
@@ -50,6 +51,7 @@ class RateFillerPipeline:
         """
         settings = get_settings()
         workers = workers if workers is not None else settings.max_workers
+        start_time = time.perf_counter()
         
         logger.info(f"[async] Processing file: {input_file}")
         logger.info(f"[async] Using {workers} workers")
@@ -125,11 +127,14 @@ class RateFillerPipeline:
         
         # Generate summary file
         summary_file = output_file.with_suffix('.txt')
+        processing_seconds = time.perf_counter() - start_time
+        report.processing_time_seconds = processing_seconds
         summary_content = self._generate_summary(
             input_file=input_file,
             output_file=output_file,
             sheet_name=selected_sheet,
-            report=report
+            report=report,
+            processing_seconds=processing_seconds
         )
         await asyncio.to_thread(self._write_summary_file, summary_file, summary_content)
         
@@ -281,11 +286,21 @@ class RateFillerPipeline:
         input_file: Path,
         output_file: Path,
         sheet_name: str,
-        report: ProcessingReport
+        report: ProcessingReport,
+        processing_seconds: Optional[float] = None
     ) -> str:
         """Generate a text summary of the processing results."""
         lines = []
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        duration_str = None
+        if processing_seconds is not None:
+            total_seconds = int(round(processing_seconds))
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            if hours:
+                duration_str = f"{hours}:{minutes:02d}:{seconds:02d}"
+            else:
+                duration_str = f"{minutes}:{seconds:02d}"
         
         # Header
         lines.append("=" * 70)
@@ -300,6 +315,8 @@ class RateFillerPipeline:
         lines.append(f"  Output File:   {output_file.name}")
         lines.append(f"  Sheet:         {sheet_name}")
         lines.append(f"  Generated:     {timestamp}")
+        if duration_str:
+            lines.append(f"  Processing Time: {duration_str}")
         lines.append("")
         
         # Statistics
@@ -314,12 +331,20 @@ class RateFillerPipeline:
         lines.append(f"  Errors:          {report.errors}")
         lines.append("")
         
-        # Success rate
+        # Success rate and ratios
         if report.processed_items > 0:
             filled = report.exact_matches + report.expert_matches + report.estimates
             success_rate = (filled / report.processed_items) * 100
             lines.append(f"  Fill Rate:       {success_rate:.1f}%")
-            lines.append("")
+        if report.total_items > 0:
+            total = report.total_items
+            lines.append("  Ratios over total items:")
+            lines.append(f"    Exact:         {(report.exact_matches/total)*100:.1f}%")
+            lines.append(f"    Expert:        {(report.expert_matches/total)*100:.1f}%")
+            lines.append(f"    Estimates:     {(report.estimates/total)*100:.1f}%")
+            lines.append(f"    No Match:      {(report.no_matches/total)*100:.1f}%")
+            lines.append(f"    Errors:        {(report.errors/total)*100:.1f}%")
+        lines.append("")
         
         # Footer
         lines.append("=" * 70)
@@ -333,4 +358,3 @@ class RateFillerPipeline:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
         logger.info(f"Summary written to: {file_path}")
-

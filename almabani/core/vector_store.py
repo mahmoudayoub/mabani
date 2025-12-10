@@ -186,7 +186,7 @@ class VectorStoreService:
         items: List[Dict[str, Any]],
         batch_size: int = 300,
         namespace: str = '',
-        max_workers: int = 100
+        max_workers: int = 200
     ) -> Dict[str, Any]:
         """
         Async upload using asyncio.to_thread for Pinecone calls.

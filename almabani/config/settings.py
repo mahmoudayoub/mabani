@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # ==================== OpenAI Settings ====================
     openai_embedding_model: str = 'text-embedding-3-small'
     openai_chat_model: str = 'gpt-4o-mini'
-    openai_temperature: float = 0.0
+    openai_temperature: float = 1.0
     openai_max_retries: int = 3
     openai_timeout: int = 60
     
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     
     # ==================== Processing Settings ====================
     batch_size: int = 500
-    max_workers: int = 100
+    max_workers: int = 200
     pinecone_batch_size: int = 300
     
     # ==================== Rate Limits ====================

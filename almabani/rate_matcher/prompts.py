@@ -36,7 +36,9 @@ TARGET ITEM TO MATCH:
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
 
-IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²=sqm, nr=No.=each) can be considered for matching.
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, nr/each) can be considered for matching.
+ABSOLUTE RULE: Do NOT perform any measurement-basis conversions (e.g., m vs m², m² vs lump sum). Use only candidates whose unit text is the same or a clear synonym; otherwise ignore/reject them.
+ABSOLUTE RULE: Do NOT guess or infer missing specifications. If there is any uncertainty or missing critical detail, return "no_exact_match".
 
 YOUR ROLE: MATCHER 
 Identify items that describe the SAME BOQ item with the SAME key characteristics, specifications, and cost-driving factors.
@@ -57,11 +59,13 @@ EXACT MATCH CRITERIA (for this stage, treat items as exact ONLY when all key asp
      - Technical ratings (e.g., 80kW vs 80kW).
      - Pressure classes/SDR/ratings (e.g., PN16 vs PN16).
    - If an important spec is explicitly different (e.g., DN200 vs DN250, HDPE vs PVC, PN10 vs PN16) → NO MATCH.
+   - Phrases like "as specified", "as per drawing/spec", or similar do NOT count as matching specs; treat them as missing/uncertain and reject if critical details are absent.
+   - If the target item carries a code (e.g., BD001), only candidates with the exact same code are usable; otherwise treat as no match.
    - If a spec is present in one description but not mentioned in the other:
      - You may accept it **only** if:
        - Everything else strongly indicates it is the same product/work, AND
        - The missing spec is clearly standard/implicit for that item and does NOT realistically change the cost level.
-     - If there is any reasonable doubt that the missing spec could change the nature or cost level of the item (e.g., grade, pressure rating, fire rating, coating, thickness, reinforcement content), you MUST treat it as NO MATCH.
+   - If there is any reasonable doubt that the missing spec could change the nature or cost level of the item (e.g., grade, pressure rating, fire rating, coating, thickness, reinforcement content), you MUST treat it as NO MATCH. Never fill in missing specs by guessing.
    - In this stage, you must err on the side of “no_exact_match” whenever missing or ambiguous specifications could impact cost.
 
 3. SAME OR EQUIVALENT SCOPE
@@ -72,12 +76,9 @@ EXACT MATCH CRITERIA (for this stage, treat items as exact ONLY when all key asp
    - Minor wording differences that do not realistically change cost/responsibility (e.g., “including testing” vs “tested and commissioned” for the same unit) may still be treated as an exact match if everything else is identical and cost level is clearly the same.
 
 4. COMPATIBLE AND CONSISTENT UNITS
-   - Units must be exactly the same as the TARGET UNIT or clear synonyms:
-     - m² = sqm = m^2
-     - m³ = cum = m^3
-     - nr = No. = each
-   - Any candidate whose unit is different from the TARGET UNIT (including different measurement bases such as m vs m², m² vs lump sum, item vs m) MUST be treated as not usable and effectively ignored.
-   - If the unit is missing in one but obvious from the description and clearly identical in context, you may treat as exact **only** if there is no doubt about the unit and all other aspects align.
+   - Units must be the same as the TARGET UNIT or a clear synonym (e.g., m² = sqm, m³ = cum, nr = each). Do NOT convert between different measurement bases.
+   - Any candidate whose unit is different from the TARGET UNIT (including m vs m², m² vs lump sum, item vs m, or any other mismatch) MUST be ignored/rejected.
+   - If a candidate unit is missing, treat it as unusable unless it is explicitly identical and certain (do not infer or convert).
 
 GENERAL PRINCIPLES (STRICT STAGE):
 - Be strict about any direct contradictions or uncertainties in size, material, rating, scope, or unit, especially where they would change the cost level.
@@ -85,6 +86,7 @@ GENERAL PRINCIPLES (STRICT STAGE):
   - Harmless formatting differences.
   - Abbreviations vs full wording.
   - Truly minor missing details that do not realistically change the nature, specification, or cost of the item and are clearly implicit.
+- Do NOT guess or fill in missing information; if anything material is unclear, return no_exact_match.
 - Use common-sense engineering judgment: only when a QS/engineer would confidently treat them as the SAME LINE ITEM with the SAME RATE should you mark them as an exact_match.
 - Rates must align to the TARGET UNIT shown above. If a candidate unit conflicts with the target unit (different measurement basis), treat as no exact match.
 - If you cannot confidently say that the candidate and target are effectively the same in cost-driving aspects and detailed specifications, you MUST choose "no_exact_match" and do NOT guess a rate.
@@ -137,7 +139,8 @@ TARGET ITEM TO MATCH:
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
 
-IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²=sqm, nr=No.=each) can be considered as close matches. Candidates with different units must be IGNORED.
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, nr/each) can be considered as close matches. Candidates with different units must be IGNORED.
+ABSOLUTE RULE: Do NOT perform any measurement-basis conversions (e.g., m vs m², m² vs lump sum). Only use candidates whose unit text is the same or a clear synonym; otherwise ignore them.
 
 YOUR ROLE: EXPERT 
 The matcher found no exact matches. Now find items that are VERY SIMILAR and could reasonably be used as the same or nearly the same thing with small, explainable adjustments to the rate.
@@ -151,6 +154,8 @@ CLOSE MATCH CRITERIA (use engineering judgment; most of these should be satisfie
      - Different disciplines (e.g., electrical vs mechanical vs civil) unless it is clearly the same physical item described slightly differently.
      - Different functional roles (e.g., pump vs valve, structural concrete vs non-structural fill).
    - If the core work is different enough that a QS/engineer would expect a different cost behavior, do NOT mark as close_match.
+   - Phrases like "as specified" or "as per drawing/spec" do NOT add matching value; treat missing/unspecified details as uncertainty.
+   - If the target item carries a code (e.g., BD001), only candidates with the exact same code are usable; otherwise treat as no close match.
 
 2. SIMILAR SPECIFICATIONS (controlled differences)
    - Dimensions can differ within a realistic range for “similar” (e.g., DN200 vs DN250 vs DN300 may still be close; DN200 vs DN600 is usually too far).
@@ -159,7 +164,7 @@ CLOSE MATCH CRITERIA (use engineering judgment; most of these should be satisfie
    - Scope must be the same or very similar:
      - "Supply & Install" vs "Supply & Installation" is okay.
      - "Supply only" vs "Supply & Install" vs "Install only" is usually NOT a close match because cost responsibility is materially different.
-   - Units must match the TARGET UNIT exactly or be clear synonyms (m = m; m² = m²; m³ = m³; No. = each). Any candidate with a different or incompatible unit is NOT a close match and must be ignored.
+   - Units must match the TARGET UNIT exactly or be a clear synonym (no measurement-basis conversions). Any candidate with a different or incompatible unit is NOT a close match and must be ignored.
    - Missing details are acceptable if everything else points to strong similarity; treat gaps as justification for lower confidence.
    - If you cannot reasonably expect similar cost behavior, do NOT call it a close match.
 
@@ -233,7 +238,8 @@ TARGET ITEM TO MATCH:
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
 
-IMPORTANT: The TARGET UNIT shown above is REQUIRED. The approximated_rate you return MUST be in this TARGET UNIT. Only candidates with the SAME unit (or rationally convertible units) can be used for approximation. Candidates with incompatible units must be IGNORED.
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. The approximated_rate you return MUST be in this TARGET UNIT. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, nr/each) can be used for approximation. Candidates with incompatible units must be IGNORED.
+ABSOLUTE RULE: Do NOT perform any measurement-basis conversions (e.g., m vs m², m² vs lump sum). Only use candidates whose unit text is the same or a clear synonym; otherwise ignore/reject them.
 
 YOUR ROLE: ESTIMATOR 
 No exact or close matches were found. Now decide whether any candidate items can serve as a REASONABLE REFERENCE for estimating the cost of the target item, and CALCULATE an approximated rate by applying adjustments to the candidate rate(s).
@@ -257,6 +263,8 @@ ESTIMATION METHOD (BASED ON INPUT DATA):
      - Its unit (e.g., m, m², m³, item, kg, kW).
      - Its numeric rate (e.g., 500.00/m; extract 500.00 as the base candidate rate).
      - Any key specs (e.g., diameter, depth, class, capacity, power).
+     - Ignore vague phrases like "as specified" or "as per drawing/spec" as they do not provide concrete specs.
+     - If the target item carries a code (e.g., BD001), only candidates with the exact same code are usable; otherwise treat as no match.
    - From {target_info}, identify:
      - Target work type and brief description.
      - Target unit (this is the unit in which you MUST return approximated_rate).
@@ -266,7 +274,7 @@ ESTIMATION METHOD (BASED ON INPUT DATA):
    - Check whether the candidate and target are related according to the criteria below.
    - Only consider candidates that:
      - Have a clearly related work type, AND
-     - Have the same or rationally scalable unit, AND
+     - Have the exact same unit as the target or a clear synonym (no measurement-basis conversions), AND
      - Provide enough quantitative or qualitative information to justify a scaling logic.
    - If work type or cost drivers are too different to justify scaling (e.g., concrete vs steel fabrication, equipment vs earthworks, supply vs civil excavation), do NOT use them for approximation.
 
@@ -279,7 +287,7 @@ ESTIMATION METHOD (BASED ON INPUT DATA):
      - Power ratio = target_power / candidate_power.
    - Apply the scaling factor to the candidate rate:
      - adjusted_rate = candidate_rate × scaling_factor
-   - When there is no clear numeric size relationship but the work is still comparable, you may apply a reasoned percentage adjustment, for example:
+   - When there is no clear numeric size relationship but the work is still comparable (with the same unit), you may apply a reasoned percentage adjustment, for example:
      - adjusted_rate = candidate_rate × (1 ± percentage_adjustment)
    - Any percentage adjustment MUST be moderate and justified qualitatively (e.g., "slightly smaller size, -10%", "more demanding installation, +15%") and clearly stated in the “adjustment” explanation.
    - The approximated_rate should normally differ from the original candidate rate whenever the items differ in any cost-driving way (size, spec, scope, complexity). Identical rates are only acceptable when the items are nearly identical.

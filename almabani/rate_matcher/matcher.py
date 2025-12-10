@@ -511,12 +511,31 @@ class RateMatcher:
         return max(set(units), key=units.count)
     
     def _build_reference_string(self, matches: List[Dict]) -> str:
-        """Build reference string from matches."""
+        """Build reference string from matches with key context."""
         refs = []
         for match in matches:
             source = match.get('source', 'Unknown')
+            parent = match.get('parent') or ''
+            grandparent = match.get('grandparent') or ''
             desc = match.get('description', '')[:50]
-            refs.append(f"{source}: {desc}")
+            unit = match.get('unit') or ''
+            rate = match.get('rate')
+            row = (match.get('metadata') or {}).get('row_number')
+            
+            parts = [f"Sheet={source}"]
+            if grandparent:
+                parts.append(f"GP={grandparent}")
+            if parent:
+                parts.append(f"P={parent}")
+            parts.append(f"Desc={desc}")
+            if unit:
+                parts.append(f"Unit={unit}")
+            if rate is not None:
+                parts.append(f"Rate={rate}")
+            if row is not None:
+                parts.append(f"Row={row}")
+            
+            refs.append('; '.join(parts))
         return ' | '.join(refs)
 
 

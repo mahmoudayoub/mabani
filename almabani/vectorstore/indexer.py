@@ -243,7 +243,7 @@ class VectorStoreIndexer:
         embedding_batch_size: int = 500,
         upsert_batch_size: int = 300,
         namespace: str = '',
-        max_workers: int = 100
+        max_workers: int = 200
     ) -> Dict[str, Any]:
         """
         Async variant of index_documents using async embeddings and uploads.

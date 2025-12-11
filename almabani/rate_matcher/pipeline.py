@@ -188,9 +188,12 @@ class RateFillerPipeline:
             if (level_val is None or str(level_val).strip() == '') and item_val is not None:
                 parent = None
                 grandparent = None
-                if idx in parent_map:
-                    parent = parent_map[idx].get('parent')
-                    grandparent = parent_map[idx].get('grandparent')
+                category_path = None
+                map_key = idx + 1  # parent_map uses 1-based row_number
+                if map_key in parent_map:
+                    parent = parent_map[map_key].get('parent')
+                    grandparent = parent_map[map_key].get('grandparent')
+                    category_path = parent_map[map_key].get('category_path')
                 
                 items.append({
                     'row_index': idx,
@@ -199,7 +202,8 @@ class RateFillerPipeline:
                     'current_unit': str(unit_val) if unit_val else '',
                     'current_rate': float(rate_val) if rate_val and rate_val != '' else None,
                     'parent': parent,
-                    'grandparent': grandparent
+                    'grandparent': grandparent,
+                    'category_path': category_path
                 })
         
         return items
@@ -211,7 +215,7 @@ class RateFillerPipeline:
         columns: Dict[str, str]
     ) -> Dict[int, Dict[str, Optional[str]]]:
         """
-        Build a mapping of row_index -> {'parent': ..., 'grandparent': ...}
+        Build a mapping of row_index -> {'parent': ..., 'grandparent': ..., 'category_path': ...}
         using the same hierarchy logic as the parser.
         """
         parser = self.excel_parser
@@ -222,29 +226,38 @@ class RateFillerPipeline:
         
         parent_map: Dict[int, Dict[str, Optional[str]]] = {}
         
-        def walk(nodes: List, parent_desc: Optional[str], grandparent_desc: Optional[str]):
+        def walk(nodes: List, parent_desc: Optional[str], grandparent_desc: Optional[str], path: List[str]):
             for node in nodes:
                 node_parent = parent_desc
                 node_grandparent = grandparent_desc
+                path_added = False
                 
                 # Update lineage if this node is a parent type
                 if node.item_type in (ItemType.NUMERIC_LEVEL, ItemType.SUBCATEGORY):
                     node_grandparent = parent_desc
                     node_parent = node.description
+                    if node.description:
+                        path.append(str(node.description))
+                        path_added = True
                 
                 if node.item_type == ItemType.ITEM and node.row_number is not None:
                     parent_map[node.row_number] = {
                         'parent': node_parent,
-                        'grandparent': node_grandparent
+                        'grandparent': node_grandparent,
+                        'category_path': ' > '.join(path) if path else None
                     }
                 
                 # Recurse into children
                 if node.children:
-                    walk(node.children, node_parent, node_grandparent)
+                    walk(node.children, node_parent, node_grandparent, path)
+                
+                # Pop path if we added for this node
+                if path_added:
+                    path.pop()
         
-        walk(tree, None, None)
+        walk(tree, None, None, [])
         return parent_map
-    
+
     async def _process_single_item_async(self, item: Dict[str, Any], namespace: str) -> tuple:
         """
         Async variant of _process_single_item.
@@ -255,7 +268,8 @@ class RateFillerPipeline:
             item_code=item.get('item_code', ''),
             parent=item.get('parent'),
             grandparent=item.get('grandparent'),
-            namespace=namespace
+            namespace=namespace,
+            category_path=item.get('category_path')
         )
         filled_item = self._process_match_result(item, result)
         return filled_item, result

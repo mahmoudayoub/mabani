@@ -79,7 +79,8 @@ class RateMatcher:
         item_code: str = '',
         parent: Optional[str] = None,
         grandparent: Optional[str] = None,
-        namespace: str = ''
+        namespace: str = '',
+        category_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Find matching items for a given description with hierarchical context.
@@ -147,13 +148,13 @@ class RateMatcher:
         
         # Run all 3 stages concurrently
         matcher_task = self._call_matcher_stage_async(
-            item_description, item_unit, item_code, candidates, parent, grandparent
+            item_description, item_unit, item_code, candidates, parent, grandparent, category_path
         )
         expert_task = self._call_expert_stage_async(
-            item_description, item_unit, item_code, candidates, parent, grandparent
+            item_description, item_unit, item_code, candidates, parent, grandparent, category_path
         )
         estimator_task = self._call_estimator_stage_async(
-            item_description, item_unit, item_code, candidates, parent, grandparent
+            item_description, item_unit, item_code, candidates, parent, grandparent, category_path
         )
         
         # Wait for all to complete
@@ -325,6 +326,19 @@ class RateMatcher:
                 })
         return candidates
     
+    @staticmethod
+    def _context_tail_from_path(category_path: str) -> str:
+        """
+        Return a context string starting from the third level of the path (drop the first two segments).
+        If fewer than 3 segments exist, return the available tail.
+        """
+        if not category_path:
+            return ""
+        parts = [p.strip() for p in category_path.split('>') if p.strip()]
+        if len(parts) > 2:
+            parts = parts[2:]
+        return ' > '.join(parts)
+    
     async def _call_matcher_stage_async(
         self,
         description: str,
@@ -332,9 +346,10 @@ class RateMatcher:
         item_code: str,
         candidates: List[Dict],
         parent: Optional[str],
-        grandparent: Optional[str]
+        grandparent: Optional[str],
+        category_path: Optional[str] = None
     ) -> Dict[str, Any]:
-        target_info = self._build_target_info(description, unit, item_code, parent, grandparent)
+        target_info = self._build_target_info(description, unit, item_code, parent, grandparent, category_path)
         candidates_text = self._build_candidates_text(candidates)
         prompt = build_matcher_prompt(target_info, candidates_text)
         return await self._call_llm_stage_async(MATCHER_SYSTEM_MESSAGE, prompt, stage_name="MATCHER")
@@ -346,9 +361,10 @@ class RateMatcher:
         item_code: str,
         candidates: List[Dict],
         parent: Optional[str],
-        grandparent: Optional[str]
+        grandparent: Optional[str],
+        category_path: Optional[str] = None
     ) -> Dict[str, Any]:
-        target_info = self._build_target_info(description, unit, item_code, parent, grandparent)
+        target_info = self._build_target_info(description, unit, item_code, parent, grandparent, category_path)
         candidates_text = self._build_candidates_text(candidates)
         prompt = build_expert_prompt(target_info, candidates_text)
         return await self._call_llm_stage_async(EXPERT_SYSTEM_MESSAGE, prompt, stage_name="EXPERT")
@@ -360,9 +376,10 @@ class RateMatcher:
         item_code: str,
         candidates: List[Dict],
         parent: Optional[str],
-        grandparent: Optional[str]
+        grandparent: Optional[str],
+        category_path: Optional[str] = None
     ) -> Dict[str, Any]:
-        target_info = self._build_target_info(description, unit, item_code, parent, grandparent)
+        target_info = self._build_target_info(description, unit, item_code, parent, grandparent, category_path)
         candidates_text = self._build_candidates_text(candidates)
         prompt = build_estimator_prompt(target_info, candidates_text)
         return await self._call_llm_stage_async(ESTIMATOR_SYSTEM_MESSAGE, prompt, stage_name="ESTIMATOR")
@@ -417,7 +434,8 @@ class RateMatcher:
         unit: str,
         item_code: str,
         parent: Optional[str],
-        grandparent: Optional[str]
+        grandparent: Optional[str],
+        category_path: Optional[str] = None
     ) -> str:
         """
         Build target item information string for LLM prompts.
@@ -427,6 +445,7 @@ class RateMatcher:
         - Description
         - Unit (required and emphasized)
         - Item Code (optional)
+        - Context (tail of category path if available)
         """
         parts = []
         
@@ -438,6 +457,12 @@ class RateMatcher:
             hierarchy_parts.append(str(parent))
         if hierarchy_parts:
             parts.append(f"Hierarchy: {' > '.join(hierarchy_parts)}")
+        
+        # Context tail from category path (starting from 3rd level if present)
+        if category_path:
+            context_tail = self._context_tail_from_path(category_path)
+            if context_tail:
+                parts.append(f"Context: {context_tail}")
         
         # Description (required)
         parts.append(f"Description: {description}")
@@ -470,6 +495,8 @@ class RateMatcher:
         for i, cand in enumerate(candidates, 1):
             parent = cand.get('parent') or ''
             grandparent = cand.get('grandparent') or ''
+            category_path = cand.get('category') or (cand.get('metadata') or {}).get('category_path', '')
+            context_tail = self._context_tail_from_path(category_path)
             
             # Build hierarchy string - only 2 levels (grandparent > parent), same as target
             hierarchy_parts = []
@@ -479,6 +506,7 @@ class RateMatcher:
                 hierarchy_parts.append(parent)
             
             hierarchy_str = ' > '.join(hierarchy_parts) if hierarchy_parts else ''
+            context_line = f"Context: {context_tail}\n" if context_tail else ''
             
             # Unit is required - show N/A if missing
             unit_val = cand.get('unit', '')
@@ -490,16 +518,25 @@ class RateMatcher:
             
             # Format: same structure as target (Hierarchy, Description, Unit)
             if hierarchy_str:
-                lines.append(
-                    f"[{i}] Hierarchy: {hierarchy_str}\n"
+                block = f"[{i}] Hierarchy: {hierarchy_str}\n"
+                if context_line:
+                    block += f"    {context_line}"
+                block += (
                     f"    Description: {cand['description']}\n"
                     f"    Unit: {unit_str} | Rate: {rate_str} | Similarity: {cand.get('similarity', 0):.2f}"
                 )
+                lines.append(block)
             else:
-                lines.append(
-                    f"[{i}] Description: {cand['description']}\n"
+                block = f"[{i}] "
+                if context_line:
+                    block += f"{context_line}"
+                else:
+                    block += "\n"
+                block += (
+                    f"    Description: {cand['description']}\n"
                     f"    Unit: {unit_str} | Rate: {rate_str} | Similarity: {cand.get('similarity', 0):.2f}"
                 )
+                lines.append(block)
         return '\n\n'.join(lines)
     
     def _get_consensus_unit(self, matches: List[Dict]) -> str:
@@ -571,7 +608,8 @@ async def process_items_parallel(
                     item_code=item.get('item_code', ''),
                     parent=item.get('parent'),
                     grandparent=item.get('grandparent'),
-                    namespace=namespace
+                    namespace=namespace,
+                    category_path=item.get('category_path')
                 )
                 result['item'] = item
                 return result

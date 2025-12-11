@@ -180,7 +180,8 @@ class ExcelParser:
                 code=code_val,
                 full_description=full_desc_val,
                 item_type=item_type,
-                row_number=idx
+                # Store 1-based Excel row number for clearer referencing
+                row_number=idx + 1
             )
             
             items.append(item)
@@ -196,12 +197,6 @@ class ExcelParser:
                 return ItemType.NUMERIC_LEVEL
             # Treat level indicator (e.g., 'c') as subcategory when no numeric match
             if level_str.lower() == self.subcategory_indicator:
-                return ItemType.SUBCATEGORY
-        
-        # Check if item is subcategory indicator
-        if item_val is not None:
-            item_str = str(item_val).strip().lower()
-            if item_str == self.subcategory_indicator:
                 return ItemType.SUBCATEGORY
         
         # Check if it's an actual item (has item code or description)

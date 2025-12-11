@@ -119,31 +119,29 @@ class HierarchyProcessor:
                 
                 current_numeric_parent = level_stack[-1] if level_stack else None
                 current_c_parent = c_level_stack[-1] if c_level_stack else None
+                parent_for_c = None
                 
                 if prev_item_type == ItemType.SUBCATEGORY:
                     # Previous was c → current is child of previous c
-                    if current_c_parent:
-                        current_c_parent.children.append(item)
-                    elif current_numeric_parent:
-                        current_numeric_parent.children.append(item)
+                    parent_for_c = current_c_parent or current_numeric_parent
+                elif prev_item_type == ItemType.ITEM:
+                    # Previous was an item → make this c a sibling of the last c (i.e., child of its parent)
+                    if len(c_level_stack) > 1:
+                        parent_for_c = c_level_stack[-2]
                     else:
-                        root_items.append(item)
-                    c_level_stack.append(item)
+                        parent_for_c = current_numeric_parent
                 else:
-                    # Previous was not c
-                    if current_c_parent:
-                        # Make it a sibling under the parent of the current c stack (numeric or root)
-                        if current_numeric_parent:
-                            current_numeric_parent.children.append(item)
-                        else:
-                            root_items.append(item)
-                        c_level_stack = [item]
-                    elif current_numeric_parent:
-                        current_numeric_parent.children.append(item)
-                        c_level_stack = [item]
-                    else:
-                        root_items.append(item)
-                        c_level_stack = [item]
+                    # Previous was numeric or unknown
+                    parent_for_c = current_c_parent or current_numeric_parent
+                
+                if parent_for_c:
+                    parent_for_c.children.append(item)
+                else:
+                    root_items.append(item)
+                
+                # Reset c stack to the new branch
+                c_level_stack = c_level_stack[:-1] if prev_item_type == ItemType.ITEM and len(c_level_stack) > 1 else []
+                c_level_stack.append(item)
                 
                 prev_item_type = ItemType.SUBCATEGORY
             

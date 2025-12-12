@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     pinecone_metric: str = 'cosine'
     pinecone_cloud: str = 'aws'
     
+    # ==================== Storage Settings ====================
+    storage_type: str = 's3'  # 'local' or 's3'
+    s3_bucket_name: Optional[str] = None
+    aws_region: str = 'us-east-1'
+    
     # ==================== Vector Search Settings ====================
     similarity_threshold: float = 0.5
     top_k: int = 6

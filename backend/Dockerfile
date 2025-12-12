@@ -12,10 +12,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Skipped to speed up build - restore if wheels allow
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     build-essential \
+#     curl \
+#     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 COPY requirements.txt .
@@ -23,13 +24,14 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install gunicorn for production
+# Install gunicorn for production (optional for worker but kept)
 RUN pip install --no-cache-dir gunicorn
 
 # Copy application code
 COPY almabani/ ./almabani/
 COPY app/ ./app/
 COPY pyproject.toml setup.py ./
+COPY worker.py ./
 
 # Install the package
 RUN pip install --no-cache-dir -e .
@@ -45,12 +47,11 @@ RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 8080
+# No port exposure for batch worker
+# EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+# No healthcheck for batch worker
+# HEALTHCHECK ...
 
-# Run with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "120", "app.main:app"]
+# Default CMD
+CMD ["python", "worker.py"]

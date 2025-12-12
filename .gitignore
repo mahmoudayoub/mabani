@@ -13,8 +13,8 @@ build/
 # Virtual Environment
 .venv/
 venv/
-ENV/
-env/
+
+
 
 # Environment Variables
 .env
@@ -37,6 +37,8 @@ output/
 *.json
 *.jsonl
 *.txt
+!requirements.txt
+!**/requirements.txt
 
 # OS
 .DS_Store
@@ -50,3 +52,8 @@ Thumbs.db
 !input/.gitkeep
 !output/.gitkeep
 !logs/.gitkeep
+cdk.out
+.aws-sam
+__pycache__
+.venv
+backend/env

@@ -143,28 +143,13 @@ class RateMatcher:
         
         logger.info(f"  Found {len(candidates)} candidates")
         
-        # Step 2: 3-Stage LLM Validation - RUN ALL IN PARALLEL for speed
-        logger.info("  Running 3-stage LLM validation in parallel...")
+        # Step 2: 3-Stage LLM Validation - sequential with early exit
+        logger.info("  Running 3-stage LLM validation sequentially with early exit...")
         
-        # Run all 3 stages concurrently
-        matcher_task = self._call_matcher_stage_async(
+        # STAGE 1: MATCHER (exact)
+        matcher_result = await self._call_matcher_stage_async(
             item_description, item_unit, item_code, candidates, parent, grandparent, category_path
         )
-        expert_task = self._call_expert_stage_async(
-            item_description, item_unit, item_code, candidates, parent, grandparent, category_path
-        )
-        estimator_task = self._call_estimator_stage_async(
-            item_description, item_unit, item_code, candidates, parent, grandparent, category_path
-        )
-        
-        # Wait for all to complete
-        matcher_result, expert_result, estimator_result = await asyncio.gather(
-            matcher_task, expert_task, estimator_task
-        )
-        
-        # Process results in priority order: exact > close > approximation
-        
-        # STAGE 1: Check MATCHER result (exact matches)
         if matcher_result['status'] == 'exact_match':
             match_indices = matcher_result.get('exact_matches', [])
             matches = [candidates[i-1] for i in match_indices if 0 < i <= len(candidates)]
@@ -190,7 +175,10 @@ class RateMatcher:
                     'candidates': candidates
                 }
         
-        # STAGE 2: Check EXPERT result (close matches)
+        # STAGE 2: EXPERT (close) - only if no exact match
+        expert_result = await self._call_expert_stage_async(
+            item_description, item_unit, item_code, candidates, parent, grandparent, category_path
+        )
         if expert_result['status'] == 'close_match':
             close_matches_data = expert_result.get('close_matches', [])
             
@@ -229,7 +217,10 @@ class RateMatcher:
                         'candidates': candidates
                     }
         
-        # STAGE 3: Check ESTIMATOR result (approximation)
+        # STAGE 3: ESTIMATOR (approximation) - only if no close match
+        estimator_result = await self._call_estimator_stage_async(
+            item_description, item_unit, item_code, candidates, parent, grandparent, category_path
+        )
         if estimator_result['status'] == 'approximated':
             rate = estimator_result.get('approximated_rate')
             unit = estimator_result.get('unit', item_unit)

@@ -164,6 +164,10 @@ class ExcelParser:
             
             # Determine item type
             item_type = self._determine_item_type(level_val, item_val)
+            # If the item code is missing but we have a description and no level marker,
+            # treat it as a leaf item instead of leaving it unknown.
+            if item_type == ItemType.UNKNOWN and desc_val:
+                item_type = ItemType.ITEM
             
             # Skip completely empty rows
             if item_type == ItemType.UNKNOWN and not any([level_val, item_val, desc_val]):

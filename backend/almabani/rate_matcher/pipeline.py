@@ -184,8 +184,11 @@ class RateFillerPipeline:
             unit_val = None if pd.isna(unit_val) else unit_val
             rate_val = None if pd.isna(rate_val) else rate_val
             
-            # Extract items needing filling (Level is empty, has Item)
-            if (level_val is None or str(level_val).strip() == '') and item_val is not None:
+            # Extract items needing filling (Level is empty, has Item OR Description)
+            has_level = level_val is not None and str(level_val).strip() != ''
+            has_item_code = item_val is not None and str(item_val).strip() != ''
+            has_desc = desc_val is not None and str(desc_val).strip() != ''
+            if (not has_level) and (has_item_code or has_desc):
                 parent = None
                 grandparent = None
                 category_path = None
@@ -197,8 +200,8 @@ class RateFillerPipeline:
                 
                 items.append({
                     'row_index': idx,
-                    'item_code': str(item_val) if item_val else '',
-                    'description': str(desc_val) if desc_val else '',
+                    'item_code': str(item_val).strip() if item_val else '',
+                    'description': str(desc_val).strip() if desc_val else '',
                     'current_unit': str(unit_val) if unit_val else '',
                     'current_rate': float(rate_val) if rate_val and rate_val != '' else None,
                     'parent': parent,

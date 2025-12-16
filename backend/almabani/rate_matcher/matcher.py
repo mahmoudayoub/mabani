@@ -5,7 +5,8 @@ Stages: 1) Matcher (exact), 2) Expert (close), 3) Estimator (approximation)
 import asyncio
 import logging
 import json
-from typing import List, Dict, Any, Optional
+import statistics
+from typing import List, Dict, Any, Optional, Tuple
 from openai import AsyncOpenAI
 
 from almabani.config.settings import get_settings
@@ -197,12 +198,23 @@ class RateMatcher:
                 
                 if matches:
                     unit = self._get_consensus_unit(matches)
-                    rate = expert_result.get('recommended_rate')
+                    rate, rate_reason = self._get_robust_rate(
+                        matches,
+                        close_matches_data,
+                        expert_result.get('recommended_rate')
+                    )
                     avg_confidence = sum(confidences) / len(confidences)
                     reference = self._build_reference_string(matches)
                     
                     if self.verbose_logging:
                         logger.info(f"  ✓ CLOSE match found: {unit} @ {rate} ({avg_confidence:.0f}%)")
+                    
+                    combined_reasoning = expert_result.get('reasoning', '') or ''
+                    if rate_reason:
+                        if combined_reasoning:
+                            combined_reasoning = f"{combined_reasoning} | Rate calc: {rate_reason}"
+                        else:
+                            combined_reasoning = f"Rate calc: {rate_reason}"
                     
                     return {
                         'status': 'match',
@@ -212,7 +224,7 @@ class RateMatcher:
                         'unit': unit,
                         'rate': rate,
                         'reference': reference,
-                        'reasoning': expert_result.get('reasoning', ''),
+                        'reasoning': combined_reasoning,
                         'confidence': avg_confidence,
                         'candidates': candidates
                     }
@@ -537,6 +549,64 @@ class RateMatcher:
             return ''
         # Return most common unit
         return max(set(units), key=units.count)
+    
+    def _get_robust_rate(
+        self,
+        matches: List[Dict],
+        close_matches_data: List[Dict[str, Any]],
+        llm_rate: Optional[float]
+    ) -> Tuple[Optional[float], str]:
+        """
+        Derive a robust central rate from candidate matches to dampen outliers.
+        Uses median with a simple MAD-based filter; primarily based on candidate rates,
+        only falling back to LLM suggestion if nothing usable is present.
+        """
+        rates: List[float] = []
+        for match in matches:
+            rate_val = match.get('rate')
+            try:
+                if rate_val is not None:
+                    rates.append(float(rate_val))
+            except (TypeError, ValueError):
+                continue
+        
+        # If vector candidates lack rates, try LLM-provided rates per close match entry
+        if not rates:
+            for m in close_matches_data or []:
+                try:
+                    rate_val = m.get('rate')
+                    if rate_val is not None:
+                        rates.append(float(rate_val))
+                except (TypeError, ValueError):
+                    continue
+        
+        if not rates:
+            try:
+                rate_val = float(llm_rate) if llm_rate is not None else None
+                return rate_val, "Fallback to LLM recommended rate"
+            except (TypeError, ValueError):
+                return None, ""
+        
+        if len(rates) == 1:
+            val = round(rates[0], 4)
+            return val, f"Single close-match rate used: {val}"
+        
+        median_val = statistics.median(rates)
+        mad = statistics.median([abs(r - median_val) for r in rates])
+        
+        if mad == 0:
+            filtered = rates
+        else:
+            # Keep values within 2 * MAD of the median
+            threshold = 2 * mad
+            filtered = [r for r in rates if abs(r - median_val) <= threshold]
+        
+        if not filtered:
+            filtered = rates
+        
+        filtered_avg = round(sum(filtered) / len(filtered), 4)
+        note = f"Average of close-match rates with 2*MAD filter; used {filtered}"
+        return filtered_avg, note
     
     def _build_reference_string(self, matches: List[Dict]) -> str:
         """Build reference string from matches with key context."""

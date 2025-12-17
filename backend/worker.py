@@ -16,6 +16,7 @@ from almabani.config.settings import get_settings, get_openai_client, get_pineco
 from almabani.core.embeddings import EmbeddingsService
 from almabani.core.vector_store import VectorStoreService
 from almabani.rate_matcher.pipeline import RateFillerPipeline
+from almabani.vectorstore.indexer import JSONProcessor, VectorStoreIndexer
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -48,6 +49,7 @@ def get_services():
 async def process_parse(input_path: Path, storage):
     logger.info(f"Starting PARSE job for {input_path}")
     
+    settings, _openai_async, embeddings_service, vector_store_service = get_services()
     output_dir = input_path.parent / "output"
     output_dir.mkdir(exist_ok=True, parents=True)
     
@@ -64,6 +66,31 @@ async def process_parse(input_path: Path, storage):
         s3_key = f"output/indexes/{f.name}"
         storage.upload_file(f, s3_key)
         logger.info(f"Uploaded result: {s3_key}")
+    
+    # Also push parsed sheets into the vector index (sequential to avoid memory spikes)
+    processor = JSONProcessor()
+    indexer = VectorStoreIndexer(embeddings_service, vector_store_service)
+    namespace = settings.pinecone_namespace or ""
+    
+    for f in output_files:
+        try:
+            doc = processor.process_file(f)
+        except Exception as e:
+            logger.error(f"Failed to process JSON for indexing {f}: {e}", exc_info=True)
+            continue
+        
+        try:
+            await indexer.index_documents(
+                [doc],
+                embedding_batch_size=settings.batch_size,
+                upsert_batch_size=settings.pinecone_batch_size,
+                namespace=namespace,
+                max_workers=settings.max_workers
+            )
+            logger.info(f"Indexed '{doc.source_name}' ({doc.total_items} items) into vector store")
+        except Exception as e:
+            logger.error(f"Failed to index document {f}: {e}", exc_info=True)
+            continue
 
 async def process_fill(input_path: Path, storage):
     logger.info(f"Starting FILL job for {input_path}")

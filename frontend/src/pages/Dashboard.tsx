@@ -1,6 +1,8 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const stats = [
     {
       name: "Total Tasks",
@@ -95,6 +97,7 @@ const Dashboard: React.FC = () => {
       acronym: "H&S",
       description: "WhatsApp-based monitoring system",
       color: "primary",
+      path: "/knowledge-base",
       icon: (
         <svg
           className="w-8 h-8"
@@ -117,6 +120,7 @@ const Dashboard: React.FC = () => {
       acronym: "QC",
       description: "Real-time quality monitoring",
       color: "primary",
+      path: undefined,
       icon: (
         <svg
           className="w-8 h-8"
@@ -139,6 +143,7 @@ const Dashboard: React.FC = () => {
       acronym: "AI-T",
       description: "AI-driven task assignment",
       color: "primary",
+      path: undefined,
       icon: (
         <svg
           className="w-8 h-8"
@@ -161,6 +166,7 @@ const Dashboard: React.FC = () => {
       acronym: "AI-P",
       description: "Intelligent pricing system",
       color: "primary",
+      path: undefined,
       icon: (
         <svg
           className="w-8 h-8"
@@ -325,6 +331,7 @@ const Dashboard: React.FC = () => {
               {modules.map((module) => (
                 <button
                   key={module.id}
+                  onClick={() => module.path && navigate(module.path)}
                   className="bg-primary-50 border-2 border-primary-200 rounded-lg p-4 sm:p-6 text-left hover:bg-primary-100 hover:border-primary-300 transition-all group"
                 >
                   <div className="flex items-start justify-between mb-3">

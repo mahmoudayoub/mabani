@@ -37,19 +37,37 @@ npm install
 pip install -r requirements.txt
 ```
 
-## Step 2: Configure AWS Secrets Manager
+## Step 2: Configure AWS Parameter Store
 
-### Create Twilio Credentials Secret
+### Create Twilio Credentials Parameters
 
 ```bash
-aws secretsmanager create-secret \
-  --name mabani/twilio/credentials \
-  --description "Twilio credentials for WhatsApp integration" \
-  --secret-string '{
-    "account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "auth_token": "your_auth_token_here",
-    "whatsapp_number": "whatsapp:+14155238886"
-  }' \
+# Use the interactive setup script (recommended)
+cd /Users/mayoub/Desktop/mabani
+./scripts/setup-twilio-parameters.sh dev
+
+# Or manually create parameters
+aws ssm put-parameter \
+  --name "/mabani/twilio/account_sid" \
+  --description "Twilio Account SID for WhatsApp integration" \
+  --value "ACxxxxxxxxxxxxxxxxxxxxxxxxx" \
+  --type "String" \
+  --region eu-west-1 \
+  --profile mia40
+
+aws ssm put-parameter \
+  --name "/mabani/twilio/auth_token" \
+  --description "Twilio Auth Token (encrypted)" \
+  --value "your_auth_token_here" \
+  --type "SecureString" \
+  --region eu-west-1 \
+  --profile mia40
+
+aws ssm put-parameter \
+  --name "/mabani/twilio/whatsapp_number" \
+  --description "Twilio WhatsApp number" \
+  --value "whatsapp:+14155238886" \
+  --type "String" \
   --region eu-west-1 \
   --profile mia40
 ```
@@ -288,13 +306,14 @@ Create a dashboard to monitor:
 **Solution**:
 
 1. Verify webhook URL is correct (HTTPS)
-2. Check Secrets Manager has correct auth token
+2. Check Parameter Store has correct auth token (`/mabani/twilio/auth_token`)
 3. Ensure no proxy or firewall is modifying requests
 
 ```bash
-# Verify secret
-aws secretsmanager get-secret-value \
-  --secret-id mabani/twilio/credentials \
+# Verify parameters
+aws ssm get-parameters-by-path \
+  --path /mabani/twilio \
+  --with-decryption \
   --region eu-west-1 \
   --profile mia40
 ```
@@ -372,7 +391,7 @@ reportProcessor:
 - [ ] WhatsApp response received
 - [ ] CloudWatch alarms configured
 - [ ] User-project mappings seeded (if needed)
-- [ ] Secrets Manager contains valid Twilio credentials
+- [ ] Parameter Store contains valid Twilio credentials
 - [ ] Bedrock model access enabled
 
 ## Updating After Deployment

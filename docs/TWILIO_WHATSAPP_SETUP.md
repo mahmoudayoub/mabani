@@ -419,7 +419,7 @@ Twilio WhatsApp integration requires connecting Twilio to Meta (Facebook) WhatsA
 2. **Rotate Credentials**:
 
    - Update Twilio auth token periodically
-   - Update in AWS Secrets Manager
+   - Update in AWS Parameter Store (`/mabani/twilio/auth_token`)
 
 3. **Monitor Usage**:
 
@@ -479,7 +479,7 @@ Before going to production:
 
 - **Bedrock**: https://console.aws.amazon.com/bedrock
 - **Lambda**: https://console.aws.amazon.com/lambda
-- **Secrets Manager**: https://console.aws.amazon.com/secretsmanager
+- **Systems Manager (Parameter Store)**: https://console.aws.amazon.com/systems-manager/parameters
 
 ---
 

@@ -25,7 +25,7 @@ This directory contains Lambda functions for processing Health & Safety and Qual
 
 - `REPORTS_TABLE`: DynamoDB table for reports
 - `STATE_MACHINE_ARN`: Step Functions ARN (optional)
-- `TWILIO_SECRETS_NAME`: Secrets Manager secret name
+- `TWILIO_PARAMETER_PATH`: Parameter Store path for Twilio credentials
 
 #### 2. `report_processor.py`
 
@@ -52,7 +52,7 @@ This directory contains Lambda functions for processing Health & Safety and Qual
 - `USER_PROJECT_TABLE`: DynamoDB table for user-project mappings
 - `REPORTS_BUCKET`: S3 bucket for images
 - `BEDROCK_MODEL_ID`: Bedrock model ID
-- `TWILIO_SECRETS_NAME`: Secrets Manager secret name
+- `TWILIO_PARAMETER_PATH`: Parameter Store path for Twilio credentials
 
 ### Shared Utilities (Lambda Layer)
 
@@ -122,17 +122,21 @@ cd backend
 npm install
 ```
 
-2. **Configure Twilio credentials in AWS Secrets Manager**:
+2. **Configure Twilio credentials in AWS Parameter Store**:
 
 ```bash
-aws secretsmanager create-secret \
-  --name mabani/twilio/credentials \
-  --secret-string '{
-    "account_sid": "ACxxxxxxxxx",
-    "auth_token": "your_auth_token",
-    "whatsapp_number": "whatsapp:+14155238886"
-  }' \
-  --region eu-west-1
+# Use the interactive setup script
+./scripts/setup-twilio-parameters.sh dev
+
+# Or manually create parameters
+aws ssm put-parameter --name "/mabani/twilio/account_sid" \
+  --value "ACxxxxxxxxx" --type "String" --region eu-west-1
+
+aws ssm put-parameter --name "/mabani/twilio/auth_token" \
+  --value "your_auth_token" --type "SecureString" --region eu-west-1
+
+aws ssm put-parameter --name "/mabani/twilio/whatsapp_number" \
+  --value "whatsapp:+14155238886" --type "String" --region eu-west-1
 ```
 
 3. **Enable Bedrock models**:
@@ -204,7 +208,7 @@ pip install -r requirements.txt
 
 # Set environment variables
 export REPORTS_TABLE=taskflow-backend-dev-reports
-export TWILIO_SECRETS_NAME=mabani/twilio/credentials
+export TWILIO_PARAMETER_PATH=/mabani/twilio
 export AWS_REGION=eu-west-1
 
 # Invoke locally (requires SAM CLI)
@@ -293,7 +297,7 @@ aws cloudwatch put-metric-alarm \
 
 ### "Invalid signature" errors
 
-- Verify Twilio credentials in Secrets Manager
+- Verify Twilio credentials in Parameter Store (`/mabani/twilio`)
 - Check webhook URL is correct (HTTPS)
 - Ensure `X-Twilio-Signature` header is present
 
@@ -319,7 +323,7 @@ aws cloudwatch put-metric-alarm \
 ### Best Practices
 
 1. **Signature Validation**: Always validate Twilio signatures
-2. **Secrets Management**: Store credentials in Secrets Manager
+2. **Secrets Management**: Store credentials in Parameter Store (encrypted with SecureString)
 3. **Encryption**: Enable S3 encryption at rest
 4. **Access Control**: Use least privilege IAM roles
 5. **Monitoring**: Enable CloudWatch alarms for anomalies
@@ -328,7 +332,7 @@ aws cloudwatch put-metric-alarm \
 
 - `dynamodb:PutItem`, `dynamodb:GetItem`, `dynamodb:Query`
 - `s3:PutObject`, `s3:GetObject`
-- `secretsmanager:GetSecretValue`
+- `ssm:GetParameter`, `ssm:GetParameters`, `ssm:GetParametersByPath`
 - `bedrock:InvokeModel`
 - `states:StartExecution` (if using Step Functions)
 

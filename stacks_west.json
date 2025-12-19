@@ -1,0 +1,47 @@
+{
+    "StackSummaries": [
+        {
+            "StackId": "arn:aws:cloudformation:eu-west-1:239146712026:stack/AlmabaniStack/bcfc89d0-d75e-11f0-bfee-0a57af1dc81d",
+            "StackName": "AlmabaniStack",
+            "CreationTime": "2025-12-12T13:30:34.889000+00:00",
+            "LastUpdatedTime": "2025-12-12T13:48:41.674000+00:00",
+            "StackStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "StackId": "arn:aws:cloudformation:eu-west-1:239146712026:stack/CDKToolkit/ce791ee0-d75d-11f0-9931-0a30b00a4fe1",
+            "StackName": "CDKToolkit",
+            "TemplateDescription": "This stack includes resources needed to deploy AWS CDK apps into this environment",
+            "CreationTime": "2025-12-12T13:23:54.573000+00:00",
+            "LastUpdatedTime": "2025-12-12T13:24:54.532000+00:00",
+            "StackStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "StackId": "arn:aws:cloudformation:eu-west-1:239146712026:stack/taskflow-backend-dev/0a0102e0-bce0-11f0-a410-0a32cd5e0deb",
+            "StackName": "taskflow-backend-dev",
+            "TemplateDescription": "The AWS CloudFormation template for this Serverless application",
+            "CreationTime": "2025-11-08T20:18:07.558000+00:00",
+            "LastUpdatedTime": "2025-11-29T23:13:45.159000+00:00",
+            "StackStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "StackId": "arn:aws:cloudformation:eu-west-1:239146712026:stack/MabaniCognitoStack-dev/b1e67d40-b773-11f0-baae-02987561a831",
+            "StackName": "MabaniCognitoStack-dev",
+            "TemplateDescription": "Cognito User Pool for Mabani application (dev)",
+            "CreationTime": "2025-11-01T22:39:58.318000+00:00",
+            "LastUpdatedTime": "2025-11-01T22:40:04.098000+00:00",
+            "StackStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackDriftStatus": "NOT_CHECKED"
+            }
+        }
+    ]
+}

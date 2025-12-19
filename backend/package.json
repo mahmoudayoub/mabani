@@ -4,14 +4,21 @@
   "description": "Backend Lambda functions for TaskFlow intelligent task management platform",
   "main": "index.js",
   "scripts": {
-    "deploy": "serverless deploy",
+    "deploy": "serverless deploy --verbose",
     "deploy:single": "serverless deploy function",
+    "deploy:quiet": "serverless deploy",
+    "dev": "serverless offline start",
     "test": "python -m pytest tests/",
+    "test:unit": "python -m pytest tests/unit/ -m unit",
+    "test:integration": "python -m pytest tests/integration/ -m integration",
+    "test:e2e": "python -m pytest tests/e2e/ -m e2e",
+    "test:coverage": "python -m pytest tests/ --cov=lambdas --cov-report=html --cov-report=term-missing",
     "lint": "flake8 lambdas/",
     "clean": "rm -rf .serverless __pycache__ *.pyc"
   },
   "devDependencies": {
     "serverless": "^3.40.0",
-    "serverless-python-requirements": "^6.0.0"
+    "serverless-python-requirements": "^6.0.0",
+    "serverless-offline": "^13.9.0"
   }
 }

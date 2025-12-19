@@ -1,0 +1,24 @@
+{
+    "StackSummaries": [
+        {
+            "StackId": "arn:aws:cloudformation:eu-central-1:239146712026:stack/aws-sam-cli-managed-deploy-stage-pipeline-resources/ba479ee0-26d9-11f0-8613-0601c0d82731",
+            "StackName": "aws-sam-cli-managed-deploy-stage-pipeline-resources",
+            "CreationTime": "2025-05-01T22:15:02.398000+00:00",
+            "LastUpdatedTime": "2025-05-01T22:15:18.199000+00:00",
+            "StackStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "StackId": "arn:aws:cloudformation:eu-central-1:239146712026:stack/aws-sam-cli-managed-build-stage-pipeline-resources/1e46a3b0-26d9-11f0-8b9e-02c9293d2a15",
+            "StackName": "aws-sam-cli-managed-build-stage-pipeline-resources",
+            "CreationTime": "2025-05-01T22:10:40.671000+00:00",
+            "LastUpdatedTime": "2025-05-01T22:10:56.481000+00:00",
+            "StackStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackDriftStatus": "NOT_CHECKED"
+            }
+        }
+    ]
+}

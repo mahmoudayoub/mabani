@@ -43,9 +43,22 @@ const Layout: React.FC<LayoutProps> = ({ children, user, signOut }) => {
   const navigation = [
     { name: "Dashboard", href: "/", current: location.pathname === "/" },
     {
+      name: "Health & Safety",
+      href: "/health-safety",
+      current: location.pathname.startsWith("/health-safety") ||
+        location.pathname.startsWith("/knowledge-base") ||
+        location.pathname.startsWith("/safety-config") ||
+        location.pathname.startsWith("/safety-logs"),
+    },
+    {
       name: "Profile",
       href: "/profile",
       current: location.pathname === "/profile",
+    },
+    {
+      name: "File Processing",
+      href: "/file-processing",
+      current: location.pathname === "/file-processing",
     },
   ];
 
@@ -64,11 +77,10 @@ const Layout: React.FC<LayoutProps> = ({ children, user, signOut }) => {
                   <Link
                     key={item.name}
                     to={item.href}
-                    className={`${
-                      item.current
-                        ? "border-primary-500 text-black"
-                        : "border-transparent text-gray-600 hover:text-black hover:border-gray-300"
-                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                    className={`${item.current
+                      ? "border-primary-500 text-black"
+                      : "border-transparent text-gray-600 hover:text-black hover:border-gray-300"
+                      } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
                   >
                     {item.name}
                   </Link>

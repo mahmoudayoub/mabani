@@ -2,7 +2,9 @@ import json
 import base64
 from datetime import datetime
 from botocore.exceptions import ClientError
-from .shared.lambda_helpers import (
+
+# Import from layer - optimized for AWS deployed structure
+from lambdas.shared.lambda_helpers import (
     with_error_handling,
     create_response,
     create_error_response,

@@ -8,7 +8,7 @@ set -e
 ENVIRONMENT=${1:-dev}
 AWS_PROFILE="mia40"
 AWS_REGION="eu-west-1"
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Colors for output
 RED='\033[0;31m'
@@ -39,8 +39,9 @@ npm run build
 
 # Get S3 bucket name from CloudFormation
 BUCKET_NAME=$(aws cloudformation describe-stacks \
-    --stack-name MabaniFrontendStack \
+    --stack-name MabaniGeneralStack-dev \
     --profile $AWS_PROFILE \
+    --region $AWS_REGION \
     --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
     --output text)
 
@@ -54,6 +55,7 @@ log_info "Uploading to S3 bucket: $BUCKET_NAME"
 # Upload to S3
 aws s3 sync dist/ s3://$BUCKET_NAME \
     --profile $AWS_PROFILE \
+    --region $AWS_REGION \
     --delete \
     --cache-control "public, max-age=31536000" \
     --exclude "*.html" \
@@ -62,6 +64,7 @@ aws s3 sync dist/ s3://$BUCKET_NAME \
 # Upload HTML files with no-cache
 aws s3 sync dist/ s3://$BUCKET_NAME \
     --profile $AWS_PROFILE \
+    --region $AWS_REGION \
     --delete \
     --cache-control "no-cache" \
     --include "*.html" \
@@ -70,14 +73,16 @@ aws s3 sync dist/ s3://$BUCKET_NAME \
 # Invalidate CloudFront cache
 log_info "Invalidating CloudFront cache..."
 DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
-    --stack-name MabaniFrontendStack \
+    --stack-name MabaniGeneralStack-dev \
     --profile $AWS_PROFILE \
+    --region $AWS_REGION \
     --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' \
     --output text)
 
 aws cloudfront create-invalidation \
     --distribution-id $DISTRIBUTION_ID \
     --paths "/*" \
-    --profile $AWS_PROFILE
+    --profile $AWS_PROFILE \
+    --region $AWS_REGION
 
 log_success "Frontend deployed successfully to S3 and CloudFront cache invalidated"

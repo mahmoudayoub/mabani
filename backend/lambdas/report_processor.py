@@ -60,6 +60,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     try:
         request_id = event["requestId"]
+        report_number = event.get("reportNumber", "N/A")
         sender = event["sender"]
         description = event["description"]
         image_url = event["imageUrl"]
@@ -73,7 +74,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Step 3: Rewrite description
         print("Rewriting description...")
-        rewritten_description = bedrock_client.rewrite_description(description)
+        rewritten_description = bedrock_client.rewrite_description(
+            description, timestamp=event["timestamp"]
+        )
         print(f"Rewritten: {rewritten_description}")
 
         # Step 4: Upload image to S3
@@ -139,6 +142,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Step 9: Build complete report
         report_data = {
             "requestId": request_id,
+            "reportNumber": report_number,
             "timestamp": event["timestamp"],
             "reportType": report_type,
             "sender": sender,
@@ -249,6 +253,7 @@ def _store_report(report_data: Dict[str, Any]) -> None:
         "PK": f"REPORT#{request_id}",
         "SK": "METADATA",
         "requestId": request_id,
+        "reportNumber": report_data.get("reportNumber"),
         "reportType": report_data["reportType"],
         "timestamp": timestamp,
         "sender": sender,

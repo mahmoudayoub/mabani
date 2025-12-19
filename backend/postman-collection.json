@@ -1,0 +1,334 @@
+{
+  "info": {
+    "name": "TaskFlow Knowledge Base API",
+    "description": "API endpoints for TaskFlow Knowledge Base features",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "jwtToken",
+      "value": "YOUR_JWT_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "kbId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "documentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Knowledge Bases",
+      "item": [
+        {
+          "name": "List Knowledge Bases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases"]
+            }
+          }
+        },
+        {
+          "name": "Create Knowledge Base",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Knowledge Base\",\n  \"description\": \"A test knowledge base for development\",\n  \"embeddingModel\": \"amazon.titan-embed-text-v2:0\",\n  \"llmModel\": \"eu.amazon.nova-lite-v1:0\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases"]
+            }
+          }
+        },
+        {
+          "name": "Get Knowledge Base",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Knowledge Base",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Knowledge Base Name\",\n  \"description\": \"Updated description\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Knowledge Base",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Generate Upload URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"sample-document.pdf\",\n  \"contentType\": \"application/pdf\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}/upload-url",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}", "upload-url"]
+            }
+          }
+        },
+        {
+          "name": "Confirm Document Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentId\": \"{{documentId}}\",\n  \"filename\": \"sample-document.pdf\",\n  \"s3Key\": \"documents/user-id/kb-id/doc-id.pdf\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}", "documents"]
+            }
+          }
+        },
+        {
+          "name": "List Documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}", "documents"]
+            }
+          }
+        },
+        {
+          "name": "Delete Document",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}/documents/{{documentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}", "documents", "{{documentId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Query",
+      "item": [
+        {
+          "name": "Query Knowledge Base (Simple)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"What is the main topic discussed in the documents?\",\n  \"modelId\": \"eu.amazon.nova-lite-v1:0\",\n  \"k\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}/query",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}", "query"]
+            }
+          }
+        },
+        {
+          "name": "Query Knowledge Base (With History)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"Can you elaborate on that?\",\n  \"modelId\": \"eu.amazon.nova-lite-v1:0\",\n  \"k\": 5,\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is the main topic?\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"The main topic is...\"\n    }\n  ],\n  \"config\": {\n    \"temperature\": 0.7,\n    \"maxTokens\": 2048,\n    \"topP\": 0.9\n  },\n  \"distanceThreshold\": 1.0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/knowledge-bases/{{kbId}}/query",
+              "host": ["{{baseUrl}}"],
+              "path": ["knowledge-bases", "{{kbId}}", "query"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Other Endpoints",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["profile"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+

@@ -1,4 +1,4 @@
-import React from "react";
+
 import { Amplify } from "aws-amplify";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Authenticator } from "@aws-amplify/ui-react";
@@ -6,6 +6,11 @@ import "@aws-amplify/ui-react/styles.css";
 
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
+import KnowledgeBase from "./pages/KnowledgeBase";
+import SafetyConfig from "./pages/SafetyConfig";
+import SafetyLogs from "./pages/SafetyLogs";
+import HealthAndSafety from "./pages/HealthAndSafety";
+import FileProcessing from "./pages/FileProcessing";
 import Layout from "./components/Layout";
 
 // Configure Amplify
@@ -95,12 +100,18 @@ function App() {
         <Router>
           <Layout
             user={user || { signInDetails: { loginId: undefined } }}
-            signOut={signOut || (() => {})}
+            signOut={signOut || (() => { })}
           >
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/health-safety" element={<HealthAndSafety />} />
+              <Route path="/knowledge-base" element={<KnowledgeBase />} />
+              <Route path="/safety-config" element={<SafetyConfig />} />
+              <Route path="/safety-logs" element={<SafetyLogs />} />
+              <Route path="/file-processing" element={<FileProcessing />} />
             </Routes>
+
           </Layout>
         </Router>
       )}

@@ -1,0 +1,1 @@
+{"statusCode": 500, "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": true}, "body": "{\"error\": \"Object of type Decimal is not JSON serializable\"}"}

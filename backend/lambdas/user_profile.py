@@ -1,6 +1,9 @@
 import json
 from datetime import datetime
-from .shared.lambda_helpers import (
+from botocore.exceptions import ClientError
+
+# Import from layer - optimized for AWS deployed structure
+from lambdas.shared.lambda_helpers import (
     with_error_handling,
     create_response,
     create_error_response,
@@ -9,17 +12,51 @@ from .shared.lambda_helpers import (
 )
 
 
-@with_error_handling
 def health_check(event, context):
-    """Health check endpoint."""
-    return create_response(
-        200,
-        {
-            "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "service": "taskflow-backend",
-        },
-    )
+    """Health check endpoint - minimal implementation without AWS dependencies."""
+    try:
+        # Handle CORS preflight requests
+        if event.get("httpMethod") == "OPTIONS":
+            return {
+                "statusCode": 200,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+                },
+                "body": json.dumps({}),
+            }
+
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+            },
+            "body": json.dumps(
+                {
+                    "status": "healthy",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "service": "taskflow-backend",
+                }
+            ),
+        }
+    except Exception as error:
+        print(f"Health check error: {error}")
+        import traceback
+
+        traceback.print_exc()
+        return {
+            "statusCode": 500,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            "body": json.dumps({"error": "Internal server error"}),
+        }
 
 
 @with_error_handling

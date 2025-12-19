@@ -1,0 +1,1694 @@
+{
+    "StackResourceSummaries": [
+        {
+            "LogicalResourceId": "ApiGatewayDeployment1766147119283",
+            "PhysicalResourceId": "2mszgu",
+            "ResourceType": "AWS::ApiGateway::Deployment",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:50.647000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodConfigTypeVarGet",
+            "PhysicalResourceId": "j8r5sar4mf|z8znhk|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:41.804000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodConfigTypeVarOptions",
+            "PhysicalResourceId": "j8r5sar4mf|z8znhk|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:28.335000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodConfigTypeVarPut",
+            "PhysicalResourceId": "j8r5sar4mf|z8znhk|PUT",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:41.872000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodHealthGet",
+            "PhysicalResourceId": "j8r5sar4mf|r8xhwj|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:49.325000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodHealthOptions",
+            "PhysicalResourceId": "j8r5sar4mf|r8xhwj|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.160000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodItemsGet",
+            "PhysicalResourceId": "j8r5sar4mf|uuxyz6|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:47.711000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodItemsItemidVarDelete",
+            "PhysicalResourceId": "j8r5sar4mf|hj4haz|DELETE",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:48.380000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodItemsItemidVarOptions",
+            "PhysicalResourceId": "j8r5sar4mf|hj4haz|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:23.312000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodItemsItemidVarPut",
+            "PhysicalResourceId": "j8r5sar4mf|hj4haz|PUT",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:47.669000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodItemsOptions",
+            "PhysicalResourceId": "j8r5sar4mf|uuxyz6|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.771000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodItemsPost",
+            "PhysicalResourceId": "j8r5sar4mf|uuxyz6|POST",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:47.467000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesGet",
+            "PhysicalResourceId": "j8r5sar4mf|n9cqpj|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:08.689000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarDelete",
+            "PhysicalResourceId": "j8r5sar4mf|i4fk1u|DELETE",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:08.564000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarDocumentsDocumentidVarDelete",
+            "PhysicalResourceId": "j8r5sar4mf|ae02zn|DELETE",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.993000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarDocumentsDocumentidVarOptions",
+            "PhysicalResourceId": "j8r5sar4mf|ae02zn|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:43.660000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarDocumentsGet",
+            "PhysicalResourceId": "j8r5sar4mf|a57yue|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:08.554000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarDocumentsOptions",
+            "PhysicalResourceId": "j8r5sar4mf|a57yue|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:42.051000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarDocumentsPost",
+            "PhysicalResourceId": "j8r5sar4mf|a57yue|POST",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:08.724000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarGet",
+            "PhysicalResourceId": "j8r5sar4mf|i4fk1u|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:08.459000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarOptions",
+            "PhysicalResourceId": "j8r5sar4mf|i4fk1u|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:40.358000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarPut",
+            "PhysicalResourceId": "j8r5sar4mf|i4fk1u|PUT",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:08.482000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarQueryOptions",
+            "PhysicalResourceId": "j8r5sar4mf|2rtclx|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:42.097000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarQueryPost",
+            "PhysicalResourceId": "j8r5sar4mf|2rtclx|POST",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:08.825000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarUploadDashurlOptions",
+            "PhysicalResourceId": "j8r5sar4mf|ywcixb|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:42.137000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesKbidVarUploadDashurlPost",
+            "PhysicalResourceId": "j8r5sar4mf|ywcixb|POST",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:08.328000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesOptions",
+            "PhysicalResourceId": "j8r5sar4mf|n9cqpj|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:38.640000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodKnowledgeDashbasesPost",
+            "PhysicalResourceId": "j8r5sar4mf|n9cqpj|POST",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:09.011000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodProfileGet",
+            "PhysicalResourceId": "j8r5sar4mf|0l2gx3|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:47.787000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodProfileOptions",
+            "PhysicalResourceId": "j8r5sar4mf|0l2gx3|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.150000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodProfilePut",
+            "PhysicalResourceId": "j8r5sar4mf|0l2gx3|PUT",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:47.755000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodReportsGet",
+            "PhysicalResourceId": "j8r5sar4mf|qq2ani|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:53.168000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodReportsIdVarGet",
+            "PhysicalResourceId": "j8r5sar4mf|x101k0|GET",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:53.728000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodReportsIdVarOptions",
+            "PhysicalResourceId": "j8r5sar4mf|x101k0|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:40.214000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodReportsOptions",
+            "PhysicalResourceId": "j8r5sar4mf|qq2ani|OPTIONS",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:38.469000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayMethodWebhookTwilioPost",
+            "PhysicalResourceId": "j8r5sar4mf|wjw8g1|POST",
+            "ResourceType": "AWS::ApiGateway::Method",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:49.104000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceConfig",
+            "PhysicalResourceId": "93g560",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:23.581000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceConfigTypeVar",
+            "PhysicalResourceId": "z8znhk",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:25.183000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceHealth",
+            "PhysicalResourceId": "r8xhwj",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:18.084000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceItems",
+            "PhysicalResourceId": "uuxyz6",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:18.114000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceItemsItemidVar",
+            "PhysicalResourceId": "hj4haz",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:20.224000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceKnowledgeDashbases",
+            "PhysicalResourceId": "n9cqpj",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:35.549000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceKnowledgeDashbasesKbidVar",
+            "PhysicalResourceId": "i4fk1u",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:37.264000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceKnowledgeDashbasesKbidVarDocuments",
+            "PhysicalResourceId": "a57yue",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:39+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceKnowledgeDashbasesKbidVarDocumentsDocumentidVar",
+            "PhysicalResourceId": "ae02zn",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:40.648000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceKnowledgeDashbasesKbidVarQuery",
+            "PhysicalResourceId": "2rtclx",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:39.073000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceKnowledgeDashbasesKbidVarUploadDashurl",
+            "PhysicalResourceId": "ywcixb",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:39.006000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceProfile",
+            "PhysicalResourceId": "0l2gx3",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:17.985000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceReports",
+            "PhysicalResourceId": "qq2ani",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:35.550000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceReportsIdVar",
+            "PhysicalResourceId": "x101k0",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:37.113000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceWebhook",
+            "PhysicalResourceId": "o7fkzy",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:18.132000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayResourceWebhookTwilio",
+            "PhysicalResourceId": "wjw8g1",
+            "ResourceType": "AWS::ApiGateway::Resource",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:19.855000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ApiGatewayRestApi",
+            "PhysicalResourceId": "j8r5sar4mf",
+            "ResourceType": "AWS::ApiGateway::RestApi",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:16.170000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CognitoAuthorizerApiGatewayAuthorizer",
+            "PhysicalResourceId": "qpn39s",
+            "ResourceType": "AWS::ApiGateway::Authorizer",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:17.787000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ConfirmKnowledgeBaseDocumentLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-confirmKnowledgeBaseDocument",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.861000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ConfirmKnowledgeBaseDocumentLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-ConfirmKnowledgeBaseDocumentLambdaPermissionApiGateway-NCGm2GYWdCwc",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.414000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ConfirmKnowledgeBaseDocumentLambdaVersioncMXYQw6Vwi4C70U9G4MzOXxN0pvLWAT68aUpPCACVM",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-confirmKnowledgeBaseDocument:34",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:53.479000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ConfirmKnowledgeBaseDocumentLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-confirmKnowledgeBaseDocument",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.551000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ConversationsTable",
+            "PhysicalResourceId": "taskflow-backend-dev-conversations",
+            "ResourceType": "AWS::DynamoDB::Table",
+            "LastUpdatedTimestamp": "2025-12-13T15:00:07.157000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CreateItemLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-createItem",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:45.116000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CreateItemLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-CreateItemLambdaPermissionApiGateway-Ak6OsR9UKtxh",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:46.263000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CreateItemLambdaVersionohaYaob1FwM36qXEnrUfzFTKYsWSudJksUhsopIcxqA",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-createItem:45",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:53.496000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CreateItemLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-createItem",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.587000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CreateKnowledgeBaseLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-createKnowledgeBase",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.974000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CreateKnowledgeBaseLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-CreateKnowledgeBaseLambdaPermissionApiGateway-Oo3NPM0XUyEo",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.665000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CreateKnowledgeBaseLambdaVersionu9nrogUOaLWwz3TSt42CJJjucFrWgL3TLe4ht7hYYeM",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-createKnowledgeBase:33",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:48.385000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "CreateKnowledgeBaseLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-createKnowledgeBase",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.552000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteItemLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-deleteItem",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.802000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteItemLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-DeleteItemLambdaPermissionApiGateway-5mPOcVoWiVV4",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:47.080000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteItemLambdaVersion7pvn3DFn9pzMeDMBvmSxSggZ6QCGa7WLWOfj6IQ",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-deleteItem:45",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:48.239000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteItemLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-deleteItem",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.681000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteKnowledgeBaseDocumentLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-deleteKnowledgeBaseDocument",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:47.366000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteKnowledgeBaseDocumentLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-DeleteKnowledgeBaseDocumentLambdaPermissionApiGateway-tcQjBgtRKNFL",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:06.769000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteKnowledgeBaseDocumentLambdaVersion1JAPJ2ZbLdkDHZd4VQTfAa1DykAe4ZVSmivoK0JohM",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-deleteKnowledgeBaseDocument:34",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:53.402000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteKnowledgeBaseDocumentLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-deleteKnowledgeBaseDocument",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.639000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteKnowledgeBaseLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-deleteKnowledgeBase",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.757000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteKnowledgeBaseLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-DeleteKnowledgeBaseLambdaPermissionApiGateway-NpfRe2Wqk9T4",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.103000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteKnowledgeBaseLambdaVersiondBFCSSIDfVVE3ihWgRQtSDsWjsFGLqFSC8AZ5g",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-deleteKnowledgeBase:33",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:49.197000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DeleteKnowledgeBaseLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-deleteKnowledgeBase",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.475000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DocumentsTable",
+            "PhysicalResourceId": "taskflow-backend-dev-documents",
+            "ResourceType": "AWS::DynamoDB::Table",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:58.305000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "DynamoDBTable",
+            "PhysicalResourceId": "taskflow-backend-dev-table",
+            "ResourceType": "AWS::DynamoDB::Table",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:38.274000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GenerateKnowledgeBaseUploadUrlLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-generateKnowledgeBaseUploadUrl",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.933000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GenerateKnowledgeBaseUploadUrlLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-GenerateKnowledgeBaseUploadUrlLambdaPermissionApiGateway-4GVjfjF4a9g2",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.090000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GenerateKnowledgeBaseUploadUrlLambdaVersionAcZs6Ka8GO3agN8k8JabmI7H6OV7ziNujyLKw2Ltg",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-generateKnowledgeBaseUploadUrl:34",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:48.042000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GenerateKnowledgeBaseUploadUrlLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-generateKnowledgeBaseUploadUrl",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.481000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetConfigLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-getConfig",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:45.155000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetConfigLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-GetConfigLambdaPermissionApiGateway-mqjmkqmwyIFZ",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:40.707000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetConfigLambdaVersionSBjrjbVVGEAA9DWNCFbkBgJaIsaNvE48pDBNphUb4I",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-getConfig:9",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:48.741000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetConfigLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-getConfig",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:29.636000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetKnowledgeBaseLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-getKnowledgeBase",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.827000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetKnowledgeBaseLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-GetKnowledgeBaseLambdaPermissionApiGateway-ooGHRfaEsAmo",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.435000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetKnowledgeBaseLambdaVersion6HkaPsabq6qK7KMzC95wqJo8tUfeg9vF284ATre5s",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-getKnowledgeBase:33",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:47.364000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetKnowledgeBaseLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-getKnowledgeBase",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.562000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetReportLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-getReport",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.903000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetReportLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-GetReportLambdaPermissionApiGateway-QypNC3mhRgzD",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:52.509000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetReportLambdaVersionag7EeUqMfbFS7KuDmW987vXcdWJIrA00J9sYqo09pk",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-getReport:5",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:46.877000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetReportLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-getReport",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:41.391000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetUserItemsLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-getUserItems",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.914000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetUserItemsLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-GetUserItemsLambdaPermissionApiGateway-IzP5AfDp6muL",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:46.382000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetUserItemsLambdaVersionHYAnOzDKou1HRgW4BqUoWle3MDeff3Ssb4YrX1EiNuc",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-getUserItems:45",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:51.999000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetUserItemsLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-getUserItems",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.770000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetUserProfileLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-getUserProfile",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:45.060000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetUserProfileLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-GetUserProfileLambdaPermissionApiGateway-szU3aqBMR9k0",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:46.477000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetUserProfileLambdaVersionxVM9iuUq9BNo1l3y9KJsPj79FRlSxpl8wP3IbMw177s",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-getUserProfile:45",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:47.544000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "GetUserProfileLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-getUserProfile",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.695000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "HealthCheckLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-healthCheck",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.902000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "HealthCheckLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-HealthCheckLambdaPermissionApiGateway-bjq7ooqyz4I5",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:46.508000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "HealthCheckLambdaVersionyLGPhYNbrq6nlHiZK4kvBSb7kynqPwi9TopH0NWcg",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-healthCheck:45",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:47.405000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "HealthCheckLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-healthCheck",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.714000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "IamRoleLambdaExecution",
+            "PhysicalResourceId": "taskflow-backend-dev-eu-west-1-lambdaRole",
+            "ResourceType": "AWS::IAM::Role",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:30.383000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KbSharedCodeLambdaLayer",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:layer:taskflow-backend-dev-kb-shared-code:10",
+            "ResourceType": "AWS::Lambda::LayerVersion",
+            "LastUpdatedTimestamp": "2025-12-13T16:31:20.043000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KnowledgeBaseBucket",
+            "PhysicalResourceId": "taskflow-backend-dev-kb",
+            "ResourceType": "AWS::S3::Bucket",
+            "LastUpdatedTimestamp": "2025-12-13T15:47:31.757000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KnowledgeBaseIndexingDLQ",
+            "PhysicalResourceId": "https://sqs.eu-west-1.amazonaws.com/239146712026/taskflow-backend-dev-kb-indexing-dlq",
+            "ResourceType": "AWS::SQS::Queue",
+            "LastUpdatedTimestamp": "2025-11-22T00:22:05.384000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KnowledgeBaseIndexingQueue",
+            "PhysicalResourceId": "https://sqs.eu-west-1.amazonaws.com/239146712026/taskflow-backend-dev-kb-indexing",
+            "ResourceType": "AWS::SQS::Queue",
+            "LastUpdatedTimestamp": "2025-11-22T00:22:37.440000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KnowledgeBaseIndexingWorkerEventSourceMappingSQSKnowledgeBaseIndexingQueue",
+            "PhysicalResourceId": "046f1956-d9ae-4937-89c8-64ad743098be",
+            "ResourceType": "AWS::Lambda::EventSourceMapping",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:18.636000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KnowledgeBaseIndexingWorkerLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-knowledgeBaseIndexingWorker",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.950000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KnowledgeBaseIndexingWorkerLambdaVersionb3kU03A3fQul58w6Gjkq8fK4AmckfWgKn8UGoG1cU",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-knowledgeBaseIndexingWorker:34",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:50.573000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KnowledgeBaseIndexingWorkerLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-knowledgeBaseIndexingWorker",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.547000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "KnowledgeBasesTable",
+            "PhysicalResourceId": "taskflow-backend-dev-knowledge-bases",
+            "ResourceType": "AWS::DynamoDB::Table",
+            "LastUpdatedTimestamp": "2025-11-22T00:22:08.434000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListKnowledgeBaseDocumentsLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-listKnowledgeBaseDocuments",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:45.209000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListKnowledgeBaseDocumentsLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-ListKnowledgeBaseDocumentsLambdaPermissionApiGateway-ckoFI78zOO12",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.435000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListKnowledgeBaseDocumentsLambdaVersionCVEg0HFGMumqjcTDsgryPJI2pSxxlGsaeTEr5ZYU",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-listKnowledgeBaseDocuments:34",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:52.677000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListKnowledgeBaseDocumentsLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-listKnowledgeBaseDocuments",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.504000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListKnowledgeBasesLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-listKnowledgeBases",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.930000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListKnowledgeBasesLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-ListKnowledgeBasesLambdaPermissionApiGateway-ubMecj1bD0A7",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.303000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListKnowledgeBasesLambdaVersionEQNxF3c560aY2BHysz12zYtt4fezFZVrZCpEDPlW0",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-listKnowledgeBases:33",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:51.710000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListKnowledgeBasesLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-listKnowledgeBases",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.449000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListReportsLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-listReports",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.927000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListReportsLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-ListReportsLambdaPermissionApiGateway-V77t3Lyjopee",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:52.011000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListReportsLambdaVersion6Md9o0CXMTTT4e9JfPZ9QHG2ks6oXlX95dCF5nSN8",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-listReports:5",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:52.072000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ListReportsLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-listReports",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-12-13T19:30:41.207000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "PythonRequirementsLambdaLayer",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:layer:taskflow-backend-dev-python-requirements:10",
+            "ResourceType": "AWS::Lambda::LayerVersion",
+            "LastUpdatedTimestamp": "2025-12-13T14:59:59.202000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "QueryKnowledgeBaseLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-queryKnowledgeBase",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:45.115000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "QueryKnowledgeBaseLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-QueryKnowledgeBaseLambdaPermissionApiGateway-0Lp7W5nlzLz2",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.666000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "QueryKnowledgeBaseLambdaVersionbEy2Orm6OPrazrt2lpA77FOQimbpQPv1Fq5Jo0I4",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-queryKnowledgeBase:35",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:47.416000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "QueryKnowledgeBaseLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-queryKnowledgeBase",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.421000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ReportProcessorLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-reportProcessor",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:45.089000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ReportProcessorLambdaVersion2VDEltAtZsnhiRBDWm6ubenbklf9dQaH5FMiXlaTwfY",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-reportProcessor:43",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:53.031000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ReportProcessorLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-reportProcessor",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.723000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ReportsBucket",
+            "PhysicalResourceId": "taskflow-backend-dev-reports",
+            "ResourceType": "AWS::S3::Bucket",
+            "LastUpdatedTimestamp": "2025-12-13T20:01:38.996000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ReportsBucketPolicy",
+            "PhysicalResourceId": "taskflow-backend-dev-reports",
+            "ResourceType": "AWS::S3::BucketPolicy",
+            "LastUpdatedTimestamp": "2025-12-13T20:01:41.011000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ReportsTable",
+            "PhysicalResourceId": "taskflow-backend-dev-reports",
+            "ResourceType": "AWS::DynamoDB::Table",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:58.759000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ServerlessDeploymentBucket",
+            "PhysicalResourceId": "taskflow-backend-dev-serverlessdeploymentbucket-jcboksmgyjz6",
+            "ResourceType": "AWS::S3::Bucket",
+            "LastUpdatedTimestamp": "2025-11-08T20:18:30.217000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "ServerlessDeploymentBucketPolicy",
+            "PhysicalResourceId": "taskflow-backend-dev-serverlessdeploymentbucket-jcboksmgyjz6",
+            "ResourceType": "AWS::S3::BucketPolicy",
+            "LastUpdatedTimestamp": "2025-11-08T20:18:31.974000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "SharedCodeLambdaLayer",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:layer:taskflow-backend-dev-shared-code:14",
+            "ResourceType": "AWS::Lambda::LayerVersion",
+            "LastUpdatedTimestamp": "2025-12-13T21:18:42.572000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "TwilioWebhookLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-twilioWebhook",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.786000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "TwilioWebhookLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-TwilioWebhookLambdaPermissionApiGateway-DgSByCbVqlTx",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:46.101000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "TwilioWebhookLambdaVersionE94LSIEv9FI64HKL7PgSQEY6HBnHTbgiV23vwrc",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-twilioWebhook:41",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:53.683000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "TwilioWebhookLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-twilioWebhook",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.762000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateConfigLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-updateConfig",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:45.039000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateConfigLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-UpdateConfigLambdaPermissionApiGateway-gNevAPZwZTP8",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:40.576000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateConfigLambdaVersionPyPAziq9SJP7IqQCZA4dh0Fi6LqVMqULCvhm7DWZo8",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-updateConfig:9",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:52.544000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateConfigLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-updateConfig",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-12-13T16:54:29.683000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateItemLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-updateItem",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.928000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateItemLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-UpdateItemLambdaPermissionApiGateway-S9vy0PKryn3r",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:46.393000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateItemLambdaVersionRUYWC55hfBU5ZbqXIK9TcWTHHF1mUYZAsXQHP5U",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-updateItem:45",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:48.265000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateItemLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-updateItem",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.701000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateKnowledgeBaseLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-updateKnowledgeBase",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:45.065000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateKnowledgeBaseLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-UpdateKnowledgeBaseLambdaPermissionApiGateway-URcVbTpr0CPE",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-22T00:23:07.094000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateKnowledgeBaseLambdaVersionQsHWXzw41RpV8Sy7QFO7tlwp4tBxKTe89msHX6cpM",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-updateKnowledgeBase:33",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:47.341000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateKnowledgeBaseLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-updateKnowledgeBase",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-22T00:21:41.538000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateUserProfileLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-updateUserProfile",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.927000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateUserProfileLambdaPermissionApiGateway",
+            "PhysicalResourceId": "taskflow-backend-dev-UpdateUserProfileLambdaPermissionApiGateway-tqNH9FRlyMgZ",
+            "ResourceType": "AWS::Lambda::Permission",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:46.562000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateUserProfileLambdaVersionsGANRoLS4zt49GWj0fzgMwHue2lqHOnSO4oldPffsK4",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-updateUserProfile:45",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:50.089000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UpdateUserProfileLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-updateUserProfile",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:21.702000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "UserProjectTable",
+            "PhysicalResourceId": "taskflow-backend-dev-user-projects",
+            "ResourceType": "AWS::DynamoDB::Table",
+            "LastUpdatedTimestamp": "2025-11-08T20:20:27.777000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "WorkflowWorkerLambdaFunction",
+            "PhysicalResourceId": "taskflow-backend-dev-workflowWorker",
+            "ResourceType": "AWS::Lambda::Function",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:44.767000+00:00",
+            "ResourceStatus": "UPDATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "WorkflowWorkerLambdaVersion4tHLd5uqdZnK63KKY5unoq4TiGgFHD549kChatEfHY",
+            "PhysicalResourceId": "arn:aws:lambda:eu-west-1:239146712026:function:taskflow-backend-dev-workflowWorker:19",
+            "ResourceType": "AWS::Lambda::Version",
+            "LastUpdatedTimestamp": "2025-12-19T12:26:46.959000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        },
+        {
+            "LogicalResourceId": "WorkflowWorkerLogGroup",
+            "PhysicalResourceId": "/aws/lambda/taskflow-backend-dev-workflowWorker",
+            "ResourceType": "AWS::Logs::LogGroup",
+            "LastUpdatedTimestamp": "2025-12-13T14:59:50.626000+00:00",
+            "ResourceStatus": "CREATE_COMPLETE",
+            "DriftInformation": {
+                "StackResourceDriftStatus": "NOT_CHECKED"
+            }
+        }
+    ]
+}

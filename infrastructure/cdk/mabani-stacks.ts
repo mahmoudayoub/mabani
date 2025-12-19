@@ -4,6 +4,8 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
+import * as path from "path";
 import { Construct } from "constructs";
 
 export interface CognitoStackProps extends cdk.StackProps {
@@ -152,14 +154,14 @@ export class MabaniGeneralStack extends cdk.Stack {
     });
 
     // CloudFront Origin Access Control
-    const oac = new cloudfront.CfnOriginAccessControl(this, "TaskFlowOAC", {
-      originAccessControlConfig: {
-        name: "taskflow-oac",
-        originAccessControlOriginType: "s3",
-        signingBehavior: "always",
-        signingProtocol: "sigv4",
-      },
-    });
+    // const oac = new cloudfront.CfnOriginAccessControl(this, "TaskFlowOAC", {
+    //   originAccessControlConfig: {
+    //     name: "taskflow-oac",
+    //     originAccessControlOriginType: "s3",
+    //     signingBehavior: "always",
+    //     signingProtocol: "sigv4",
+    //   },
+    // });
 
     // CloudFront Distribution with best practices
     this.distribution = new cloudfront.Distribution(
@@ -167,9 +169,7 @@ export class MabaniGeneralStack extends cdk.Stack {
       "TaskFlowDistribution",
       {
         defaultBehavior: {
-          origin: new origins.S3Origin(this.bucket, {
-            originAccessControlId: oac.attrId,
-          }),
+          origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
           viewerProtocolPolicy:
             cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
@@ -195,9 +195,7 @@ export class MabaniGeneralStack extends cdk.Stack {
         },
         additionalBehaviors: {
           "/static/*": {
-            origin: new origins.S3Origin(this.bucket, {
-              originAccessControlId: oac.attrId,
-            }),
+            origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
             viewerProtocolPolicy:
               cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
             allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
@@ -272,6 +270,14 @@ export class MabaniGeneralStack extends cdk.Stack {
       value: `https://${this.distribution.distributionDomainName}`,
       description: "Website URL",
       exportName: "TaskFlowWebsiteURL",
+    });
+
+    // Deploy site contents to S3 bucket
+    new s3deploy.BucketDeployment(this, "TaskFlowDeployWithInvalidation", {
+      sources: [s3deploy.Source.asset(path.join(__dirname, "../../frontend/dist"))],
+      destinationBucket: this.bucket,
+      distribution: this.distribution,
+      distributionPaths: ["/*"],
     });
   }
 }

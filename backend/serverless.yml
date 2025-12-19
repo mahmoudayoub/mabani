@@ -4,19 +4,27 @@ frameworkVersion: "3"
 
 provider:
   name: aws
-  runtime: python3.13
+  runtime: python3.11
   region: eu-west-1
   stage: ${opt:stage, 'dev'}
   profile: mia40
+  architecture: arm64
   environment:
     DYNAMODB_TABLE_NAME: ${self:service}-${self:provider.stage}-table
     REPORTS_TABLE: ${self:service}-${self:provider.stage}-reports
     USER_PROJECT_TABLE: ${self:service}-${self:provider.stage}-user-projects
     REPORTS_BUCKET: ${self:service}-${self:provider.stage}-reports
-    TWILIO_SECRETS_NAME: mabani/twilio/credentials
+    KB_TABLE_NAME: ${self:service}-${self:provider.stage}-knowledge-bases
+    DOCS_TABLE_NAME: ${self:service}-${self:provider.stage}-documents
+    CONVERSATIONS_TABLE: ${self:service}-${self:provider.stage}-conversations
+    KB_BUCKET_NAME: ${self:service}-${self:provider.stage}-kb
+    INDEXING_QUEUE_URL:
+      Ref: KnowledgeBaseIndexingQueue
+    TWILIO_PARAMETER_PATH: /mabani/twilio
     BEDROCK_MODEL_ID: eu.amazon.nova-lite-v1:0
     BEDROCK_VISION_MODEL_ID: eu.amazon.nova-pro-v1:0
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    FILE_PROCESSING_BUCKET: almabanistack-almabanidataf54b245b-big4a9rsdgn2
   iam:
     role:
       statements:
@@ -34,24 +42,47 @@ provider:
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-reports"
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-reports/index/*"
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-user-projects"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-knowledge-bases"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-knowledge-bases/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-documents"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-documents/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:service}-${self:provider.stage}-conversations"
         - Effect: Allow
           Action:
             - s3:GetObject
             - s3:PutObject
             - s3:PutObjectTagging
+            - s3:DeleteObject
+            - s3:ListBucket
           Resource:
+            - "arn:aws:s3:::${self:service}-${self:provider.stage}-reports"
             - "arn:aws:s3:::${self:service}-${self:provider.stage}-reports/*"
+            - "arn:aws:s3:::${self:service}-${self:provider.stage}-kb"
+            - "arn:aws:s3:::${self:service}-${self:provider.stage}-kb/*"
         - Effect: Allow
           Action:
-            - secretsmanager:GetSecretValue
+            - ssm:GetParameter
+            - ssm:GetParameters
+            - ssm:GetParametersByPath
           Resource:
-            - "arn:aws:secretsmanager:${self:provider.region}:*:secret:mabani/twilio/*"
+            - "arn:aws:ssm:${self:provider.region}:*:parameter/mabani/twilio/*"
+            - "arn:aws:ssm:${self:provider.region}:*:parameter/mabani/twilio"
         - Effect: Allow
           Action:
             - bedrock:InvokeModel
           Resource:
             - "arn:aws:bedrock:*::foundation-model/*"
             - "arn:aws:bedrock:*:*:inference-profile/*"
+            - "arn:aws:bedrock:*:*:knowledge-base/*" # Allow querying Knowledge Bases
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource:
+            - { "Fn::GetAtt": ["KnowledgeBaseIndexingQueue", "Arn"] }
+            - { "Fn::GetAtt": ["KnowledgeBaseIndexingDLQ", "Arn"] }
         - Effect: Allow
           Action:
             - states:StartExecution
@@ -62,19 +93,56 @@ provider:
             - lambda:InvokeFunction
           Resource:
             - "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-reportProcessor"
+            - "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-workflowWorker"
+        - Effect: Allow
+          Action:
+            - s3:ListBucket
+            - s3:GetObject
+            - s3:PutObject
+          Resource:
+            - "arn:aws:s3:::${self:provider.environment.FILE_PROCESSING_BUCKET}"
+            - "arn:aws:s3:::${self:provider.environment.FILE_PROCESSING_BUCKET}/*"
 
 plugins:
   - serverless-python-requirements
+  - serverless-offline
 
 custom:
   pythonRequirements:
-    dockerizePip: false
-    slim: true
-    strip: false
-    layer: true
+    dockerizePip: non-linux # Force Docker for all builds (including macOS)
+    dockerImage: public.ecr.aws/sam/build-python3.11:latest # Use AWS SAM build image for Python 3.11
+    layer: true # Create Python requirements layer
+    # Note: numpy and faiss-cpu are included in the layer for the indexing worker
+    # They are large but necessary for FAISS vector operations
+    # pydantic_core will be built for Linux inside Docker
+  serverless-offline:
+    httpPort: 3001
+    lambdaPort: 3002
+    noPrependStageInUrl: true
+    skipCacheInvalidation: false
+    useChildProcesses: false
+    enforceSecureCookies: false
+    # Workaround for Python 3.13: Use Docker to bypass runtime version check
+    useDocker: true
     noDeps:
       - boto3
       - botocore
+
+layers:
+  sharedCode:
+    path: layers/shared
+    name: ${self:service}-${self:provider.stage}-shared-code
+    description: Common shared code for Lambda functions (lambda_helpers, bedrock_client, etc.)
+    compatibleRuntimes:
+      - python3.13
+    retain: false
+  kbSharedCode:
+    path: layers/kb
+    name: ${self:service}-${self:provider.stage}-kb-shared-code
+    description: Knowledge Base specific shared code (kb_repositories, faiss_utils, document_processing, dynamic_bedrock)
+    compatibleRuntimes:
+      - python3.13
+    retain: false
 
 package:
   individually: true
@@ -92,15 +160,137 @@ package:
     - "!serverless.yml"
     - "!.python-version"
     - "!.git/**"
-    - "lambdas/**"
-    - "!lambdas/tests/**"
-    - "!lambdas/__pycache__/**"
+    - "!layers/**"
+    - "!lambdas/**" # Exclude all lambdas by default
+    - "!lambdas/shared/**"
+    - "!*.md"
+    - "!*.sh"
+    - "!*.log"
+    - "!*.txt"
+    - "!*.json"
+    - "!numpy/**"
+    - "!numpy-*/**"
+    - "!faiss/**"
+    - "!faiss-*/**"
 
 functions:
-  healthCheck:
-    handler: lambdas/user_profile.health_check
+  # File Processing API
+  generateFileUploadUrl:
+    handler: lambdas/file_processing.generate_upload_url
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /files/upload-url
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  listOutputFiles:
+    handler: lambdas/file_processing.list_output_files
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /files/outputs
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  healthCheck:
+    handler: lambdas/user_profile.health_check
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/user_profile.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     events:
       - http:
           path: /health
@@ -109,8 +299,36 @@ functions:
 
   getUserProfile:
     handler: lambdas/user_profile.get_user_profile
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/user_profile.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     events:
       - http:
           path: /profile
@@ -123,8 +341,36 @@ functions:
 
   updateUserProfile:
     handler: lambdas/user_profile.update_user_profile
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/user_profile.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     events:
       - http:
           path: /profile
@@ -137,8 +383,36 @@ functions:
 
   createItem:
     handler: lambdas/items.create_item
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/items.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     events:
       - http:
           path: /items
@@ -151,8 +425,36 @@ functions:
 
   getUserItems:
     handler: lambdas/items.get_user_items
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/items.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     events:
       - http:
           path: /items
@@ -165,8 +467,36 @@ functions:
 
   updateItem:
     handler: lambdas/items.update_item
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/items.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     events:
       - http:
           path: /items/{itemId}
@@ -179,8 +509,36 @@ functions:
 
   deleteItem:
     handler: lambdas/items.delete_item
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/items.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     events:
       - http:
           path: /items/{itemId}
@@ -191,14 +549,735 @@ functions:
             type: COGNITO_USER_POOLS
             arn: ${env:COGNITO_USER_POOL_ARN}
 
+  listKnowledgeBases:
+    handler: lambdas/knowledge_bases.list_knowledge_bases
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/knowledge_bases.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  createKnowledgeBase:
+    handler: lambdas/knowledge_bases.create_knowledge_base
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/knowledge_bases.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  getKnowledgeBase:
+    handler: lambdas/knowledge_bases.get_knowledge_base
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/knowledge_bases.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases/{kbId}
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  updateKnowledgeBase:
+    handler: lambdas/knowledge_bases.update_knowledge_base
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/knowledge_bases.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases/{kbId}
+          method: put
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  deleteKnowledgeBase:
+    handler: lambdas/knowledge_bases.delete_knowledge_base
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/knowledge_bases.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases/{kbId}
+          method: delete
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  generateKnowledgeBaseUploadUrl:
+    handler: lambdas/kb_documents.generate_upload_url
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/kb_documents.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases/{kbId}/upload-url
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  confirmKnowledgeBaseDocument:
+    handler: lambdas/kb_documents.confirm_document_upload
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/kb_documents.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases/{kbId}/documents
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  listKnowledgeBaseDocuments:
+    handler: lambdas/kb_documents.list_documents
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/kb_documents.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases/{kbId}/documents
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  deleteKnowledgeBaseDocument:
+    handler: lambdas/kb_documents.delete_document
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/kb_documents.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases/{kbId}/documents/{documentId}
+          method: delete
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  queryKnowledgeBase:
+    handler: lambdas/kb_query.query_knowledge_base
+    timeout: 30
+    memorySize: 3008
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/kb_query.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /knowledge-bases/{kbId}/query
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  knowledgeBaseIndexingWorker:
+    handler: lambdas/kb_indexing_worker.handler
+    timeout: 900
+    memorySize: 3008
+    ephemeralStorageSize: 10240
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/kb_indexing_worker.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - KnowledgeBaseIndexingQueue
+              - Arn
+          batchSize: 1
+
+  workflowWorker:
+    handler: lambdas/workflow_worker.handler
+    timeout: 300
+    memorySize: 1024
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/workflow_worker.py"
+        - "lambdas/__init__.py"
+        - "lambdas/handlers/**"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
+    environment:
+      CONVERSATIONS_TABLE: ${self:service}-${self:provider.stage}-conversations
+      KB_TABLE_NAME: ${self:service}-${self:provider.stage}-knowledge-bases
+      DOCS_TABLE_NAME: ${self:service}-${self:provider.stage}-documents
+      KB_BUCKET_NAME: ${self:service}-${self:provider.stage}-kb
+      REPORTS_TABLE: ${self:service}-${self:provider.stage}-reports
+
+  # Configuration API
+  getConfig:
+    handler: lambdas/config_handler.get_config
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/config_handler.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /config/{type}
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  updateConfig:
+    handler: lambdas/config_handler.update_config
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/config_handler.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /config/{type}
+          method: put
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  listReports:
+    handler: lambdas/reports_handler.list_reports
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/reports_handler.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /reports
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  getReport:
+    handler: lambdas/reports_handler.get_report
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/reports_handler.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /reports/{id}
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+
+
   # H&S + Quality Workflow Functions
   twilioWebhook:
     handler: lambdas/twilio_webhook.handler
     timeout: 30
+    memorySize: 128
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/twilio_webhook.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     environment:
-      PROCESSOR_FUNCTION_NAME: ${self:service}-${self:provider.stage}-reportProcessor
+      WORKFLOW_FUNCTION_NAME: ${self:service}-${self:provider.stage}-workflowWorker
+
+      # KNOWLEDGE_BASE_ID: "YOUR_KB_ID" # TODO: Update with actual KB ID after deployment or pass as env var
     events:
       - http:
           path: /webhook/twilio
@@ -209,8 +1288,37 @@ functions:
     handler: lambdas/report_processor.handler
     timeout: 300
     memorySize: 1024
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/report_processor.py"
+        - "lambdas/__init__.py"
     layers:
       - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+      - { Ref: KbSharedCodeLambdaLayer }
     environment:
       REPORTS_TABLE: ${self:service}-${self:provider.stage}-reports
       USER_PROJECT_TABLE: ${self:service}-${self:provider.stage}-user-projects
@@ -333,10 +1441,10 @@ resources:
             - ServerSideEncryptionByDefault:
                 SSEAlgorithm: AES256
         PublicAccessBlockConfiguration:
-          BlockPublicAcls: true
-          BlockPublicPolicy: true
-          IgnorePublicAcls: true
-          RestrictPublicBuckets: true
+          BlockPublicAcls: false
+          BlockPublicPolicy: false
+          IgnorePublicAcls: false
+          RestrictPublicBuckets: false
         VersioningConfiguration:
           Status: Enabled
         LifecycleConfiguration:
@@ -348,6 +1456,184 @@ resources:
                   StorageClass: STANDARD_IA
                 - TransitionInDays: 365
                   StorageClass: GLACIER
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+    ReportsBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket:
+          Ref: ReportsBucket
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: "s3:GetObject"
+              Resource:
+                Fn::Join:
+                  - ""
+                  - - "arn:aws:s3:::"
+                    - Ref: ReportsBucket
+                    - "/*"
+
+    KnowledgeBasesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${self:provider.stage}-knowledge-bases
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: kbId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: N
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: kbId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: KbIdIndex
+            KeySchema:
+              - AttributeName: kbId
+                KeyType: HASH
+              - AttributeName: userId
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: UserCreatedAtIndex
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+    DocumentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${self:provider.stage}-documents
+        AttributeDefinitions:
+          - AttributeName: kbId
+            AttributeType: S
+          - AttributeName: documentId
+            AttributeType: S
+          - AttributeName: uploadedAt
+            AttributeType: N
+        KeySchema:
+          - AttributeName: kbId
+            KeyType: HASH
+          - AttributeName: documentId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: KbUploadedAtIndex
+            KeySchema:
+              - AttributeName: kbId
+                KeyType: HASH
+              - AttributeName: uploadedAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+    KnowledgeBaseBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-${self:provider.stage}-kb
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        VersioningConfiguration:
+          Status: Enabled
+        CorsConfiguration:
+          CorsRules:
+            - AllowedHeaders:
+                - "*"
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - HEAD
+              AllowedOrigins:
+                - "*"
+              ExposedHeaders:
+                - ETag
+                - x-amz-server-side-encryption
+                - x-amz-request-id
+                - x-amz-id-2
+              MaxAge: 3000
+        LifecycleConfiguration:
+          Rules:
+            - Id: ExpireTempArtifacts
+              Status: Enabled
+              ExpirationInDays: 365
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+    KnowledgeBaseIndexingDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${self:provider.stage}-kb-indexing-dlq
+        MessageRetentionPeriod: 1209600
+
+    KnowledgeBaseIndexingQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${self:provider.stage}-kb-indexing
+        VisibilityTimeout: 900
+        RedrivePolicy:
+          deadLetterTargetArn:
+            Fn::GetAtt:
+              - KnowledgeBaseIndexingDLQ
+              - Arn
+          maxReceiveCount: 3
+
+    # Conversations Table for State Management
+    ConversationsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${self:provider.stage}-conversations
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: true
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
         Tags:
           - Key: Environment
             Value: ${self:provider.stage}

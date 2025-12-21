@@ -101,7 +101,7 @@ def query_knowledge_base(event, _context):
     query_text = (body.get("query") or "").strip()
     model_id = (body.get("modelId") or "").strip()
     history = body.get("history") or []
-    k = int(body.get("k") or 5)
+    k = int(body.get("k") or 8)  # Increased default context window
     config = body.get("config") or {}
     distance_threshold = body.get("distanceThreshold")
 
@@ -130,7 +130,7 @@ def query_knowledge_base(event, _context):
         index=index,
         metadata=metadata,
         query_embedding=query_embedding,
-        k=max(1, min(k, 10)),
+        k=max(1, min(k, 20)), # Allow up to 20 chunks
         distance_threshold=distance_threshold,
     )
 
@@ -144,7 +144,6 @@ def query_knowledge_base(event, _context):
             },
         )
 
-    context, sources = _build_context(results)
     prompt = _build_prompt(query_text, context, sources, history)
 
     bedrock_client = _get_bedrock_client()
@@ -209,16 +208,17 @@ def _build_prompt(
             + "\n\n"
         )
 
-    return f"""You are an intelligent assistant answering questions based ONLY on the provided Knowledge Base context.
+    return f"""You are a helpful and intelligent assistant. Your goal is to answer the user's question using the provided Knowledge Base context.
 
 {history_str}Context from Knowledge Base:
 {context}
 
 Instructions:
-1. Answer the user's question using ONLY the information above.
-2. If the answer is not in the context, state "I cannot find the answer in the knowledge base."
-3. Cite your sources using [Source X] format where X corresponds to the source number above.
-4. Be concise and professional.
+1. Analyze the context above to find any information relevant to the user's question.
+2. Even if the exact answer is not stated, summarize what the documents say about the topic.
+3. If the documents contradict the premise of the question (e.g. user asks "how to do X" but documents say "X is prohibited"), explain that findings.
+4. Only state "I cannot find the answer" if the context is completely irrelevant to the topic.
+5. Cite your sources using [Source X] format.
 
 Available Sources:
 {sources_str}

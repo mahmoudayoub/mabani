@@ -206,7 +206,9 @@ class DocumentProcessingService:
                             start = chunk_text.find("## Page ") + 8
                             end = chunk_text.find(" ##", start)
                             if end != -1:
-                                chunk_page = chunk_text[start:end]
+                                extracted_page = chunk_text[start:end]
+                                if extracted_page != "End":
+                                    chunk_page = extracted_page
                         except Exception:
                             pass
 

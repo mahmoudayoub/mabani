@@ -93,7 +93,12 @@ def handle_responsible_person(
     
     date_str = datetime.datetime.utcnow().strftime("%Y-%m-%d")
     
+    location = draft_data.get("location", "Unknown")
+    source = draft_data.get("breachSource", "Unknown")
+
     message = f"""🔍 Hazard Type: {hazard_type}
+📍 Location: {location}
+👤 Source: {source}
 ⚠️ Severity: {severity}
 🔒 Control measures: {advice}
 Date: {date_str}

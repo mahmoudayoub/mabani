@@ -71,28 +71,30 @@ def _resolve_selection(user_input: str, options: List[str]) -> str:
     return None
 
 def handle_location(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> str:
-    """Handle Location Input."""
-    location_val = user_input_text.strip()
+    # Resolve Location Selection
+    config = ConfigManager()
+    locations = config.get_options("LOCATIONS")
+    
+    selected_loc = _resolve_selection(user_input_text, locations)
+    location_val = selected_loc if selected_loc else user_input_text.strip()
     
     # Save Location
     state_manager.update_state(
         phone_number=phone_number,
-        new_state="WAITING_FOR_OBSERVATION_TYPE",
+        new_state="WAITING_FOR_BREACH_SOURCE",
         curr_data={"location": location_val}
     )
     
-    # Retrieve AI prediction
-    draft_data = current_state_data.get("draftData", {})
-    ai_classification = draft_data.get("classification", "Unknown") # e.g. "A15 Working at Height"
+    # Prepare Next Question (Breach Source)
+    # We skip WAITING_FOR_OBSERVATION_TYPE because classification/type is already confirmed in Step 1.
+    config = ConfigManager()
+    sources = config.get_options("BREACH_SOURCES")
     
     return f"""Location saved: {location_val}
 
-I classified the observation as:
-*{ai_classification}*
-
-Is this correct?
-Reply *Yes* to confirm.
-Or reply with the correct category (e.g. "Fire", "Electrical", "A4")."""
+Who/What is the source?
+{_format_options(sources)}
+(Or type a name)"""
 
 def handle_observation_type(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> str:
     """Handle Observation Type Confirmation or Correction."""

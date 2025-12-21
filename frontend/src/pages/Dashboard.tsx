@@ -3,92 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const stats = [
-    {
-      name: "Total Tasks",
-      value: "142",
-      change: "+12%",
-      changeType: "positive",
-      icon: (
-        <svg
-          className="w-6 h-6"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
-          />
-        </svg>
-      ),
-    },
-    {
-      name: "Active Projects",
-      value: "8",
-      change: "+3",
-      changeType: "positive",
-      icon: (
-        <svg
-          className="w-6 h-6"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-          />
-        </svg>
-      ),
-    },
-    {
-      name: "Completed",
-      value: "89",
-      change: "+8%",
-      changeType: "positive",
-      icon: (
-        <svg
-          className="w-6 h-6"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
-    },
-    {
-      name: "Pending Review",
-      value: "24",
-      change: "-4",
-      changeType: "negative",
-      icon: (
-        <svg
-          className="w-6 h-6"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
-    },
-  ];
+
 
   const modules = [
     {
@@ -97,7 +12,7 @@ const Dashboard: React.FC = () => {
       acronym: "H&S",
       description: "WhatsApp-based monitoring system",
       color: "primary",
-      path: "/knowledge-base",
+      path: "/health-safety",
       icon: (
         <svg
           className="w-8 h-8"
@@ -166,7 +81,7 @@ const Dashboard: React.FC = () => {
       acronym: "AI-P",
       description: "Intelligent pricing system",
       color: "primary",
-      path: undefined,
+      path: "/file-processing",
       icon: (
         <svg
           className="w-8 h-8"
@@ -289,35 +204,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-        {stats.map((stat) => (
-          <div
-            key={stat.name}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-primary-50 rounded-lg text-primary-600">
-                {stat.icon}
-              </div>
-              <span
-                className={`text-xs sm:text-sm font-medium ${
-                  stat.changeType === "positive"
-                    ? "text-green-600"
-                    : "text-red-600"
-                }`}
-              >
-                {stat.change}
-              </span>
-            </div>
-            <div>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">
-                {stat.value}
-              </p>
-              <p className="text-xs sm:text-sm text-gray-600">{stat.name}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 mb-6 sm:mb-8">
@@ -384,77 +271,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Performance Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">
-          Performance Overview
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm text-gray-600">
-                Task Completion
-              </span>
-              <span className="text-xs sm:text-sm font-medium text-gray-900">
-                78%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3">
-              <div
-                className="bg-primary-500 h-2 sm:h-3 rounded-full"
-                style={{ width: "78%" }}
-              ></div>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm text-gray-600">
-                Quality Score
-              </span>
-              <span className="text-xs sm:text-sm font-medium text-gray-900">
-                92%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3">
-              <div
-                className="bg-green-500 h-2 sm:h-3 rounded-full"
-                style={{ width: "92%" }}
-              ></div>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm text-gray-600">
-                On-Time Delivery
-              </span>
-              <span className="text-xs sm:text-sm font-medium text-gray-900">
-                85%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3">
-              <div
-                className="bg-blue-500 h-2 sm:h-3 rounded-full"
-                style={{ width: "85%" }}
-              ></div>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm text-gray-600">
-                Safety Compliance
-              </span>
-              <span className="text-xs sm:text-sm font-medium text-gray-900">
-                96%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3">
-              <div
-                className="bg-green-600 h-2 sm:h-3 rounded-full"
-                style={{ width: "96%" }}
-              ></div>
-            </div>
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 };

@@ -104,9 +104,14 @@ def list_knowledge_bases(event, _context):
         return error
 
     kb_repository = _get_kb_repository()
-    knowledge_bases = kb_repository.list_for_user(user_id=user["user_id"])
+    # Fetch ALL knowledge bases, not just user's own
+    knowledge_bases = kb_repository.list_all()
+    
+    current_user_id = user["user_id"]
+    
     for kb in knowledge_bases:
-        kb["shared"] = False
+        # Open access model: Everyone is an owner
+        kb["shared"] = kb.get("userId") != current_user_id
         kb["permission"] = "owner"
 
     return create_response(
@@ -130,12 +135,14 @@ def get_knowledge_base(event, _context):
         return create_error_response(400, "kbId is required")
 
     kb_repository = _get_kb_repository()
-    knowledge_base = kb_repository.get(user_id=user["user_id"], kb_id=kb_id)
+    # Use get_by_id to find KB regardless of owner
+    knowledge_base = kb_repository.get_by_id(kb_id=kb_id)
     if not knowledge_base:
         return create_error_response(404, "Knowledge base not found")
 
-    knowledge_base["shared"] = False
-    knowledge_base["permission"] = "owner"
+    is_owner = knowledge_base.get("userId") == user["user_id"]
+    knowledge_base["shared"] = not is_owner
+    knowledge_base["permission"] = "owner" if is_owner else "read"
     return create_response(200, knowledge_base)
 
 

@@ -84,7 +84,8 @@ def query_knowledge_base(event, _context):
         return create_error_response(400, "kbId is required")
 
     kb_repository = _get_kb_repository()
-    knowledge_base = kb_repository.get(user_id=user_id, kb_id=kb_id)
+    # Use get_by_id to find KB regardless of owner
+    knowledge_base = kb_repository.get_by_id(kb_id=kb_id)
     if not knowledge_base:
         return create_error_response(404, "Knowledge base not found")
 

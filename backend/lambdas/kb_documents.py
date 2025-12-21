@@ -86,7 +86,8 @@ def _require_user_and_kb(event: Dict[str, Any]):
         return None, None, create_error_response(400, "kbId is required")
 
     kb_repository = _get_kb_repository()
-    knowledge_base = kb_repository.get(user_id=user_id, kb_id=kb_id)
+    # Use get_by_id to find KB regardless of owner
+    knowledge_base = kb_repository.get_by_id(kb_id=kb_id)
     if not knowledge_base:
         return None, None, create_error_response(404, "Knowledge base not found")
 
@@ -164,6 +165,8 @@ def confirm_document_upload(event, _context):
     user_id, knowledge_base, error = _require_user_and_kb(event)
     if error:
         return error
+
+
 
     if not event.get("body"):
         return create_error_response(400, "Request body is required")
@@ -259,6 +262,8 @@ def delete_document(event, _context):
     user_id, knowledge_base, error = _require_user_and_kb(event)
     if error:
         return error
+
+
 
     document_id = (event.get("pathParameters") or {}).get("documentId")
     if not document_id:

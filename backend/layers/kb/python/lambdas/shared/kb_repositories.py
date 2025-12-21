@@ -110,6 +110,13 @@ class KnowledgeBaseRepository:
         )
         return response.get("Items", [])
 
+    def list_all(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """List all knowledge bases (scan operation)."""
+        # Scan is used because we want everything. 
+        # In a very large system we might need pagination or a global index, but for this scale scan is fine.
+        response = self.table.scan(Limit=limit)
+        return response.get("Items", [])
+
     def update(
         self, *, user_id: str, kb_id: str, updates: Dict[str, Any]
     ) -> Dict[str, Any]:

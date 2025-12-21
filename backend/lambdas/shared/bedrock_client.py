@@ -203,8 +203,7 @@ Visual Analysis: {image_caption}
 Types:
 {taxonomy}
 
-Return only the exact type name.
-
+Return ONLY the classification name exactly as listed above. Do not include "Classification:" or any other text.
 Classification:"""
 
         try:
@@ -266,7 +265,8 @@ Severity: {severity}
 Select the most relevant category from:
 {taxonomy}
 
-Return as JSON array of strings, including the code and name: ["A15 Working at Height / Fall Protection"]
+Return as a strict JSON array of strings. Do not include markdown formatting or explanations.
+Example: ["A15 Working at Height"]
 
 Classification:"""
 
@@ -324,11 +324,11 @@ Hazard Types: {", ".join(hazard_types)}
 Project: {project_name}
 
 Provide:
-1. A single, actionable control measure (1-2 sentences)
-2. Reference to relevant standard or regulation
+1. A single, specific, and actionable control measure (1-2 sentences) directly addressing the hazard described. Avoid generic "inspect" or "assess" advice if a clear hazard is visible.
+2. Reference to relevant standard or regulation.
 
-Respond in JSON format:
-{{"controlMeasure": "action to take", "reference": "standard/regulation"}}
+Respond in strict JSON format:
+{{"controlMeasure": "Specific action to take", "reference": "Section X.Y"}}
 
 Response:"""
 

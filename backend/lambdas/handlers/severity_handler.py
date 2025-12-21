@@ -49,9 +49,11 @@ def handle_severity(
     # We update to a temporary state or the next state, but we need to do the analysis first.
     
     classification = current_state_data.get("draftData", {}).get("classification", "General Hazard")
+    description = current_state_data.get("draftData", {}).get("originalDescription", "")
+    caption = current_state_data.get("draftData", {}).get("imageCaption", "")
     
     # --- KB CHECK ---
-    advice, source = _query_safety_kb(classification, severity)
+    advice, source = _query_safety_kb(classification, severity, description, caption)
     
     # Save advice to draft data
     state_manager.update_state(
@@ -74,7 +76,7 @@ def handle_severity(
     
     return message
 
-def _query_safety_kb(classification: str, severity: str) -> tuple[str, str]:
+def _query_safety_kb(classification: str, severity: str, description: str = "", caption: str = "") -> tuple[str, str]:
     """
     Query the Knowledge Base for safety protocol.
     Returns (Advice, Source Reference)
@@ -115,7 +117,15 @@ def _query_safety_kb(classification: str, severity: str) -> tuple[str, str]:
                 index, metadata = faiss_service.load_index_from_s3(kb_id=kb_id, user_id=user_id)
                 
                 # 3. Create Embedding for Query
-                query_text = f"{classification} - Severity: {severity}"
+                # Rich query for better semantics
+                query_parts = [classification]
+                if description: query_parts.append(description)
+                if caption: query_parts.append(caption)
+                query_parts.append(f"Severity: {severity}")
+                
+                query_text = " - ".join(query_parts)
+                print(f"RAG Query: {query_text}")
+                
                 query_embedding = faiss_service.create_embedding(text=query_text)
                 
                 if query_embedding:
@@ -139,10 +149,15 @@ def _query_safety_kb(classification: str, severity: str) -> tuple[str, str]:
                             text = meta.get("text") or meta.get("chunk_text") or meta.get("content") or ""
                             if text:
                                 fragments.append(text)
-                                # Capture filename as source if available
+                                # Capture filename and page as source if available
                                 fname = meta.get("filename")
+                                page = meta.get("page_number") or meta.get("page")
+                                
                                 if fname and source_ref == "Standard Safety Protocols":
-                                    source_ref = fname
+                                    if page:
+                                        source_ref = f"{fname} (Page {page})"
+                                    else:
+                                        source_ref = fname
 
                         context_text = "\n\n".join(fragments)
                         print(f"Retrieved {len(fragments)} fragments from KB.")

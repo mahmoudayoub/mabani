@@ -98,8 +98,10 @@ class DocumentProcessingService:
                 raise ValueError(f"Unsupported file type: {file_type}")
 
             if not text or not text.strip():
-                print(f"WARNING: Extracted text is empty for {file_path}")
-                return ""
+                msg = f"No text extracted from {file_path}."
+                if file_type_lower == "pdf":
+                    msg += " This often happens with scanned PDFs or images. Please use a text-based PDF."
+                raise ValueError(msg)
             
             return text
 

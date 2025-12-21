@@ -250,7 +250,7 @@ const SafetyLogs: React.FC = () => {
                                                 {selectedReport.reference && (
                                                     <div>
                                                         <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Safety Reference</h4>
-                                                        <p className="mt-1 text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded border truncate">
+                                                        <p className="mt-1 text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded border break-words whitespace-pre-wrap">
                                                             {selectedReport.reference}
                                                         </p>
                                                     </div>

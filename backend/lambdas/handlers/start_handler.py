@@ -105,7 +105,21 @@ def handle_start(
             taxonomy=taxonomy_str
         )
         
-        hazard_category = hazards[0] if hazards else "A41 Others"
+        raw_hazard = hazards[0] if hazards else "A41 Others"
+        
+        # Clean up if it's a dict or complex structure
+        if isinstance(raw_hazard, dict):
+            # Prefer 'code' or 'name' or combined
+            code = raw_hazard.get('code', '')
+            name = raw_hazard.get('name', '')
+            if code and name and code in name:
+                hazard_category = name # Avoid "A2 Electrical Safety Electrical Safety"
+            elif code and name:
+                hazard_category = f"{code} {name}"
+            else:
+                hazard_category = code or name or str(raw_hazard)
+        else:
+            hazard_category = str(raw_hazard)
         
         # 4. Save Draft State
         draft_data = {

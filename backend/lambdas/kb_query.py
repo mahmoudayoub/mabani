@@ -144,6 +144,8 @@ def query_knowledge_base(event, _context):
             },
         )
 
+    context, sources = _build_context(results)
+
     prompt = _build_prompt(query_text, context, sources, history)
 
     bedrock_client = _get_bedrock_client()

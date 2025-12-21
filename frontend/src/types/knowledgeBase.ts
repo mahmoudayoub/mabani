@@ -24,6 +24,7 @@ export interface Document {
   uploadedAt: number;
   indexedAt?: number;
   errorMessage?: string;
+  extractionMethod?: string;
 }
 
 export interface QueryResult {

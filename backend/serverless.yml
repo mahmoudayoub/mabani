@@ -96,6 +96,12 @@ provider:
             - "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-workflowWorker"
         - Effect: Allow
           Action:
+            - textract:DetectDocumentText
+            - textract:StartDocumentTextDetection
+            - textract:GetDocumentTextDetection
+          Resource: "*"
+        - Effect: Allow
+          Action:
             - s3:ListBucket
             - s3:GetObject
             - s3:PutObject

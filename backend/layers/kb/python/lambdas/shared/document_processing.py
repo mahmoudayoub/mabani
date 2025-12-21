@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import boto3
 from PyPDF2 import PdfReader
@@ -46,16 +46,91 @@ class DocumentProcessingService:
             return len(self.tokenizer.encode(text))
         return max(1, len(text) // 4)
 
-    def _extract_pdf(self, file_path: str) -> str:
+    def _extract_text_with_textract(self, s3_key: str) -> str:
+        """Fallback to AWS Textract for scanned documents."""
+        print(f"Triggering Textract for {s3_key}")
+        textract_client = boto3.client("textract")
+        
+        try:
+            response = textract_client.start_document_text_detection(
+                DocumentLocation={
+                    "S3Object": {"Bucket": self.bucket_name, "Name": s3_key}
+                }
+            )
+            job_id = response["JobId"]
+            
+            print(f"Started Textract Job: {job_id}")
+            
+            # Poll for completion
+            import time
+            while True:
+                response = textract_client.get_document_text_detection(JobId=job_id)
+                status = response["JobStatus"]
+                
+                if status in ["SUCCEEDED", "FAILED", "PARTIAL_SUCCESS"]:
+                    break
+                time.sleep(2)
+            
+            if status == "SUCCEEDED":
+                text = ""
+                # Pagination
+                next_token = None
+                while True:
+                    if next_token:
+                        response = textract_client.get_document_text_detection(JobId=job_id, NextToken=next_token)
+                    else:
+                        response = textract_client.get_document_text_detection(JobId=job_id)
+                        
+                    for block in response["Blocks"]:
+                        if block["BlockType"] == "LINE":
+                            text += block["Text"] + "\n"
+                        elif block["BlockType"] == "PAGE":
+                            text += "\n\n## Page End ##\n\n"
+
+                    next_token = response.get("NextToken")
+                    if not next_token:
+                        break
+                return text
+            else:
+                print(f"Textract failed with status: {status}")
+                return ""
+                
+        except Exception as e:
+            print(f"Textract invocation failed: {e}")
+            return ""
+
+    def _extract_pdf(self, file_path: str, s3_key: str = None) -> Tuple[List[Dict[str, Any]], str]:
         reader = PdfReader(file_path)
-        text = ""
+        extracted_text = ""
+        valid_text_count = 0
+        extraction_method = "standard"
+        
+        content_items = []
+        
+        # 1. Attempt standard Text Extraction
         for page_num, page in enumerate(reader.pages, start=1):
             page_text = page.extract_text()
             if page_text:
-                text += f"\n\n## Page {page_num} ##\n\n{page_text}"
-        return text
+                extracted_text += f"\n\n## Page {page_num} ##\n\n{page_text}"
+                valid_text_count += len(page_text.strip())
+        
+        # 2. Check sufficiency (Average < 50 chars per page implies scan)
+        avg_chars_per_page = valid_text_count / len(reader.pages) if reader.pages else 0
+        
+        if avg_chars_per_page < 50:
+             print(f"Insufficient text extracted ({avg_chars_per_page} chars/page). Falling back to Textract.")
+             if s3_key:
+                 extracted_text = self._extract_text_with_textract(s3_key)
+                 if extracted_text:
+                     return [{"type": "text", "content": extracted_text, "page": "Unknown"}], "textract"
 
-    def _extract_docx(self, file_path: str) -> str:
+        # Return standard extracted text if successful or if Textract failed
+        if extracted_text.strip():
+             return [{"type": "text", "content": extracted_text, "page": "Unknown"}], extraction_method
+        
+        return [], "failed"
+
+    def _extract_docx(self, file_path: str) -> List[Dict[str, Any]]:
         # Lazy import to avoid lxml import errors at module load time
         from docx import Document
 
@@ -71,76 +146,84 @@ class DocumentProcessingService:
             else:
                 full_text.append(para.text)
 
-        return "\n\n".join(full_text)
+        text_content = "\n\n".join(full_text)
+        if text_content.strip():
+             return [{"type": "text", "content": text_content, "page": "Unknown"}]
+        return []
 
-    def _extract_txt(self, file_path: str) -> str:
+    def _extract_txt(self, file_path: str) -> List[Dict[str, Any]]:
+        text = ""
         try:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as handle:
-                return handle.read()
+                text = handle.read()
         except UnicodeDecodeError:
             # Fallback to latin-1
             print(f"UTF-8 decode failed for {file_path}, retrying with latin-1")
             with open(file_path, "r", encoding="latin-1", errors="ignore") as handle:
-                return handle.read()
+                text = handle.read()
+        
+        if text.strip():
+            return [{"type": "text", "content": text, "page": "Unknown"}]
+        return []
 
-    def _extract_text(self, file_path: str, file_type: str) -> str:
-        print(f"Extracting text from {file_path} (type: {file_type})")
+    def _extract_content(self, file_path: str, file_type: str, s3_key: str = None) -> Tuple[List[Dict[str, Any]], str]:
+        """Extract content (text or image) from file."""
+        print(f"Extracting content from {file_path} (type: {file_type})")
         try:
             file_type_lower = file_type.lower()
-            text = ""
             if file_type_lower == "pdf":
-                text = self._extract_pdf(file_path)
+                return self._extract_pdf(file_path, s3_key=s3_key)
             elif file_type_lower in {"docx", "doc"}:
-                text = self._extract_docx(file_path)
+                return self._extract_docx(file_path), "standard"
             elif file_type_lower == "txt":
-                text = self._extract_txt(file_path)
+                return self._extract_txt(file_path), "standard"
             else:
-                raise ValueError(f"Unsupported file type: {file_type}")
-
-            if not text or not text.strip():
-                msg = f"No text extracted from {file_path}."
-                if file_type_lower == "pdf":
-                    msg += " This often happens with scanned PDFs or images. Please use a text-based PDF."
-                raise ValueError(msg)
-            
-            return text
-
+                print(f"Unsupported file type: {file_type}")
+                return [], "failed"
         except Exception as e:
-            print(f"Failed to extract text from {file_path}: {e}")
-            raise e
+            print(f"Extraction failed: {e}")
+            return [], "failed"
 
     def _create_chunks(
-        self, text: str, *, document_id: str, filename: str, kb_id: str
+        self, content_items: List[Dict[str, Any]], *, document_id: str, filename: str, kb_id: str, start_index: int = 0
     ) -> List[Dict[str, Any]]:
-        chunks = self.text_splitter.split_text(text)
         metadata: List[Dict[str, Any]] = []
+        chunk_index = start_index
 
-        for index, chunk_text in enumerate(chunks):
-            # Extract basic source location if possible (e.g., from PDF markers)
-            page_num = "Unknown"
-            if "## Page " in chunk_text:
-                try:
-                    # Simple extraction of first page marker in chunk
-                    start = chunk_text.find("## Page ") + 8
-                    end = chunk_text.find(" ##", start)
-                    if end != -1:
-                        page_num = chunk_text[start:end]
-                except Exception:
-                    pass
+        for item in content_items:
+            item_type = item["type"]
+            content = item["content"]
+            page_num = item.get("page", "Unknown")
 
-            metadata.append(
-                {
-                    "chunk_id": f"{document_id}_chunk_{index}",
-                    "document_id": document_id,
-                    "kb_id": kb_id,
-                    "text": chunk_text,
-                    "source": filename,
-                    "page": page_num,
-                    "chunk_index": index,
-                    "total_chunks": len(chunks),
-                    "token_count": self._count_tokens(chunk_text),
-                }
-            )
+            if item_type == "text":
+                # Split text content into smaller chunks
+                text_chunks = self.text_splitter.split_text(content)
+                for chunk_text in text_chunks:
+                    # Update page number if marker is found in this specific chunk
+                    chunk_page = page_num
+                    if "## Page " in chunk_text:
+                        try:
+                            start = chunk_text.find("## Page ") + 8
+                            end = chunk_text.find(" ##", start)
+                            if end != -1:
+                                chunk_page = chunk_text[start:end]
+                        except Exception:
+                            pass
+
+                    metadata.append({
+                        "chunk_id": f"{document_id}_chunk_{chunk_index}",
+                        "document_id": document_id,
+                        "kb_id": kb_id,
+                        "text": chunk_text, # Standard field for vector DB text representation
+                        "type": "text",
+                        "content": chunk_text, # Payload for embedding
+                        "source": filename,
+                        "page": chunk_page,
+                        "chunk_index": chunk_index,
+                        "token_count": self._count_tokens(chunk_text),
+                    })
+                    chunk_index += 1
+
         return metadata
 
     def download_and_process(
@@ -148,18 +231,37 @@ class DocumentProcessingService:
         *,
         s3_key: str,
         document_id: str,
+        kb_id: str,
         filename: str,
         file_type: str,
-        kb_id: str,
-    ) -> List[Dict[str, Any]]:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_type}") as tmp:
-            tmp_path = tmp.name
+        chunk_index_start: int = 0,
+    ) -> Tuple[List[Dict[str, Any]], str]:
+        """Download file and process into chunks."""
+        tmp_path = os.path.join(tempfile.gettempdir(), f"doc_{document_id}.{file_type}")
+        
+        print(f"Downloading {s3_key} to {tmp_path}")
+        if not s3_key:
+             # Local testing override
+             tmp_path = filename 
+        else:
             self.s3_client.download_file(self.bucket_name, s3_key, tmp_path)
 
         try:
-            text = self._extract_text(tmp_path, file_type)
-            return self._create_chunks(
-                text, document_id=document_id, filename=filename, kb_id=kb_id
+            content_items, extraction_method = self._extract_content(tmp_path, file_type, s3_key=s3_key)
+            if not content_items:
+                 msg = f"No content extracted from {tmp_path}."
+                 if file_type.lower() == "pdf":
+                     msg += " (PDF might be image-only and Textract fallback failed/disabled)"
+                 raise ValueError(msg)
+
+            chunks = self._create_chunks(
+                content_items=content_items,
+                document_id=document_id,
+                kb_id=kb_id,
+                filename=filename,
+                start_index=chunk_index_start,
             )
+            return chunks, extraction_method
         finally:
-            os.unlink(tmp_path)
+            if s3_key and os.path.exists(tmp_path):
+                os.unlink(tmp_path)

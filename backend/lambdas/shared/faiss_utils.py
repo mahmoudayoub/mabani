@@ -26,6 +26,7 @@ class FAISSService:
         self, *, text: str, model_id: str = "amazon.titan-embed-text-v2:0"
     ) -> List[float]:
         body = json.dumps({"inputText": text})
+        
         max_retries = 5
         base_delay = 1.0
 
@@ -59,11 +60,26 @@ class FAISSService:
     def create_embeddings_batch(
         self,
         *,
-        texts: List[str],
+        chunks: List[Dict[str, Any]],
         model_id: str = "amazon.titan-embed-text-v2:0",
         batch_size: int = 25,
     ) -> List[List[float]]:
+        """
+        Creates embeddings for a batch of chunks.
+        chunks: List of dicts, must have 'text' field (standard text-only processing)
+        """
         embeddings: List[List[float]] = []
+        
+        # Extract text content from chunks
+        texts = []
+        for item in chunks:
+            if isinstance(item, str):
+                texts.append(item)
+            elif isinstance(item, dict):
+                # Using 'content' as the payload source, or fallback to 'text'
+                text_payload = item.get("content") or item.get("text", "")
+                texts.append(text_payload)
+        
         for start in range(0, len(texts), batch_size):
             batch = texts[start : start + batch_size]
             for text in batch:

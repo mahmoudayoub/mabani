@@ -304,6 +304,7 @@ class DocumentRepository:
         document_id: str,
         status: str,
         chunk_count: int = 0,
+        extraction_method: Optional[str] = None,
         error_message: Optional[str] = None,
     ) -> Dict[str, Any]:
         timestamp = int(time.time() * 1000)
@@ -318,6 +319,10 @@ class DocumentRepository:
         if chunk_count > 0:
             update_expression += ", chunkCount = :chunk_count"
             expression_attribute_values[":chunk_count"] = chunk_count
+
+        if extraction_method:
+            update_expression += ", extractionMethod = :extraction_method"
+            expression_attribute_values[":extraction_method"] = extraction_method
 
         if error_message:
             update_expression += ", errorMessage = :error"

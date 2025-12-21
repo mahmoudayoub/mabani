@@ -129,7 +129,7 @@ def _process_record(record: Dict[str, Any]):
     import numpy as np
 
     # 1. Process document
-    chunks = document_processing.download_and_process(
+    chunks, extraction_method = document_processing.download_and_process(
         s3_key=s3_key,
         document_id=document_id,
         filename=filename,
@@ -148,8 +148,9 @@ def _process_record(record: Dict[str, Any]):
     )
 
     # 2. Generate embeddings
+    print(f"Generating embeddings for {len(chunks)} chunks... (Method: {extraction_method})")
     embeddings = faiss_service.create_embeddings_batch(
-        texts=[chunk["text"] for chunk in chunks],
+        chunks=chunks,
         model_id=embedding_model,
         batch_size=25,
     )

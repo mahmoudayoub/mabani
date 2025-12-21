@@ -179,6 +179,11 @@ const DocumentList: React.FC<DocumentListProps> = ({
                       )}
                       {getStatusDisplay(doc.status)}
                     </span>
+                    {doc.extractionMethod === "textract" && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200" title="Extracted via Textract OCR">
+                        OCR
+                      </span>
+                    )}
                   </div>
                   {doc.errorMessage && (
                     <p className="text-xs text-red-600 mt-1">

@@ -92,14 +92,40 @@ class EmbeddingsService:
             'estimated_cost_usd': round(total_cost, 4)
         }
     
-    async def generate_embedding_async(self, text: str) -> List[float]:
+    async def generate_embedding_async(
+        self,
+        text: str,
+        max_attempts: int = 2,
+        retry_delay_seconds: float = 1.0
+    ) -> List[float]:
         """Async single embedding with RPM throttling."""
-        await self.async_rate_limiter.acquire()
-        response = await self.async_client.embeddings.create(
-            model=self.model,
-            input=text
-        )
-        return response.data[0].embedding
+        def is_forbidden_error(err: Exception) -> bool:
+            status = getattr(err, "status_code", None)
+            if status is None:
+                response = getattr(err, "response", None)
+                status = getattr(response, "status_code", None) if response else None
+            if status == 403:
+                return True
+            message = str(err)
+            return "Error code: 403" in message or "403 Forbidden" in message
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                await self.async_rate_limiter.acquire()
+                response = await self.async_client.embeddings.create(
+                    model=self.model,
+                    input=text
+                )
+                return response.data[0].embedding
+            except Exception as e:
+                if is_forbidden_error(e) and attempt < max_attempts:
+                    logger.warning(
+                        f"[async] Embedding call failed with 403; retrying "
+                        f"(attempt {attempt + 1}/{max_attempts})"
+                    )
+                    await asyncio.sleep(retry_delay_seconds * attempt)
+                    continue
+                raise
 
     async def generate_embedding(self, text: str) -> List[float]:
         """Backward-compatible wrapper for async embedding."""

@@ -387,49 +387,106 @@ class RateMatcher:
         prompt = build_estimator_prompt(target_info, candidates_text)
         return await self._call_llm_stage_async(ESTIMATOR_SYSTEM_MESSAGE, prompt, stage_name="ESTIMATOR")
     
-    async def _call_llm_stage_async(self, system_message: str, prompt: str, stage_name: str = "LLM") -> Dict[str, Any]:
+    async def _call_llm_stage_async(
+        self,
+        system_message: str,
+        prompt: str,
+        stage_name: str = "LLM",
+        max_attempts: int = 2,
+        retry_delay_seconds: float = 1.0
+    ) -> Dict[str, Any]:
         """Async LLM call with JSON parsing and timing instrumentation."""
         import time
-        start_time = time.perf_counter()
-        logger.info(f"  [{stage_name}] ⏱ Started at {start_time:.3f}")
-        try:
-            await self.async_rate_limiter.acquire()
-            acquire_time = time.perf_counter()
-            logger.info(f"  [{stage_name}] Rate limiter acquired after {(acquire_time - start_time)*1000:.1f}ms")
-            
-            response = await self.async_client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=self.temperature
-            )
-            api_time = time.perf_counter()
-            logger.info(f"  [{stage_name}] API responded after {(api_time - acquire_time)*1000:.1f}ms")
-            
-            content = response.choices[0].message.content
-            if not content:
-                logger.error(f"[{stage_name}] LLM returned empty content")
-                return {'status': 'no_match'}
+
+        def is_forbidden_error(err: Exception) -> bool:
+            status = getattr(err, "status_code", None)
+            if status is None:
+                response = getattr(err, "response", None)
+                status = getattr(response, "status_code", None) if response else None
+            if status == 403:
+                return True
+            message = str(err)
+            return "Error code: 403" in message or "403 Forbidden" in message
+
+        def parse_json_content(content: str) -> Optional[Dict[str, Any]]:
             try:
-                result = json.loads(content)
-                end_time = time.perf_counter()
-                logger.info(f"  [{stage_name}] ✓ Completed in {(end_time - start_time)*1000:.1f}ms total")
-                return result
+                return json.loads(content)
             except json.JSONDecodeError:
-                if "```json" in content:
-                    json_str = content.split("```json")[1].split("```")[0].strip()
-                    return json.loads(json_str)
-                elif "```" in content:
-                    json_str = content.split("```")[1].split("```")[0].strip()
-                    return json.loads(json_str)
+                pass
+
+            if "```json" in content:
+                parts = content.split("```json", 1)
+                if len(parts) > 1:
+                    json_str = parts[1].split("```", 1)[0].strip()
+                    try:
+                        return json.loads(json_str)
+                    except json.JSONDecodeError:
+                        return None
+            if "```" in content:
+                parts = content.split("```", 1)
+                if len(parts) > 1:
+                    json_str = parts[1].split("```", 1)[0].strip()
+                    try:
+                        return json.loads(json_str)
+                    except json.JSONDecodeError:
+                        return None
+            return None
+
+        for attempt in range(1, max_attempts + 1):
+            start_time = time.perf_counter()
+            logger.info(f"  [{stage_name}] ⏱ Started at {start_time:.3f}")
+            try:
+                await self.async_rate_limiter.acquire()
+                acquire_time = time.perf_counter()
+                logger.info(
+                    f"  [{stage_name}] Rate limiter acquired after {(acquire_time - start_time)*1000:.1f}ms"
+                )
+
+                response = await self.async_client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=self.temperature
+                )
+                api_time = time.perf_counter()
+                logger.info(
+                    f"  [{stage_name}] API responded after {(api_time - acquire_time)*1000:.1f}ms"
+                )
+
+                content = response.choices[0].message.content
+                if not content:
+                    logger.error(f"[{stage_name}] LLM returned empty content")
+                    return {'status': 'no_match'}
+
+                result = parse_json_content(content)
+                if result is not None:
+                    end_time = time.perf_counter()
+                    logger.info(f"  [{stage_name}] ✓ Completed in {(end_time - start_time)*1000:.1f}ms total")
+                    return result
+
+                if attempt < max_attempts:
+                    logger.warning(
+                        f"[{stage_name}] Failed to parse LLM response; retrying "
+                        f"(attempt {attempt + 1}/{max_attempts})"
+                    )
+                    await asyncio.sleep(retry_delay_seconds * attempt)
+                    continue
+
                 logger.error(f"[{stage_name}] Failed to parse LLM response: {content}")
                 return {'status': 'no_match'}
-        except Exception as e:
-            end_time = time.perf_counter()
-            logger.error(f"[{stage_name}] LLM call failed after {(end_time - start_time)*1000:.1f}ms: {e}")
-            return {'status': 'no_match'}
+            except Exception as e:
+                end_time = time.perf_counter()
+                if is_forbidden_error(e) and attempt < max_attempts:
+                    logger.warning(
+                        f"[{stage_name}] LLM call failed with 403; retrying "
+                        f"(attempt {attempt + 1}/{max_attempts})"
+                    )
+                    await asyncio.sleep(retry_delay_seconds * attempt)
+                    continue
+                logger.error(f"[{stage_name}] LLM call failed after {(end_time - start_time)*1000:.1f}ms: {e}")
+                return {'status': 'no_match'}
     
     def _build_target_info(
         self,

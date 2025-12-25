@@ -36,7 +36,7 @@ TARGET ITEM TO MATCH:
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
 
-IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, nr/each) can be considered for matching.
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, LS/lump sum/item, nr/each) can be considered for matching. Treat unit "item" as LS (lump sum), not as nr/each.
 ABSOLUTE RULE: Do NOT perform any measurement-basis conversions (e.g., m vs m², m² vs lump sum). Use only candidates whose unit text is the same or a clear synonym; otherwise ignore/reject them.
 ABSOLUTE RULE: Do NOT guess or infer missing specifications. If there is any uncertainty or missing critical detail, return "no_exact_match".
 
@@ -76,7 +76,8 @@ EXACT MATCH CRITERIA (for this stage, treat items as exact ONLY when all key asp
    - Minor wording differences that do not realistically change cost/responsibility (e.g., “including testing” vs “tested and commissioned” for the same unit) may still be treated as an exact match if everything else is identical and cost level is clearly the same.
 
 4. COMPATIBLE AND CONSISTENT UNITS
-   - Units must be the same as the TARGET UNIT or a clear synonym (e.g., m² = sqm, m³ = cum, nr = each). Do NOT convert between different measurement bases.
+   - Units must be the same as the TARGET UNIT or a clear synonym (e.g., m² = sqm, m³ = cum, LS = lump sum = item, nr = each). Do NOT convert between different measurement bases.
+   - Treat unit "item" as LS (lump sum), not as nr/each.
    - Any candidate whose unit is different from the TARGET UNIT (including m vs m², m² vs lump sum, item vs m, or any other mismatch) MUST be ignored/rejected.
    - If a candidate unit is missing, treat it as unusable unless it is explicitly identical and certain (do not infer or convert).
 
@@ -139,7 +140,7 @@ TARGET ITEM TO MATCH:
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
 
-IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, nr/each) can be considered as close matches. Candidates with different units must be IGNORED.
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, LS/lump sum/item, nr/each) can be considered as close matches. Candidates with different units must be IGNORED. Treat unit "item" as LS (lump sum), not as nr/each.
 ABSOLUTE RULE: Do NOT perform any measurement-basis conversions (e.g., m vs m², m² vs lump sum). Only use candidates whose unit text is the same or a clear synonym; otherwise ignore them.
 
 YOUR ROLE: EXPERT 
@@ -238,7 +239,7 @@ TARGET ITEM TO MATCH:
 CANDIDATE ITEMS (from vector search, with rates):
 {candidates_text}
 
-IMPORTANT: The TARGET UNIT shown above is REQUIRED. The approximated_rate you return MUST be in this TARGET UNIT. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, nr/each) can be used for approximation. Candidates with incompatible units must be IGNORED.
+IMPORTANT: The TARGET UNIT shown above is REQUIRED. The approximated_rate you return MUST be in this TARGET UNIT. Only candidates with the SAME unit (or clear synonyms like m²/sqm, m³/cum, LS/lump sum/item, nr/each) can be used for approximation. Candidates with incompatible units must be IGNORED. Treat unit "item" as LS (lump sum), not as nr/each.
 ABSOLUTE RULE: Do NOT perform any measurement-basis conversions (e.g., m vs m², m² vs lump sum). Only use candidates whose unit text is the same or a clear synonym; otherwise ignore/reject them.
 
 YOUR ROLE: ESTIMATOR 
@@ -260,7 +261,7 @@ ESTIMATION METHOD (BASED ON INPUT DATA):
    - For each candidate in {candidates_text}, identify:
      - Its 1-based index.
      - Its work type and brief description.
-     - Its unit (e.g., m, m², m³, item, kg, kW).
+     - Its unit (e.g., m, m², m³, LS (item), kg, kW).
      - Its numeric rate (e.g., 500.00/m; extract 500.00 as the base candidate rate).
      - Any key specs (e.g., diameter, depth, class, capacity, power).
      - Ignore vague phrases like "as specified" or "as per drawing/spec" as they do not provide concrete specs.

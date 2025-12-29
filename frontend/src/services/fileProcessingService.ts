@@ -8,12 +8,19 @@ export interface OutputFile {
     downloadUrl: string;
 }
 
-export const getUploadUrl = async (filename: string, mode: 'fill' | 'parse'): Promise<{ uploadUrl: string; key: string; bucket: string }> => {
+export const getUploadUrl = async (
+    filename: string,
+    mode: 'fill' | 'parse',
+    sheetNames?: string[]
+): Promise<{ uploadUrl: string; key: string; bucket: string }> => {
     const headers = await getAuthHeaders();
-    const queryParams = new URLSearchParams({
-        filename,
-        mode
-    });
+    const params: Record<string, string> = { filename, mode };
+
+    if (sheetNames && sheetNames.length > 0) {
+        params.sheetNames = sheetNames.join(',');
+    }
+
+    const queryParams = new URLSearchParams(params);
 
     const response = await fetch(`${API_BASE_URL}/files/upload-url?${queryParams}`, {
         method: 'GET',
@@ -26,6 +33,21 @@ export const getUploadUrl = async (filename: string, mode: 'fill' | 'parse'): Pr
     }
 
     return await response.json();
+};
+
+export const listAvailableSheets = async (): Promise<string[]> => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/files/sheets`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to list sheets: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.sheets || [];
 };
 
 export const uploadFileToS3 = async (uploadUrl: string, file: File) => {

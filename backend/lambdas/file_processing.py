@@ -30,13 +30,26 @@ def generate_upload_url(event, context):
     key = f"input/{mode}/{filename}"
 
     try:
+        # Prepare metadata
+        metadata = {
+            "mode": mode,
+            "filename": filename
+        }
+
+        # Add sheet selection metadata if present
+        # New approach: Simple list of sheet names from available_sheets.json
+        sheet_names = query_params.get("sheetNames")
+        if sheet_names:
+            metadata["sheet-names"] = sheet_names
+
         # Generate presigned URL for PUT operation
         presigned_url = s3_client.generate_presigned_url(
             "put_object",
             Params={
                 "Bucket": FILE_PROCESSING_BUCKET,
                 "Key": key,
-                "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "Metadata": metadata
             },
             ExpiresIn=300  # 5 minutes
         )
@@ -48,7 +61,30 @@ def generate_upload_url(event, context):
         })
 
     except Exception as e:
-        return create_error_response(500, "Failed to generate upload URL", e)
+        return create_error_response(500, str(e))
+
+
+@with_error_handling
+def list_available_sheets(event, context):
+    """List available parsed sheets from the S3 registry file."""
+    # Note: This is an open endpoint (authenticated users), 
+    # effectively a public registry for all users of the app.
+    
+    s3_client = get_s3_client()
+    
+    try:
+        response = s3_client.get_object(
+            Bucket=FILE_PROCESSING_BUCKET,
+            Key="metadata/available_sheets.json"
+        )
+        content = json.loads(response["Body"].read())
+        return create_response(200, {"sheets": content.get("sheets", [])})
+        
+    except s3_client.exceptions.NoSuchKey:
+        # Registry file doesn't exist yet
+        return create_response(200, {"sheets": []})
+    except Exception as e:
+        return create_error_response(500, f"Failed to list sheets: {str(e)}")
 
 @with_error_handling
 def list_output_files(event, context):

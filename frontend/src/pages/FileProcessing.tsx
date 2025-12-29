@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { getUploadUrl, uploadFileToS3, listOutputFiles, fetchTextContent, OutputFile } from '../services/fileProcessingService';
+import {
+    getUploadUrl,
+    uploadFileToS3,
+    listOutputFiles,
+    fetchTextContent,
+    listAvailableSheets,
+    OutputFile
+} from '../services/fileProcessingService';
+// import { KnowledgeBase, Document } from '../types/knowledgeBase';
 
 interface SummaryData {
     input: string;
@@ -33,6 +41,11 @@ const FileProcessing: React.FC = () => {
     const [files, setFiles] = useState<OutputFile[]>([]);
     const [loadingFiles, setLoadingFiles] = useState(false);
 
+    // Sheet Selection State
+    const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+    const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
+    const [loadingSheets, setLoadingSheets] = useState(false);
+
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
@@ -44,20 +57,48 @@ const FileProcessing: React.FC = () => {
         }
     };
 
+    // Load Available Sheets on mount
+    useEffect(() => {
+        const fetchSheets = async () => {
+            setLoadingSheets(true);
+            try {
+                const sheets = await listAvailableSheets();
+                setAvailableSheets(sheets);
+            } catch (error) {
+                console.error("Failed to fetch available sheets", error);
+            } finally {
+                setLoadingSheets(false);
+            }
+        };
+        fetchSheets();
+    }, []);
+
+    const handleSheetToggle = (sheetName: string, checked: boolean) => {
+        if (checked) {
+            setSelectedSheets(prev => [...prev, sheetName]);
+        } else {
+            setSelectedSheets(prev => prev.filter(name => name !== sheetName));
+        }
+    };
+
     const handleUpload = async () => {
         if (!selectedFile) return;
 
         setUploading(true);
         try {
-            // 1. Get presigned URL
-            const { uploadUrl } = await getUploadUrl(selectedFile.name, mode);
+            // 1. Get presigned URL with metadata
+            const { uploadUrl } = await getUploadUrl(
+                selectedFile.name,
+                mode,
+                mode === 'fill' ? selectedSheets : undefined
+            );
 
             // 2. Upload file
             await uploadFileToS3(uploadUrl, selectedFile);
 
             alert('File uploaded successfully! Processing started.');
             setSelectedFile(null);
-            // Optional: reset file input
+            setSelectedSheets([]); // Reset selection
         } catch (error) {
             console.error(error);
             alert('Failed to upload file.');
@@ -194,6 +235,37 @@ const FileProcessing: React.FC = () => {
                                 {mode === 'fill' ? 'Extracts data and fills BoQ using AI.' : 'Parses raw Excel file to structured format.'}
                             </p>
                         </div>
+
+                        {mode === 'fill' && (
+                            <div className="mb-6 border-t border-gray-200 pt-4">
+                                <h3 className="text-sm font-medium text-gray-900 mb-3">Available Sheets</h3>
+
+                                {loadingSheets ? (
+                                    <p className="text-xs text-gray-400">Loading sheets...</p>
+                                ) : availableSheets.length === 0 ? (
+                                    <p className="text-xs text-gray-400">No available sheets found.</p>
+                                ) : (
+                                    <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2 space-y-2">
+                                        {availableSheets.map(sheetName => (
+                                            <label key={sheetName} className="flex items-start space-x-2 cursor-pointer p-1 hover:bg-gray-50 rounded">
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1 h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                                    checked={selectedSheets.includes(sheetName)}
+                                                    onChange={(e) => handleSheetToggle(sheetName, e.target.checked)}
+                                                />
+                                                <div className="text-xs">
+                                                    <p className="font-medium text-gray-900 break-all">{sheetName}</p>
+                                                </div>
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Selected: {selectedSheets.length}
+                                </p>
+                            </div>
+                        )}
 
                         <div className="mb-6">
                             <label className="block text-sm font-medium text-gray-700 mb-2">File</label>

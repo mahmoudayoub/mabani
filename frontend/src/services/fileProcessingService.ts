@@ -87,3 +87,45 @@ export const fetchTextContent = async (url: string): Promise<string> => {
     }
     return await response.text();
 };
+
+export interface EstimateData {
+    total_items: number;
+    estimated_seconds: number;
+    estimated_minutes: number;
+    started_at: string;
+    filename: string;
+}
+
+export const getEstimate = async (filename: string): Promise<EstimateData> => {
+    const headers = await getAuthHeaders();
+    // Remove extension if present
+    const filenameBase = filename.replace('.xlsx', '').replace('_filled', '');
+
+    const response = await fetch(`${API_BASE_URL}/files/estimate/${encodeURIComponent(filenameBase)}`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Failed to get estimate: ${response.statusText}`);
+    }
+
+    return await response.json();
+};
+
+export const checkFileExists = async (filepath: string): Promise<boolean> => {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE_URL}/files/check/${encodeURIComponent(filepath)}`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to check file: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.exists || false;
+};

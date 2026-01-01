@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     getUploadUrl,
     uploadFileToS3,
     listOutputFiles,
     fetchTextContent,
     listAvailableSheets,
-    OutputFile
+    getEstimate,
+    checkFileExists,
+    OutputFile,
+    EstimateData
 } from '../services/fileProcessingService';
 // import { KnowledgeBase, Document } from '../types/knowledgeBase';
 
@@ -35,6 +38,9 @@ interface SummaryData {
 }
 
 const FileProcessing: React.FC = () => {
+    // View State
+    const [currentView, setCurrentView] = useState<'landing' | 'fill' | 'parse'>('landing');
+
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [mode, setMode] = useState<'fill' | 'parse'>('fill');
     const [uploading, setUploading] = useState(false);
@@ -45,11 +51,23 @@ const FileProcessing: React.FC = () => {
     const [availableSheets, setAvailableSheets] = useState<string[]>([]);
     const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
     const [loadingSheets, setLoadingSheets] = useState(false);
+    const [showSheetPicker, setShowSheetPicker] = useState(false);
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
     const [loadingSummary, setLoadingSummary] = useState(false);
+
+    // Progress Tracking State
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [progressPercent, setProgressPercent] = useState(0);
+    const [estimateData, setEstimateData] = useState<EstimateData | null>(null);
+    const [processingStatus, setProcessingStatus] = useState('');
+    const [timeRemaining, setTimeRemaining] = useState('');
+    const [completedFilePath, setCompletedFilePath] = useState<string | null>(null);
+
+    const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files.length > 0) {
@@ -96,9 +114,15 @@ const FileProcessing: React.FC = () => {
             // 2. Upload file
             await uploadFileToS3(uploadUrl, selectedFile);
 
-            alert('File uploaded successfully! Processing started.');
             setSelectedFile(null);
             setSelectedSheets([]); // Reset selection
+
+            // 3. Start progress tracking for fill mode
+            if (mode === 'fill') {
+                startProgressTracking(selectedFile.name);
+            } else {
+                alert('File uploaded successfully! Processing started.');
+            }
         } catch (error) {
             console.error(error);
             alert('Failed to upload file.');
@@ -106,6 +130,128 @@ const FileProcessing: React.FC = () => {
             setUploading(false);
         }
     };
+
+    const startProgressTracking = async (filename: string) => {
+        setIsProcessing(true);
+        setProgressPercent(0);
+        setProcessingStatus('Initializing...');
+        setCompletedFilePath(null);
+
+        // Wait for worker to start and upload estimate
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        try {
+            const estimate = await getEstimate(filename);
+            setEstimateData(estimate);
+            setProcessingStatus('Processing...');
+
+            // Start smooth progress animation
+            let currentProgress = 0;
+            const updateIntervalMs = 500;
+            const progressIncrement = (100 / estimate.estimated_seconds) * (updateIntervalMs / 1000);
+
+            progressIntervalRef.current = setInterval(() => {
+                currentProgress += progressIncrement;
+
+                // Stall at 95% - don't go beyond until file is ready
+                if (currentProgress >= 95) {
+                    currentProgress = 95;
+                    setProcessingStatus('Finalizing...');
+                }
+
+                setProgressPercent(Math.min(currentProgress, 95));
+                updateTimeRemaining(estimate, currentProgress);
+            }, updateIntervalMs);
+
+            // Start polling for completion
+            pollForCompletion(filename, estimate);
+
+        } catch (error) {
+            console.error('Failed to get estimate:', error);
+            // Fall back to indeterminate progress
+            setProcessingStatus('Processing (time estimate unavailable)...');
+            pollForCompletion(filename, null);
+        }
+    };
+
+    const pollForCompletion = (filename: string, estimate: EstimateData | null) => {
+        const filenameBase = filename.replace('.xlsx', '');
+        const outputPath = `output/fills/${filenameBase}_filled.xlsx`;
+
+        pollIntervalRef.current = setInterval(async () => {
+            try {
+                const exists = await checkFileExists(outputPath);
+
+                if (exists) {
+                    // File is ready!
+                    cleanupProgressTracking();
+
+                    // Fill to 100%
+                    setProgressPercent(100);
+                    setProcessingStatus('Complete!');
+                    setCompletedFilePath(outputPath);
+
+                    // Refresh file list
+                    setTimeout(() => {
+                        fetchFiles();
+                    }, 1000);
+                }
+            } catch (error) {
+                console.error('Error checking file:', error);
+            }
+        }, 3000); // Check every 3 seconds
+
+        // Cleanup after max time (estimate * 3 to be safe, or 30 min default)
+        const maxWaitMs = estimate ? estimate.estimated_seconds * 3 * 1000 : 30 * 60 * 1000;
+        setTimeout(() => {
+            if (progressPercent < 100) {
+                cleanupProgressTracking();
+                setProcessingStatus('Processing took longer than expected. Please check results.');
+            }
+        }, maxWaitMs);
+    };
+
+    const updateTimeRemaining = (estimate: EstimateData, currentProgress: number) => {
+        if (currentProgress >= 95) {
+            setTimeRemaining('Finalizing...');
+            return;
+        }
+
+        const elapsed = (Date.now() - new Date(estimate.started_at).getTime()) / 1000;
+        const remaining = Math.max(0, estimate.estimated_seconds - elapsed);
+        const minutes = Math.floor(remaining / 60);
+        const seconds = Math.floor(remaining % 60);
+
+        setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')} remaining`);
+    };
+
+    const cleanupProgressTracking = () => {
+        if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+        }
+        if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+        }
+    };
+
+    const resetProcessing = () => {
+        cleanupProgressTracking();
+        setIsProcessing(false);
+        setProgressPercent(0);
+        setEstimateData(null);
+        setProcessingStatus('');
+        setTimeRemaining('');
+        setCompletedFilePath(null);
+    };
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            cleanupProgressTracking();
+        };
+    }, []);
 
     const fetchFiles = async () => {
         setLoadingFiles(true);
@@ -192,11 +338,76 @@ const FileProcessing: React.FC = () => {
         }
     };
 
+    // Landing Page View
+    if (currentView === 'landing') {
+        return (
+            <div className="px-4 py-6 sm:px-6 lg:px-8">
+                <div className="mb-8 text-center">
+                    <h1 className="text-3xl font-bold text-gray-900">Price Allocation</h1>
+                    <p className="text-sm text-gray-600 mt-2">Choose your operation</p>
+                </div>
+
+                <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Filling Option */}
+                    <button
+                        onClick={() => {
+                            setMode('fill');
+                            setCurrentView('fill');
+                        }}
+                        className="group bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-primary-500"
+                    >
+                        <div className="flex items-center justify-center w-16 h-16 bg-primary-100 rounded-lg mb-4 group-hover:bg-primary-200 transition-colors">
+                            <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </div>
+                        <h2 className="text-xl font-semibold text-gray-900 mb-2">Filling</h2>
+                        <p className="text-sm text-gray-600">Extract data and fill Bill of Quantities using AI-powered matching from your smart library.</p>
+                    </button>
+
+                    {/* Upload to Smart Library Option */}
+                    <button
+                        onClick={() => {
+                            setMode('parse');
+                            setCurrentView('parse');
+                        }}
+                        className="group bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-green-500"
+                    >
+                        <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-lg mb-4 group-hover:bg-green-200 transition-colors">
+                            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                        </div>
+                        <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload to Smart Library</h2>
+                        <p className="text-sm text-gray-600">Parse and index Excel files to expand your searchable knowledge base.</p>
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="px-4 py-6 sm:px-6 lg:px-8">
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">File Processing</h1>
-                <p className="text-sm text-gray-600">Upload Excel files for AI processing and retrieve results.</p>
+            <div className="mb-6 flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">
+                        {currentView === 'fill' ? 'Filling' : 'Upload to Smart Library'}
+                    </h1>
+                    <p className="text-sm text-gray-600">
+                        {currentView === 'fill'
+                            ? 'Upload Excel files for AI-powered price filling.'
+                            : 'Parse and index Excel files to your knowledge base.'}
+                    </p>
+                </div>
+                <button
+                    onClick={() => setCurrentView('landing')}
+                    className="text-sm text-gray-600 hover:text-gray-900 flex items-center"
+                >
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    Back
+                </button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -205,65 +416,60 @@ const FileProcessing: React.FC = () => {
                     <div className="bg-white rounded-lg shadow p-6">
                         <h2 className="text-lg font-semibold text-gray-900 mb-4">Upload New File</h2>
 
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Select Mode</label>
-                            <div className="flex space-x-4">
-                                <label className="inline-flex items-center">
-                                    <input
-                                        type="radio"
-                                        className="form-radio text-primary-600"
-                                        name="mode"
-                                        value="fill"
-                                        checked={mode === 'fill'}
-                                        onChange={() => setMode('fill')}
-                                    />
-                                    <span className="ml-2">Fill</span>
-                                </label>
-                                <label className="inline-flex items-center">
-                                    <input
-                                        type="radio"
-                                        className="form-radio text-primary-600"
-                                        name="mode"
-                                        value="parse"
-                                        checked={mode === 'parse'}
-                                        onChange={() => setMode('parse')}
-                                    />
-                                    <span className="ml-2">Parse</span>
-                                </label>
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">
-                                {mode === 'fill' ? 'Extracts data and fills BoQ using AI.' : 'Parses raw Excel file to structured format.'}
-                            </p>
-                        </div>
+                        {currentView === 'fill' && (
+                            <div className="mb-6">
+                                <button
+                                    onClick={() => setShowSheetPicker(!showSheetPicker)}
+                                    className="w-full flex items-center justify-between px-4 py-3 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors border border-primary-200"
+                                >
+                                    <div className="flex items-center">
+                                        <svg className="w-5 h-5 text-primary-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                        <span className="font-medium text-gray-900">Choose Data Sheets</span>
+                                    </div>
+                                    <div className="flex items-center">
+                                        {selectedSheets.length > 0 && (
+                                            <span className="text-xs bg-primary-600 text-white px-2 py-1 rounded-full mr-2">
+                                                {selectedSheets.length} selected
+                                            </span>
+                                        )}
+                                        <svg
+                                            className={`w-5 h-5 text-gray-600 transition-transform ${showSheetPicker ? 'rotate-180' : ''}`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </button>
 
-                        {mode === 'fill' && (
-                            <div className="mb-6 border-t border-gray-200 pt-4">
-                                <h3 className="text-sm font-medium text-gray-900 mb-3">Available Sheets</h3>
-
-                                {loadingSheets ? (
-                                    <p className="text-xs text-gray-400">Loading sheets...</p>
-                                ) : availableSheets.length === 0 ? (
-                                    <p className="text-xs text-gray-400">No available sheets found.</p>
-                                ) : (
-                                    <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-md p-2 space-y-2">
-                                        {availableSheets.map(sheetName => (
-                                            <label key={sheetName} className="flex items-start space-x-2 cursor-pointer p-1 hover:bg-gray-50 rounded">
-                                                <input
-                                                    type="checkbox"
-                                                    className="mt-1 h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                                                    checked={selectedSheets.includes(sheetName)}
-                                                    onChange={(e) => handleSheetToggle(sheetName, e.target.checked)}
-                                                />
-                                                <div className="text-xs">
-                                                    <p className="font-medium text-gray-900 break-all">{sheetName}</p>
-                                                </div>
-                                            </label>
-                                        ))}
+                                {showSheetPicker && (
+                                    <div className="mt-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                        {loadingSheets ? (
+                                            <p className="text-xs text-gray-400">Loading sheets...</p>
+                                        ) : availableSheets.length === 0 ? (
+                                            <p className="text-xs text-gray-400">No available sheets found.</p>
+                                        ) : (
+                                            <div className="max-h-60 overflow-y-auto space-y-2">
+                                                {availableSheets.map(sheetName => (
+                                                    <label key={sheetName} className="flex items-start space-x-2 cursor-pointer p-2 hover:bg-white rounded transition-colors">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="mt-1 h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                                            checked={selectedSheets.includes(sheetName)}
+                                                            onChange={(e) => handleSheetToggle(sheetName, e.target.checked)}
+                                                        />
+                                                        <div className="text-xs">
+                                                            <p className="font-medium text-gray-900 break-all">{sheetName}</p>
+                                                        </div>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
-                                <p className="text-xs text-gray-500 mt-2">
-                                    Selected: {selectedSheets.length}
-                                </p>
                             </div>
                         )}
 
@@ -293,11 +499,62 @@ const FileProcessing: React.FC = () => {
 
                         <button
                             onClick={handleUpload}
-                            disabled={!selectedFile || uploading}
-                            className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${!selectedFile || uploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary-600 hover:bg-primary-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
+                            disabled={!selectedFile || uploading || isProcessing}
+                            className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${!selectedFile || uploading || isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary-600 hover:bg-primary-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
                         >
                             {uploading ? 'Uploading...' : 'Upload File'}
                         </button>
+
+                        {/* Progress Tracking UI */}
+                        {isProcessing && (
+                            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <div className="mb-3">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-sm font-medium text-gray-900">{processingStatus}</span>
+                                        <span className="text-sm font-semibold text-primary-600">{Math.round(progressPercent)}%</span>
+                                    </div>
+                                    {timeRemaining && progressPercent < 100 && (
+                                        <p className="text-xs text-gray-600 mb-2">{timeRemaining}</p>
+                                    )}
+                                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-primary-500 to-primary-600 transition-all duration-500 ease-out"
+                                            style={{ width: `${progressPercent}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+
+                                {estimateData && progressPercent < 100 && (
+                                    <p className="text-xs text-gray-500">
+                                        Processing {estimateData.total_items} items
+                                    </p>
+                                )}
+
+                                {completedFilePath && progressPercent === 100 && (
+                                    <div className="mt-3 pt-3 border-t border-blue-300">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center text-green-700">
+                                                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                                <span className="text-sm font-medium">Processing complete!</span>
+                                            </div>
+                                            <button
+                                                onClick={resetProcessing}
+                                                className="text-sm text-primary-600 hover:text-primary-800 font-medium"
+                                            >
+                                                Process Another
+                                            </button>
+                                        </div>
+                                        {estimateData && (
+                                            <p className="text-xs text-gray-600 mt-2">
+                                                Processed {estimateData.total_items} items
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -305,47 +562,92 @@ const FileProcessing: React.FC = () => {
                 <div className="lg:col-span-2">
                     <div className="bg-white rounded-lg shadow overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-                            <h2 className="text-lg font-semibold text-gray-900">Processed Files</h2>
-                            <button onClick={fetchFiles} className="text-primary-600 hover:text-primary-800 text-sm font-medium">
+                            <h2 className="text-lg font-semibold text-gray-900">
+                                {currentView === 'fill' ? 'Processed Files' : 'Available Sheets'}
+                            </h2>
+                            <button
+                                onClick={currentView === 'fill' ? fetchFiles : () => {
+                                    setLoadingSheets(true);
+                                    listAvailableSheets()
+                                        .then(sheets => setAvailableSheets(sheets))
+                                        .catch(err => console.error(err))
+                                        .finally(() => setLoadingSheets(false));
+                                }}
+                                className="text-primary-600 hover:text-primary-800 text-sm font-medium"
+                            >
                                 Refresh
                             </button>
                         </div>
 
-                        {loadingFiles ? (
-                            <div className="p-6 text-center text-gray-500">Loading...</div>
-                        ) : files.length === 0 ? (
-                            <div className="p-6 text-center text-gray-500">No output files found.</div>
-                        ) : (
-                            <ul className="divide-y divide-gray-200">
-                                {files.map((file) => (
-                                    <li key={file.key} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-gray-900 truncate">{file.filename}</p>
-                                            <p className="text-xs text-gray-500">
-                                                {new Date(file.lastModified).toLocaleString()} &bull; {formatBytes(file.size)}
-                                            </p>
-                                        </div>
-                                        <div className="ml-4 flex-shrink-0 flex space-x-4">
-                                            {file.filename.endsWith('.txt') && (
-                                                <button
-                                                    onClick={() => handleViewSummary(file)}
-                                                    className="font-medium text-indigo-600 hover:text-indigo-500"
+                        {currentView === 'fill' ? (
+                            // Show processed fill files
+                            loadingFiles ? (
+                                <div className="p-6 text-center text-gray-500">Loading...</div>
+                            ) : files.length === 0 ? (
+                                <div className="p-6 text-center text-gray-500">No output files found.</div>
+                            ) : (
+                                <ul className="divide-y divide-gray-200">
+                                    {files.map((file) => (
+                                        <li key={file.key} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-900 truncate">{file.filename}</p>
+                                                <p className="text-xs text-gray-500">
+                                                    {new Date(file.lastModified).toLocaleString()} &bull; {formatBytes(file.size)}
+                                                </p>
+                                            </div>
+                                            <div className="ml-4 flex-shrink-0 flex space-x-4">
+                                                {file.filename.endsWith('.txt') && (
+                                                    <button
+                                                        onClick={() => handleViewSummary(file)}
+                                                        className="font-medium text-indigo-600 hover:text-indigo-500"
+                                                    >
+                                                        View
+                                                    </button>
+                                                )}
+                                                <a
+                                                    href={file.downloadUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="font-medium text-primary-600 hover:text-primary-500"
                                                 >
-                                                    View
-                                                </button>
-                                            )}
-                                            <a
-                                                href={file.downloadUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="font-medium text-primary-600 hover:text-primary-500"
-                                            >
-                                                Download
-                                            </a>
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
+                                                    Download
+                                                </a>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )
+                        ) : (
+                            // Show available sheets for parse mode
+                            loadingSheets ? (
+                                <div className="p-6 text-center text-gray-500">Loading...</div>
+                            ) : availableSheets.length === 0 ? (
+                                <div className="p-6 text-center text-gray-500">
+                                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <p>No sheets in the library yet.</p>
+                                    <p className="text-xs mt-1">Upload an Excel file to get started.</p>
+                                </div>
+                            ) : (
+                                <ul className="divide-y divide-gray-200">
+                                    {availableSheets.map((sheetName) => (
+                                        <li key={sheetName} className="px-6 py-4 flex items-center hover:bg-gray-50">
+                                            <div className="flex items-center flex-1">
+                                                <div className="flex-shrink-0 h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                                    <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                    </svg>
+                                                </div>
+                                                <div className="ml-4">
+                                                    <p className="text-sm font-medium text-gray-900">{sheetName}</p>
+                                                    <p className="text-xs text-gray-500">Available for matching</p>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )
                         )}
                     </div>
                 </div>
@@ -407,38 +709,61 @@ const FileProcessing: React.FC = () => {
 
                                     <div>
                                         <h4 className="text-sm font-medium text-gray-900 mb-3">Matching Breakdown</h4>
-                                        <div className="space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm text-gray-600">Exact Matches</span>
-                                                <div className="flex items-center">
-                                                    <span className="text-sm font-medium mr-2">{summaryData.stats.exactMatches}</span>
-                                                    <span className="text-xs text-gray-500">({summaryData.ratios.exact})</span>
+                                        <div className="space-y-3">
+                                            {/* Exact Matches - Green */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-sm font-medium text-gray-700">Exact Matches</span>
+                                                    <div className="flex items-center">
+                                                        <span className="text-sm font-semibold text-green-700 mr-2">{summaryData.stats.exactMatches}</span>
+                                                        <span className="text-xs text-gray-500">({summaryData.ratios.exact})</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                                <div className="bg-green-500 h-2 rounded-full" style={{ width: summaryData.ratios.exact }}></div>
+                                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                                    <div className="bg-green-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.exact }}></div>
+                                                </div>
                                             </div>
 
-                                            <div className="flex items-center justify-between mt-2">
-                                                <span className="text-sm text-gray-600">Expert Matches</span>
-                                                <div className="flex items-center">
-                                                    <span className="text-sm font-medium mr-2">{summaryData.stats.expertMatches}</span>
-                                                    <span className="text-xs text-gray-500">({summaryData.ratios.expert})</span>
+                                            {/* Expert Matches - Yellow */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-sm font-medium text-gray-700">Expert Matches</span>
+                                                    <div className="flex items-center">
+                                                        <span className="text-sm font-semibold text-yellow-700 mr-2">{summaryData.stats.expertMatches}</span>
+                                                        <span className="text-xs text-gray-500">({summaryData.ratios.expert})</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                                <div className="bg-blue-500 h-2 rounded-full" style={{ width: summaryData.ratios.expert }}></div>
+                                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                                    <div className="bg-yellow-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.expert }}></div>
+                                                </div>
                                             </div>
 
-                                            <div className="flex items-center justify-between mt-2">
-                                                <span className="text-sm text-gray-600">Estimates</span>
-                                                <div className="flex items-center">
-                                                    <span className="text-sm font-medium mr-2">{summaryData.stats.estimates}</span>
-                                                    <span className="text-xs text-gray-500">({summaryData.ratios.estimates})</span>
+                                            {/* Estimates - Orange */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-sm font-medium text-gray-700">Estimates</span>
+                                                    <div className="flex items-center">
+                                                        <span className="text-sm font-semibold text-orange-700 mr-2">{summaryData.stats.estimates}</span>
+                                                        <span className="text-xs text-gray-500">({summaryData.ratios.estimates})</span>
+                                                    </div>
+                                                </div>
+                                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                                    <div className="bg-orange-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.estimates }}></div>
                                                 </div>
                                             </div>
-                                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                                <div className="bg-yellow-500 h-2 rounded-full" style={{ width: summaryData.ratios.estimates }}></div>
+
+                                            {/* No Matches - Red */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-sm font-medium text-gray-700">No Matches (Unfilled)</span>
+                                                    <div className="flex items-center">
+                                                        <span className="text-sm font-semibold text-red-700 mr-2">{summaryData.stats.noMatches}</span>
+                                                        <span className="text-xs text-gray-500">({summaryData.ratios.noMatch})</span>
+                                                    </div>
+                                                </div>
+                                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                                    <div className="bg-red-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.noMatch }}></div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import logging
+import json
 from pathlib import Path
 from urllib.parse import unquote_plus
 import boto3
@@ -46,6 +47,42 @@ def get_services():
     
     return settings, openai_async, embeddings_service, vector_store_service
 
+def register_sheet_name(bucket, sheet_name):
+    """Register a new sheet name in the available sheets registry on S3."""
+    if not sheet_name:
+        return
+        
+    s3 = boto3.client('s3')
+    registry_key = "metadata/available_sheets.json"
+    
+    try:
+        try:
+            # 1. Read existing
+            obj = s3.get_object(Bucket=bucket, Key=registry_key)
+            data = json.loads(obj['Body'].read())
+            current_sheets = set(data.get('sheets', []))
+        except s3.exceptions.NoSuchKey:
+            current_sheets = set()
+        except Exception as e:
+            logger.warning(f"Failed to read registry: {e}")
+            current_sheets = set()
+            
+        # 2. Add new sheet (idempotent)
+        if sheet_name not in current_sheets:
+            logger.info(f"Registering new sheet: {sheet_name}")
+            current_sheets.add(sheet_name)
+            
+            # 3. Write back
+            new_data = {"sheets": sorted(list(current_sheets))}
+            s3.put_object(
+                Bucket=bucket, 
+                Key=registry_key, 
+                Body=json.dumps(new_data),
+                ContentType='application/json'
+            )
+    except Exception as e:
+        logger.error(f"Failed to register sheet name: {e}")
+
 async def process_parse(input_path: Path, storage):
     logger.info(f"Starting PARSE job for {input_path}")
     
@@ -88,6 +125,12 @@ async def process_parse(input_path: Path, storage):
                 max_workers=settings.max_workers
             )
             logger.info(f"Indexed '{doc.source_name}' ({doc.total_items} items) into vector store")
+            
+            # Register the sheet name
+            bucket_name = os.getenv('S3_BUCKET_NAME')
+            if bucket_name:
+                register_sheet_name(bucket_name, doc.source_name)
+                
         except Exception as e:
             logger.error(f"Failed to index document {f}: {e}", exc_info=True)
             continue
@@ -96,6 +139,31 @@ async def process_fill(input_path: Path, storage):
     logger.info(f"Starting FILL job for {input_path}")
     
     settings, openai_async, embeddings_service, vector_store_service = get_services()
+    
+    # Read S3 metadata to get sheet selection
+    s3_key = os.getenv('S3_KEY')
+    bucket_name = os.getenv('S3_BUCKET_NAME')
+    filter_dict = None
+    
+    if s3_key and bucket_name:
+        try:
+            s3 = boto3.client('s3')
+            head = s3.head_object(Bucket=bucket_name, Key=s3_key)
+            metadata = head.get('Metadata', {})
+            sheet_names_str = metadata.get('sheet-names', '')
+            
+            logger.info(f"DEBUG: S3 metadata sheet-names: '{sheet_names_str}'")
+            
+            if sheet_names_str:
+                selected_sheets = [s.strip() for s in sheet_names_str.split(',') if s.strip()]
+                logger.info(f"DEBUG: Parsed sheets from S3 metadata: {selected_sheets}")
+                if selected_sheets:
+                    filter_dict = {'sheet_name': {'$in': selected_sheets}}
+                    logger.info(f"DEBUG: Created Pinecone filter: {filter_dict}")
+        except Exception as e:
+            logger.warning(f"Failed to read S3 metadata: {e}. Will search all sheets.")
+    else:
+        logger.info("DEBUG: No S3_KEY or S3_BUCKET_NAME, will search ALL sheets (no filter)")
     
     rate_matcher = RateMatcher(
         async_openai_client=openai_async,
@@ -106,7 +174,7 @@ async def process_fill(input_path: Path, storage):
         model=settings.openai_chat_model,
         verbose_logging=True
     )
-    
+
     pipeline = RateFillerPipeline(rate_matcher)
     
     output_filename = f"{input_path.stem}_filled.xlsx"
@@ -116,7 +184,8 @@ async def process_fill(input_path: Path, storage):
         input_file=input_path,
         output_file=output_path,
         namespace=settings.pinecone_namespace or "",
-        workers=settings.max_workers
+        workers=settings.max_workers,
+        filter_dict=filter_dict
     )
     
     s3_key = f"output/fills/{output_filename}"
@@ -137,6 +206,13 @@ async def main():
     
     mode = os.getenv('JOB_MODE', '').upper()
     s3_key = os.getenv('S3_KEY')
+    
+    # DEBUG: Log all environment variables
+    selected_sheet_names_env = os.environ.get('SELECTED_SHEET_NAMES', '')
+    logger.info(f"DEBUG: Environment variables:")
+    logger.info(f"  - JOB_MODE: {mode}")
+    logger.info(f"  - S3_KEY: {s3_key}")
+    logger.info(f"  - SELECTED_SHEET_NAMES: '{selected_sheet_names_env}'")
     
     if not s3_key:
         logger.error("No S3_KEY provided. Exiting.")

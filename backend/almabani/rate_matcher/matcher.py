@@ -81,7 +81,8 @@ class RateMatcher:
         parent: Optional[str] = None,
         grandparent: Optional[str] = None,
         namespace: str = '',
-        category_path: Optional[str] = None
+        category_path: Optional[str] = None,
+        filter_dict: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Find matching items for a given description with hierarchical context.
@@ -127,7 +128,7 @@ class RateMatcher:
         
         # Step 1: Vector search with enriched context (async)
         candidates = await self._search_similar_items_async(
-            item_description, item_unit, parent, grandparent, namespace
+            item_description, item_unit, parent, grandparent, namespace, filter_dict
         )
 
         if not candidates:
@@ -275,7 +276,8 @@ class RateMatcher:
         unit: str,
         parent: Optional[str],
         grandparent: Optional[str],
-        namespace: str
+        namespace: str,
+        filter_dict: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
         Async wrapper around vector search.
@@ -304,13 +306,23 @@ class RateMatcher:
         
         query_embedding = await self.embeddings.generate_embedding_async(query_text)
         
+        # DEBUG: Log the filter being used
+        logger.info(f"DEBUG: Vector search with filter: {filter_dict}")
+        
         results = await self.vector_store.search(
             query_embedding=query_embedding,
             top_k=self.top_k,
-            filter_dict=None,
+            filter_dict=filter_dict,
             namespace=namespace,
             include_metadata=True
         )
+        
+        # DEBUG: Log results count and sample metadata
+        logger.info(f"DEBUG: Vector search returned {len(results)} results")
+        if results:
+            sample_meta = results[0].get('metadata', {})
+            logger.info(f"DEBUG: Sample result metadata: sheet_name='{sample_meta.get('sheet_name', 'MISSING')}'")
+
         
         candidates = []
         for result in results:

@@ -44,7 +44,8 @@ class RateFillerPipeline:
         sheet_name: Optional[str] = None,
         output_file: Optional[Path] = None,
         namespace: str = '',
-        workers: Optional[int] = None
+        workers: Optional[int] = None,
+        filter_dict: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Async variant of process_file using asyncio + RateMatcher async calls.
@@ -87,7 +88,7 @@ class RateFillerPipeline:
             nonlocal filled_items
             async with semaphore:
                 try:
-                    filled_item, result = await self._process_single_item_async(item, namespace)
+                    filled_item, result = await self._process_single_item_async(item, namespace, filter_dict)
                     filled_items.append(filled_item)
                     report.processed_items += 1
                     if result['status'] == 'match':
@@ -261,7 +262,7 @@ class RateFillerPipeline:
         walk(tree, None, None, [])
         return parent_map
 
-    async def _process_single_item_async(self, item: Dict[str, Any], namespace: str) -> tuple:
+    async def _process_single_item_async(self, item: Dict[str, Any], namespace: str, filter_dict: Optional[Dict] = None) -> tuple:
         """
         Async variant of _process_single_item.
         """
@@ -272,7 +273,8 @@ class RateFillerPipeline:
             parent=item.get('parent'),
             grandparent=item.get('grandparent'),
             namespace=namespace,
-            category_path=item.get('category_path')
+            category_path=item.get('category_path'),
+            filter_dict=filter_dict
         )
         filled_item = self._process_match_result(item, result)
         return filled_item, result

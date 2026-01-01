@@ -8,6 +8,7 @@ ecs = boto3.client('ecs')
 def handler(event, context):
     print("Received event: " + json.dumps(event))
     
+    s3 = boto3.client('s3')
     cluster = os.environ['CLUSTER_NAME']
     task_def = os.environ['TASK_DEF_ARN']
     subnet_id = os.environ['SUBNET_ID']
@@ -17,11 +18,12 @@ def handler(event, context):
         s3_key = record['s3']['object']['key']
         s3_key = unquote_plus(s3_key)
         
-        # Determine mode
-        # Expect paths like: input/parse/file.xlsx or input/fill/file.xlsx
+        # Determine mode from path
         mode = 'UNKNOWN'
-        if '/parse/' in s3_key: mode = 'PARSE'
-        elif '/fill/' in s3_key: mode = 'FILL'
+        if '/parse/' in s3_key: 
+            mode = 'PARSE'
+        elif '/fill/' in s3_key: 
+            mode = 'FILL'
         
         if mode == 'UNKNOWN':
             print(f"Skipping key {s3_key} (not in /parse/ or /fill/)")
@@ -54,3 +56,4 @@ def handler(event, context):
             }
         )
         print(f"Task started: {response['tasks'][0]['taskArn']}")
+

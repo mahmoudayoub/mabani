@@ -1,0 +1,7 @@
+# Infrastructure/CDK tooling
+# Pin CDK to a 2.x release; keep constructs in the matching major range.
+aws-cdk-lib==2.151.0
+constructs>=10.0.0,<11.0.0
+
+# Shared with backend (used by infra/app.py to load env)
+python-dotenv>=1.0.0

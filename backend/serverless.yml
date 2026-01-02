@@ -118,6 +118,12 @@ custom:
     dockerizePip: non-linux # Force Docker for all builds (including macOS)
     dockerImage: public.ecr.aws/sam/build-python3.11:latest # Use AWS SAM build image for Python 3.11
     layer: true # Create Python requirements layer
+    slim: true
+    noDeploy:
+      - boto3
+      - botocore
+      - pytest
+      - pytest-mock
     # Note: numpy and faiss-cpu are included in the layer for the indexing worker
     # They are large but necessary for FAISS vector operations
     # pydantic_core will be built for Linux inside Docker

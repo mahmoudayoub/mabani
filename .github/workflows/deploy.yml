@@ -11,9 +11,10 @@ permissions:
   contents: read  # Required for actions/checkout
 
 jobs:
-  compliance:
-    name: Compliance & Tests
+  build-and-deploy:
+    name: Build, Test & Deploy
     runs-on: ubuntu-latest
+    environment: dev
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -38,6 +39,8 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      # --- COMPLIANCE & TESTS ---
+
       # Frontend Checks (Build required for CDK Synth)
       - name: Install Frontend Deps
         working-directory: ./frontend
@@ -48,12 +51,6 @@ jobs:
         run: |
           touch .env
           npm run build
-
-      - name: Upload Frontend Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: frontend/dist
 
       # Infrastructure Checks
       - name: Install Infrastructure Deps
@@ -77,44 +74,11 @@ jobs:
         working-directory: ./backend
         run: flake8 lambdas/ --count --select=E9,F63,F7,F82 --show-source --statistics
 
-
-
-  deploy:
-    name: Deploy to Dev
-    needs: compliance
-    runs-on: ubuntu-latest
-    environment: dev
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Download Frontend Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: frontend/dist
-
+      # --- DEPLOYMENT ---
+      
       - name: Make Script Executable
         run: chmod +x ./scripts/deploy/deploy.sh
 
-      # Modular Deployment Steps
       - name: Deploy Infrastructure
         run: ./scripts/deploy/deploy.sh dev infra
 

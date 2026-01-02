@@ -70,7 +70,7 @@ def list_available_sheets(event, context):
     # Note: This is an open endpoint (authenticated users), 
     # effectively a public registry for all users of the app.
     
-    s3_client = get_s3_client()
+
     
     try:
         response = s3_client.get_object(

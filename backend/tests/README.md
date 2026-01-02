@@ -165,7 +165,7 @@ export TEST_API_BASE_URL=http://localhost:3001
 ### For E2E Tests
 
 ```bash
-export DEPLOYED_API_BASE_URL=https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev
+export DEPLOYED_API_BASE_URL=https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev
 export TEST_JWT_TOKEN=your-cognito-jwt-token
 ```
 

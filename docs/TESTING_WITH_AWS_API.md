@@ -9,7 +9,7 @@ I've configured your frontend to use the deployed AWS Lambda functions instead o
 Created `.env.local` in the frontend directory:
 
 ```env
-VITE_API_BASE_URL=https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev
+VITE_API_BASE_URL=https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev
 ```
 
 ## Next Steps
@@ -35,7 +35,7 @@ VITE_API_BASE_URL=https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev
 All API calls will now go to:
 
 ```
-https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev
+https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev
 ```
 
 ## Benefits
@@ -68,7 +68,7 @@ To switch back to local development later:
 
 Check your browser's Network tab - API requests should go to:
 
-- ✅ `https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev/...`
+- ✅ `https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev/...`
 - ❌ NOT `http://localhost:3001/...`
 
 ## All Deployed Resources

@@ -41,7 +41,7 @@ npx serverless deploy function --function listKnowledgeBases --stage dev
 After redeployment, test:
 
 ```bash
-curl -X GET https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev/knowledge-bases \
+curl -X GET https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev/knowledge-bases \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 

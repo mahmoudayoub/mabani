@@ -21,7 +21,7 @@ The frontend is already configured to use environment variables. Here's how to s
 3. **Set the API base URL** in `.env`:
 
    ```env
-   VITE_API_BASE_URL=https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev
+   VITE_API_BASE_URL=https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev
    ```
 
 4. **Restart your frontend dev server**:
@@ -44,14 +44,14 @@ npm run dev
 
 1. Open your browser console
 2. Check the network tab - API calls should go to:
-   `https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev/...`
+   `https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev/...`
 
 3. Test creating a knowledge base - it should work!
 
 ## Deployed API Endpoint
 
 ```
-https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev
+https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev
 ```
 
 ## Switching Back to Local

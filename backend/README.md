@@ -141,7 +141,7 @@ npx serverless deploy function --function <function-name>
 ### Production
 
 ```
-https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev
+https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev
 ```
 
 ### Local Development

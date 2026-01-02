@@ -12,7 +12,8 @@ ENVIRONMENT=${1:-dev}
 COMPONENT=${2:-all}
 AWS_PROFILE="mia40"
 AWS_REGION="eu-west-1"
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export PYENV_VERSION=3.11.11
 
 # Colors for output
 RED='\033[0;31m'
@@ -71,10 +72,10 @@ deploy_infrastructure() {
     
     # Deploy stacks
     log_info "Deploying Cognito stack..."
-    npx cdk deploy MabaniCognitoStack --profile $AWS_PROFILE --require-approval never
+    npx cdk deploy MabaniCognitoStack-$ENVIRONMENT --profile $AWS_PROFILE --require-approval never
     
     log_info "Deploying Frontend stack..."
-    npx cdk deploy MabaniFrontendStack --profile $AWS_PROFILE --require-approval never
+    npx cdk deploy MabaniGeneralStack-$ENVIRONMENT --profile $AWS_PROFILE --require-approval never
     
     log_success "Infrastructure deployment completed"
 }
@@ -99,11 +100,23 @@ deploy_backend() {
     
     log_info "Installing Python dependencies..."
     source venv/bin/activate
+    pip install --upgrade pip
     pip install -r requirements.txt
     
+    # Fetch Cognito User Pool ARN
+    log_info "Fetching Cognito User Pool ARN..."
+    export COGNITO_USER_POOL_ARN=$(aws cloudformation describe-stacks \
+        --stack-name MabaniCognitoStack-$ENVIRONMENT \
+        --region $AWS_REGION \
+        --profile $AWS_PROFILE \
+        --query 'Stacks[0].Outputs[?OutputKey==`UserPoolArn`].OutputValue' \
+        --output text)
+    
+    log_info "Using Cognito User Pool ARN: $COGNITO_USER_POOL_ARN"
+
     # Deploy with Serverless Framework
     log_info "Deploying Lambda functions..."
-    npx serverless deploy --stage $ENVIRONMENT --profile $AWS_PROFILE
+    npx serverless deploy --stage $ENVIRONMENT
     
     log_success "Backend deployment completed"
 }
@@ -127,7 +140,8 @@ deploy_frontend() {
     # Upload to S3
     log_info "Uploading to S3..."
     aws s3 sync dist/ s3://$(aws cloudformation describe-stacks \
-        --stack-name MabaniFrontendStack \
+        --stack-name MabaniGeneralStack-$ENVIRONMENT \
+        --region $AWS_REGION \
         --profile $AWS_PROFILE \
         --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
         --output text) \
@@ -137,7 +151,8 @@ deploy_frontend() {
     # Invalidate CloudFront cache
     log_info "Invalidating CloudFront cache..."
     DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
-        --stack-name MabaniFrontendStack \
+        --stack-name MabaniGeneralStack-$ENVIRONMENT \
+        --region $AWS_REGION \
         --profile $AWS_PROFILE \
         --query 'Stacks[0].Outputs[?OutputKey==`DistributionId`].OutputValue' \
         --output text)
@@ -156,27 +171,31 @@ update_env_vars() {
     
     # Get Cognito outputs
     USER_POOL_ID=$(aws cloudformation describe-stacks \
-        --stack-name MabaniCognitoStack \
+        --stack-name MabaniCognitoStack-$ENVIRONMENT \
+        --region $AWS_REGION \
         --profile $AWS_PROFILE \
         --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' \
         --output text)
     
     USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks \
-        --stack-name MabaniCognitoStack \
+        --stack-name MabaniCognitoStack-$ENVIRONMENT \
+        --region $AWS_REGION \
         --profile $AWS_PROFILE \
         --query 'Stacks[0].Outputs[?OutputKey==`UserPoolClientId`].OutputValue' \
         --output text)
     
     USER_POOL_ARN=$(aws cloudformation describe-stacks \
-        --stack-name MabaniCognitoStack \
+        --stack-name MabaniCognitoStack-$ENVIRONMENT \
+        --region $AWS_REGION \
         --profile $AWS_PROFILE \
         --query 'Stacks[0].Outputs[?OutputKey==`UserPoolArn`].OutputValue' \
         --output text)
     
     # Get API Gateway URL
     API_URL=$(aws apigateway get-rest-apis \
+        --region $AWS_REGION \
         --profile $AWS_PROFILE \
-        --query "items[?name=='mabani-backend-$ENVIRONMENT'].id" \
+        --query "items[?name=='${ENVIRONMENT}-taskflow-backend'].id" \
         --output text)
     
     API_URL="https://${API_URL}.execute-api.${AWS_REGION}.amazonaws.com/${ENVIRONMENT}"
@@ -226,7 +245,8 @@ main() {
     # Show useful URLs
     if [ "$COMPONENT" = "all" ] || [ "$COMPONENT" = "frontend" ]; then
         WEBSITE_URL=$(aws cloudformation describe-stacks \
-            --stack-name MabaniFrontendStack \
+            --stack-name MabaniGeneralStack-$ENVIRONMENT \
+            --region $AWS_REGION \
             --profile $AWS_PROFILE \
             --query 'Stacks[0].Outputs[?OutputKey==`WebsiteURL`].OutputValue' \
             --output text)

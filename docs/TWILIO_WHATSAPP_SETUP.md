@@ -238,7 +238,7 @@ Twilio WhatsApp integration requires connecting Twilio to Meta (Facebook) WhatsA
 
    - **When a message comes in**:
      ```
-     https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev/webhook/twilio
+     https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev/webhook/twilio
      ```
    - **Method**: POST
    - **Content Type**: application/x-www-form-urlencoded

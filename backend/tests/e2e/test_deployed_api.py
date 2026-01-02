@@ -16,7 +16,7 @@ def deployed_api_client():
     """Create API test client for deployed AWS API."""
     base_url = os.getenv(
         "DEPLOYED_API_BASE_URL",
-        "https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev",
+        "https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev",
     )
     return ServerlessTestClient(base_url)
 

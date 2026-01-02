@@ -6,7 +6,7 @@ This guide will help you test the complete H&S + Quality report processing syste
 
 Before testing, verify:
 
-- [ ] Twilio webhook configured: `https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev/webhook/twilio`
+- [ ] Twilio webhook configured: `https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev/webhook/twilio`
 - [ ] Lambda functions deployed
 - [ ] Twilio credentials in Secrets Manager
 - [ ] AWS Bedrock models enabled (Nova Lite + Nova Pro)
@@ -100,7 +100,7 @@ aws secretsmanager get-secret-value \
 **Command:**
 
 ```bash
-curl -X POST https://j8r5sar4mf.execute-api.eu-west-1.amazonaws.com/dev/webhook/twilio \
+curl -X POST https://z83ea8fx85.execute-api.eu-west-1.amazonaws.com/dev/webhook/twilio \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "From=whatsapp:%2B1234567890&Body=Test+message&NumMedia=0"
 ```

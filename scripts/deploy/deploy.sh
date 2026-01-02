@@ -138,8 +138,16 @@ deploy_frontend() {
         npm install
     fi
     
+    # Export environment variables from .env file if it exists
+    if [ -f ".env" ]; then
+        log_info "Loading environment variables from .env..."
+        export $(cat .env | grep -v '^#' | xargs)
+    else
+        log_warning ".env file not found. Frontend may not have correct configuration."
+    fi
+    
     # Build React app
-    log_info "Building React app..."
+    log_info "Building React app with environment variables..."
     npm run build
     
     # Upload to S3

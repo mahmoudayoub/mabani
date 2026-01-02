@@ -14,6 +14,7 @@ if [ -n "$CI" ]; then
     PROFILE_ARG=""
 else
     PROFILE_ARG="--profile mia40"
+    export AWS_PROFILE="mia40"
 fi
 AWS_REGION="eu-west-1"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

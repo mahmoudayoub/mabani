@@ -7,7 +7,7 @@ provider:
   runtime: python3.11
   region: eu-west-1
   stage: ${opt:stage, 'dev'}
-  profile: mia40
+
   architecture: arm64
   environment:
     DYNAMODB_TABLE_NAME: ${self:service}-${self:provider.stage}-table

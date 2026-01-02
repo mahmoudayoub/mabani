@@ -1,0 +1,108 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write # Required for requesting the JWT
+  contents: read  # Required for actions/checkout
+
+jobs:
+  compliance:
+    name: Compliance & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # Infrastructure Checks
+      - name: Install Infrastructure Deps
+        run: |
+          cd infrastructure
+          npm ci
+
+      - name: CDK Synth (Infrastructure Validation)
+        working-directory: ./infrastructure
+        run: npx cdk synth
+
+      # Backend Checks
+      - name: Install Backend Deps
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 pytest
+
+      - name: Backend Lint
+        working-directory: ./backend
+        run: flake8 lambdas/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      # Frontend Checks
+      - name: Install Frontend Deps
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Frontend Build Check
+        working-directory: ./frontend
+        run: |
+          # Create a dummy .env for build purposes if needed, though vite build might just warn
+          touch .env  
+          npm run build
+
+  deploy:
+    name: Deploy to Dev
+    needs: compliance
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Make Script Executable
+        run: chmod +x ./scripts/deploy/deploy.sh
+
+      # Modular Deployment Steps
+      - name: Deploy Infrastructure
+        run: ./scripts/deploy/deploy.sh dev infra
+
+      - name: Deploy Backend
+        run: ./scripts/deploy/deploy.sh dev backend
+
+      - name: Update Configuration
+        run: ./scripts/deploy/deploy.sh dev config
+
+      - name: Deploy Frontend
+        run: ./scripts/deploy/deploy.sh dev frontend

@@ -227,6 +227,9 @@ main() {
         "frontend"|"web")
             deploy_frontend
             ;;
+        "config"|"env")
+            update_env_vars
+            ;;
         "all")
             deploy_infrastructure
             deploy_backend
@@ -235,7 +238,7 @@ main() {
             ;;
         *)
             log_error "Invalid component: $COMPONENT"
-            log_info "Valid components: infra, backend, frontend, all"
+            log_info "Valid components: infra, backend, frontend, config, all"
             exit 1
             ;;
     esac

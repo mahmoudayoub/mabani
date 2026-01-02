@@ -69,6 +69,52 @@ const FileProcessing: React.FC = () => {
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Save progress state to localStorage
+    useEffect(() => {
+        if (isProcessing && estimateData) {
+            const progressState = {
+                isProcessing,
+                progressPercent,
+                estimateData,
+                processingStatus,
+                filename: estimateData.filename,
+                startedAt: Date.now()
+            };
+            localStorage.setItem('fileProcessingProgress', JSON.stringify(progressState));
+        } else if (!isProcessing) {
+            localStorage.removeItem('fileProcessingProgress');
+        }
+    }, [isProcessing, progressPercent, estimateData, processingStatus]);
+
+    // Resume progress tracking on mount
+    useEffect(() => {
+        const savedProgress = localStorage.getItem('fileProcessingProgress');
+        if (savedProgress) {
+            try {
+                const state = JSON.parse(savedProgress);
+                const elapsed = (Date.now() - state.startedAt) / 1000;
+
+                // Only resume if not too old (within 2x estimated time)
+                if (elapsed < state.estimateData.estimated_seconds * 2) {
+                    setIsProcessing(true);
+                    setEstimateData(state.estimateData);
+                    setProcessingStatus('Resuming...');
+
+                    // Resume tracking
+                    setTimeout(() => {
+                        pollForCompletion(state.filename + '.xlsx', state.estimateData);
+                    }, 1000);
+                } else {
+                    // Too old, clear it
+                    localStorage.removeItem('fileProcessingProgress');
+                }
+            } catch (error) {
+                console.error('Failed to resume progress:', error);
+                localStorage.removeItem('fileProcessingProgress');
+            }
+        }
+    }, []);
+
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files.length > 0) {
             setSelectedFile(event.target.files[0]);
@@ -140,8 +186,24 @@ const FileProcessing: React.FC = () => {
         // Wait for worker to start and upload estimate
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        try {
-            const estimate = await getEstimate(filename);
+        // Try to fetch estimate with retries
+        let estimate: EstimateData | null = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                console.log(`Fetching estimate (attempt ${attempt}/3)...`);
+                estimate = await getEstimate(filename);
+                console.log('Estimate received:', estimate);
+                break;
+            } catch (error) {
+                console.warn(`Estimate fetch attempt ${attempt} failed:`, error);
+                if (attempt < 3) {
+                    // Wait longer between retries (2s, 4s, 6s)
+                    await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                }
+            }
+        }
+
+        if (estimate) {
             setEstimateData(estimate);
             setProcessingStatus('Processing...');
 
@@ -165,11 +227,11 @@ const FileProcessing: React.FC = () => {
 
             // Start polling for completion
             pollForCompletion(filename, estimate);
-
-        } catch (error) {
-            console.error('Failed to get estimate:', error);
+        } else {
             // Fall back to indeterminate progress
+            console.warn('No estimate available after 3 attempts. Showing indeterminate progress.');
             setProcessingStatus('Processing (time estimate unavailable)...');
+            setProgressPercent(50); // Show some progress
             pollForCompletion(filename, null);
         }
     };

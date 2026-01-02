@@ -38,6 +38,17 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      # Frontend Checks (Build required for CDK Synth)
+      - name: Install Frontend Deps
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Frontend Build Check
+        working-directory: ./frontend
+        run: |
+          touch .env
+          npm run build
+
       # Infrastructure Checks
       - name: Install Infrastructure Deps
         run: |
@@ -60,17 +71,7 @@ jobs:
         working-directory: ./backend
         run: flake8 lambdas/ --count --select=E9,F63,F7,F82 --show-source --statistics
 
-      # Frontend Checks
-      - name: Install Frontend Deps
-        working-directory: ./frontend
-        run: npm ci
 
-      - name: Frontend Build Check
-        working-directory: ./frontend
-        run: |
-          # Create a dummy .env for build purposes if needed, though vite build might just warn
-          touch .env  
-          npm run build
 
   deploy:
     name: Deploy to Dev

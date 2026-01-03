@@ -331,18 +331,28 @@ const FileProcessing: React.FC = () => {
         const filenameBase = filename.replace('.xlsx', '');
         const outputPath = `output/fills/${filenameBase}_filled.xlsx`;
 
+        console.log('Starting polling for completion:', {
+            filename,
+            filenameBase,
+            outputPath
+        });
+
         pollIntervalRef.current = setInterval(async () => {
             try {
+                console.log('Checking if file exists:', outputPath);
                 const exists = await checkFileExists(outputPath);
+                console.log('File exists result:', exists);
 
                 if (exists) {
                     // File is ready!
+                    console.log('File detected! Completing progress...');
                     cleanupProgressTracking();
 
                     // Fill to 100%
                     setProgressPercent(100);
                     setProcessingStatus('Complete!');
                     setCompletedFilePath(outputPath);
+                    setTimeRemaining('');
 
                     // Delete estimate file from S3
                     try {

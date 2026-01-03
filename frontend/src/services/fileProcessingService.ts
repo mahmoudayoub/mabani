@@ -136,6 +136,8 @@ export interface ActiveJob {
     estimated_minutes: number;
     started_at: string;
     filename: string;
+    task_arn?: string;
+    cluster_name?: string;
 }
 
 export const listActiveJobs = async (): Promise<ActiveJob[]> => {
@@ -165,4 +167,32 @@ export const deleteEstimate = async (filename: string): Promise<void> => {
     if (!response.ok) {
         throw new Error(`Failed to delete estimate: ${response.statusText}`);
     }
+};
+
+export interface TaskStatus {
+    status: string;
+    stopped_reason: string;
+    exit_code: number | null;
+    is_running: boolean;
+    is_complete: boolean;
+    is_success: boolean;
+}
+
+export const checkTaskStatus = async (taskArn: string, clusterName: string): Promise<TaskStatus> => {
+    const headers = await getAuthHeaders();
+    const params = new URLSearchParams({
+        task_arn: taskArn,
+        cluster_name: clusterName
+    });
+
+    const response = await fetch(`${API_BASE_URL}/files/task-status?${params}`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to check task status: ${response.statusText}`);
+    }
+
+    return await response.json();
 };

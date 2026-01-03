@@ -274,5 +274,53 @@ def delete_estimate(event, context):
         return create_error_response(500, f"Failed to delete estimate: {str(e)}")
 
 
+@with_error_handling
+def check_task_status(event, context):
+    """
+    Check ECS Fargate task status.
+    Query params: task_arn, cluster_name
+    """
+    query_params = event.get("queryStringParameters", {}) or {}
+    task_arn = query_params.get("task_arn")
+    cluster_name = query_params.get("cluster_name")
+    
+    if not task_arn or not cluster_name:
+        return create_error_response(400, "Missing task_arn or cluster_name")
+    
+    try:
+        ecs = boto3.client('ecs')
+        response = ecs.describe_tasks(
+            cluster=cluster_name,
+            tasks=[task_arn]
+        )
+        
+        if not response['tasks']:
+            return create_response(404, {"error": "Task not found"})
+        
+        task = response['tasks'][0]
+        status = task['lastStatus']
+        
+        result = {
+            "status": status,
+            "stopped_reason": task.get('stoppedReason', ''),
+            "exit_code": None,
+            "is_running": status in ['PENDING', 'RUNNING'],
+            "is_complete": status == 'STOPPED',
+            "is_success": False
+        }
+        
+        if status == 'STOPPED':
+            containers = task.get('containers', [])
+            if containers:
+                exit_code = containers[0].get('exitCode')
+                result['exit_code'] = exit_code
+                result['is_success'] = exit_code == 0
+        
+        return create_response(200, result)
+        
+    except Exception as e:
+        return create_error_response(500, f"Failed to check task status: {str(e)}")
+
+
 def get_s3_client():
     return boto3.client("s3")

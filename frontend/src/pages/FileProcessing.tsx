@@ -8,6 +8,7 @@ import {
     checkFileExists,
     listActiveJobs,
     deleteEstimate,
+    checkTaskStatus,
     OutputFile,
     ActiveJob
 } from '../services/fileProcessingService';
@@ -79,34 +80,95 @@ const FileProcessing: React.FC = () => {
         const checkActiveJobs = async () => {
             try {
                 const activeJobs = await listActiveJobs();
-
+                
                 if (activeJobs.length > 0) {
                     const job = activeJobs[0];
                     console.log('Found active job:', job);
-
+                    
+                    // Calculate elapsed time
+                    const startTime = new Date(job.started_at).getTime();
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    
                     // Restore progress tracking
                     setIsProcessing(true);
                     setEstimateData(job);
-
-                    // Calculate current progress based on elapsed time
-                    const elapsed = (Date.now() - new Date(job.started_at).getTime()) / 1000;
-                    const currentProgress = Math.min((elapsed / job.estimated_seconds) * 100, 95);
-                    setProgressPercent(currentProgress);
-                    setProcessingStatus(currentProgress >= 95 ? 'Finalizing...' : 'Processing...');
-
+                    
+                    // Calculate initial progress
+                    const initialProgress = Math.min((elapsed / job.estimated_seconds) * 100, 95);
+                    setProgressPercent(initialProgress);
+                    setProcessingStatus(initialProgress >= 95 ? 'Finalizing...' : 'Processing...');
+                    
+                    // Continue animating progress from current point
+                    let currentProgress = initialProgress;
+                    const updateIntervalMs = 500;
+                    const progressIncrement = (100 / job.estimated_seconds) * (updateIntervalMs / 1000);
+                    
+                    progressIntervalRef.current = setInterval(() => {
+                        currentProgress += progressIncrement;
+                        
+                        if (currentProgress >= 95) {
+                            currentProgress = 95;
+                            setProcessingStatus('Finalizing...');
+                        }
+                        
+                        setProgressPercent(Math.min(currentProgress, 95));
+                        
+                        // Update time remaining
+                        const newElapsed = (Date.now() - startTime) / 1000;
+                        const remaining = Math.max(0, job.estimated_seconds - newElapsed);
+                        const minutes = Math.floor(remaining / 60);
+                        const seconds = Math.floor(remaining % 60);
+                        setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')} remaining`);
+                    }, updateIntervalMs);
+                    
                     // Start polling for completion
                     const filenameBase = job.filename.replace('.xlsx', '');
                     const outputPath = `output/fills/${filenameBase}_filled.xlsx`;
-
+                    
                     pollIntervalRef.current = setInterval(async () => {
                         try {
+                            // Check task status if available
+                            if (job.task_arn && job.cluster_name) {
+                                try {
+                                    const taskStatus = await checkTaskStatus(job.task_arn, job.cluster_name);
+                                    
+                                    if (taskStatus.is_complete && !taskStatus.is_success) {
+                                        // Task failed!
+                                        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+                                        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                                        
+                                        setIsProcessing(false);
+                                        setProcessingStatus(`Processing failed: ${taskStatus.stopped_reason || 'Unknown error'}`);
+                                        setProgressPercent(0);
+                                        setTimeRemaining('');
+                                        
+                                        // Clean up estimate
+                                        try {
+                                            await deleteEstimate(job.filename);
+                                            console.log('Cleaned up estimate after task failure');
+                                        } catch (err) {
+                                            console.error('Failed to clean up estimate:', err);
+                                        }
+                                        return;
+                                    }
+                                } catch (taskErr) {
+                                    console.warn('Failed to check task status:', taskErr);
+                                    // Continue checking file existence as fallback
+                                }
+                            }
+                            
+                            // Check if file exists
                             const exists = await checkFileExists(outputPath);
                             if (exists) {
+                                // Clear intervals
+                                if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
                                 if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                                
                                 setProgressPercent(100);
                                 setProcessingStatus('Complete!');
                                 setCompletedFilePath(outputPath);
-
+                                setTimeRemaining('');
+                                
                                 // Delete estimate file
                                 try {
                                     await deleteEstimate(job.filename);
@@ -114,7 +176,7 @@ const FileProcessing: React.FC = () => {
                                 } catch (err) {
                                     console.error('Failed to delete estimate:', err);
                                 }
-
+                                
                                 setTimeout(() => fetchFiles(), 1000);
                             }
                         } catch (err) {
@@ -126,7 +188,7 @@ const FileProcessing: React.FC = () => {
                 console.error('Failed to check active jobs:', error);
             }
         };
-
+        
         checkActiveJobs();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

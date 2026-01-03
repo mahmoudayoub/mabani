@@ -5,12 +5,17 @@ import {
     listOutputFiles,
     fetchTextContent,
     listAvailableSheets,
-    getEstimate,
     checkFileExists,
+    listActiveJobs,
+    deleteEstimate,
     OutputFile,
-    EstimateData
+    ActiveJob
 } from '../services/fileProcessingService';
 // import { KnowledgeBase, Document } from '../types/knowledgeBase';
+
+// Type alias for compatibility
+type EstimateData = ActiveJob;
+
 
 interface SummaryData {
     input: string;
@@ -69,44 +74,28 @@ const FileProcessing: React.FC = () => {
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Save progress state to localStorage
+    // Check for active jobs on mount (S3-based)
     useEffect(() => {
-        if (isProcessing && estimateData) {
-            const progressState = {
-                isProcessing,
-                progressPercent,
-                estimateData,
-                processingStatus,
-                filename: estimateData.filename,
-                startedAt: Date.now()
-            };
-            localStorage.setItem('fileProcessingProgress', JSON.stringify(progressState));
-        } else if (!isProcessing) {
-            localStorage.removeItem('fileProcessingProgress');
-        }
-    }, [isProcessing, progressPercent, estimateData, processingStatus]);
-
-    // Resume progress tracking on mount
-    useEffect(() => {
-        const savedProgress = localStorage.getItem('fileProcessingProgress');
-        if (savedProgress) {
+        const checkActiveJobs = async () => {
             try {
-                const state = JSON.parse(savedProgress);
-                const elapsed = (Date.now() - state.startedAt) / 1000;
+                const activeJobs = await listActiveJobs();
 
-                // Only resume if not too old (within 2x estimated time)
-                if (elapsed < state.estimateData.estimated_seconds * 2) {
-                    console.log('Resuming progress tracking...', state);
+                if (activeJobs.length > 0) {
+                    const job = activeJobs[0];
+                    console.log('Found active job:', job);
+
+                    // Restore progress tracking
                     setIsProcessing(true);
-                    setEstimateData(state.estimateData);
+                    setEstimateData(job);
 
-                    // Calculate current progress
-                    const currentProgress = Math.min((elapsed / state.estimateData.estimated_seconds) * 100, 95);
+                    // Calculate current progress based on elapsed time
+                    const elapsed = (Date.now() - new Date(job.started_at).getTime()) / 1000;
+                    const currentProgress = Math.min((elapsed / job.estimated_seconds) * 100, 95);
                     setProgressPercent(currentProgress);
                     setProcessingStatus(currentProgress >= 95 ? 'Finalizing...' : 'Processing...');
 
-                    // Resume polling
-                    const filenameBase = state.filename.replace('.xlsx', '');
+                    // Start polling for completion
+                    const filenameBase = job.filename.replace('.xlsx', '');
                     const outputPath = `output/fills/${filenameBase}_filled.xlsx`;
 
                     pollIntervalRef.current = setInterval(async () => {
@@ -117,22 +106,29 @@ const FileProcessing: React.FC = () => {
                                 setProgressPercent(100);
                                 setProcessingStatus('Complete!');
                                 setCompletedFilePath(outputPath);
-                                localStorage.removeItem('fileProcessingProgress');
+
+                                // Delete estimate file
+                                try {
+                                    await deleteEstimate(job.filename);
+                                    console.log('Estimate deleted');
+                                } catch (err) {
+                                    console.error('Failed to delete estimate:', err);
+                                }
+
                                 setTimeout(() => fetchFiles(), 1000);
                             }
                         } catch (err) {
                             console.error('Poll error:', err);
                         }
                     }, 3000);
-                } else {
-                    // Too old, clear it
-                    localStorage.removeItem('fileProcessingProgress');
                 }
             } catch (error) {
-                console.error('Failed to resume progress:', error);
-                localStorage.removeItem('fileProcessingProgress');
+                console.error('Failed to check active jobs:', error);
             }
-        }
+        };
+
+        checkActiveJobs();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,23 +199,22 @@ const FileProcessing: React.FC = () => {
         setProcessingStatus('Initializing...');
         setCompletedFilePath(null);
 
-        // Wait for worker to start and upload estimate
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Try to fetch estimate with retries
+        // Poll for estimate to appear in S3 (worker will create it)
+        setProcessingStatus('Waiting for estimate...');
         let estimate: EstimateData | null = null;
-        for (let attempt = 1; attempt <= 3; attempt++) {
+
+        for (let i = 0; i < 10; i++) {  // Try for 20 seconds
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
             try {
-                console.log(`Fetching estimate (attempt ${attempt}/3)...`);
-                estimate = await getEstimate(filename);
-                console.log('Estimate received:', estimate);
-                break;
-            } catch (error) {
-                console.warn(`Estimate fetch attempt ${attempt} failed:`, error);
-                if (attempt < 3) {
-                    // Wait longer between retries (2s, 4s, 6s)
-                    await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                const activeJobs = await listActiveJobs();
+                if (activeJobs.length > 0) {
+                    estimate = activeJobs[0];
+                    console.log('Estimate found:', estimate);
+                    break;
                 }
+            } catch (error) {
+                console.warn('Waiting for estimate...', error);
             }
         }
 
@@ -272,6 +267,14 @@ const FileProcessing: React.FC = () => {
                     setProgressPercent(100);
                     setProcessingStatus('Complete!');
                     setCompletedFilePath(outputPath);
+
+                    // Delete estimate file from S3
+                    try {
+                        await deleteEstimate(filename);
+                        console.log('Estimate file deleted from S3');
+                    } catch (err) {
+                        console.error('Failed to delete estimate:', err);
+                    }
 
                     // Refresh file list
                     setTimeout(() => {

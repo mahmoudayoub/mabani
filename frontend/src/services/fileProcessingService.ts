@@ -129,3 +129,40 @@ export const checkFileExists = async (filepath: string): Promise<boolean> => {
     const data = await response.json();
     return data.exists || false;
 };
+
+export interface ActiveJob {
+    total_items: number;
+    estimated_seconds: number;
+    estimated_minutes: number;
+    started_at: string;
+    filename: string;
+}
+
+export const listActiveJobs = async (): Promise<ActiveJob[]> => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/files/active-jobs`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to list active jobs: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.active_jobs || [];
+};
+
+export const deleteEstimate = async (filename: string): Promise<void> => {
+    const headers = await getAuthHeaders();
+    const filenameBase = filename.replace('.xlsx', '').replace('_filled', '');
+
+    const response = await fetch(`${API_BASE_URL}/files/estimate/${encodeURIComponent(filenameBase)}`, {
+        method: 'DELETE',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to delete estimate: ${response.statusText}`);
+    }
+};

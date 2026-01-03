@@ -397,6 +397,91 @@ functions:
             type: COGNITO_USER_POOLS
             arn: ${env:COGNITO_USER_POOL_ARN}
 
+  listActiveJobs:
+    handler: lambdas/file_processing.list_active_jobs
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /files/active-jobs
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  deleteEstimate:
+    handler: lambdas/file_processing.delete_estimate
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /files/estimate/{filename}
+          method: delete
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+
   healthCheck:
     handler: lambdas/user_profile.health_check
     package:

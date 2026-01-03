@@ -200,5 +200,79 @@ def check_file_exists(event, context):
         return create_error_response(500, f"Failed to check file: {str(e)}")
 
 
+@with_error_handling
+def list_active_jobs(event, context):
+    """
+    List all active jobs by checking estimates/ directory.
+    Should only return 0 or 1 file at a time.
+    """
+    if not FILE_PROCESSING_BUCKET:
+        return create_error_response(500, "Server configuration error: FILE_PROCESSING_BUCKET not set")
+    
+    try:
+        response = s3_client.list_objects_v2(
+            Bucket=FILE_PROCESSING_BUCKET,
+            Prefix="estimates/"
+        )
+        
+        active_jobs = []
+        if "Contents" in response:
+            for obj in response["Contents"]:
+                key = obj["Key"]
+                # Skip the folder itself
+                if key == "estimates/":
+                    continue
+                
+                # Get the estimate data
+                try:
+                    estimate_response = s3_client.get_object(
+                        Bucket=FILE_PROCESSING_BUCKET,
+                        Key=key
+                    )
+                    estimate_data = json.loads(estimate_response["Body"].read())
+                    active_jobs.append(estimate_data)
+                except Exception as e:
+                    print(f"Error reading estimate {key}: {str(e)}")
+                    continue
+        
+        return create_response(200, {
+            "active_jobs": active_jobs,
+            "has_active_job": len(active_jobs) > 0
+        })
+        
+    except Exception as e:
+        return create_error_response(500, f"Failed to list active jobs: {str(e)}")
+
+
+@with_error_handling
+def delete_estimate(event, context):
+    """
+    Delete estimate file when job completes.
+    Path parameter: filename
+    """
+    path_params = event.get("pathParameters", {}) or {}
+    filename = path_params.get("filename")
+    
+    if not filename:
+        return create_error_response(400, "Missing required parameter: filename")
+    
+    if not FILE_PROCESSING_BUCKET:
+        return create_error_response(500, "Server configuration error: FILE_PROCESSING_BUCKET not set")
+    
+    # Remove extension if provided
+    filename_base = filename.replace('.xlsx', '').replace('_filled', '')
+    estimate_key = f"estimates/{filename_base}_estimate.json"
+    
+    try:
+        s3_client.delete_object(
+            Bucket=FILE_PROCESSING_BUCKET,
+            Key=estimate_key
+        )
+        return create_response(200, {"deleted": True, "key": estimate_key})
+        
+    except Exception as e:
+        return create_error_response(500, f"Failed to delete estimate: {str(e)}")
+
+
 def get_s3_client():
     return boto3.client("s3")

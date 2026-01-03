@@ -96,14 +96,34 @@ const FileProcessing: React.FC = () => {
 
                 // Only resume if not too old (within 2x estimated time)
                 if (elapsed < state.estimateData.estimated_seconds * 2) {
+                    console.log('Resuming progress tracking...', state);
                     setIsProcessing(true);
                     setEstimateData(state.estimateData);
-                    setProcessingStatus('Resuming...');
 
-                    // Resume tracking
-                    setTimeout(() => {
-                        pollForCompletion(state.filename + '.xlsx', state.estimateData);
-                    }, 1000);
+                    // Calculate current progress
+                    const currentProgress = Math.min((elapsed / state.estimateData.estimated_seconds) * 100, 95);
+                    setProgressPercent(currentProgress);
+                    setProcessingStatus(currentProgress >= 95 ? 'Finalizing...' : 'Processing...');
+
+                    // Resume polling
+                    const filenameBase = state.filename.replace('.xlsx', '');
+                    const outputPath = `output/fills/${filenameBase}_filled.xlsx`;
+
+                    pollIntervalRef.current = setInterval(async () => {
+                        try {
+                            const exists = await checkFileExists(outputPath);
+                            if (exists) {
+                                if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                                setProgressPercent(100);
+                                setProcessingStatus('Complete!');
+                                setCompletedFilePath(outputPath);
+                                localStorage.removeItem('fileProcessingProgress');
+                                setTimeout(() => fetchFiles(), 1000);
+                            }
+                        } catch (err) {
+                            console.error('Poll error:', err);
+                        }
+                    }, 3000);
                 } else {
                     // Too old, clear it
                     localStorage.removeItem('fileProcessingProgress');

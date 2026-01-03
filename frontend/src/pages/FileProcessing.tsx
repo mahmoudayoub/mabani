@@ -382,20 +382,6 @@ const FileProcessing: React.FC = () => {
         }, maxWaitMs);
     };
 
-    const updateTimeRemaining = (estimate: EstimateData, currentProgress: number) => {
-        if (currentProgress >= 95) {
-            setTimeRemaining('Finalizing...');
-            return;
-        }
-
-        const elapsed = (Date.now() - new Date(estimate.started_at).getTime()) / 1000;
-        const remaining = Math.max(0, estimate.estimated_seconds - elapsed);
-        const minutes = Math.floor(remaining / 60);
-        const seconds = Math.floor(remaining % 60);
-
-        setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')} remaining`);
-    };
-
     const cleanupProgressTracking = () => {
         if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);

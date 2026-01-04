@@ -86,7 +86,8 @@ const FileProcessing: React.FC = () => {
                     console.log('Found active job:', job);
 
                     // Calculate elapsed time
-                    const startTime = new Date(job.started_at).getTime();
+                    // IMPORTANT: started_at is UTC, append 'Z' to parse correctly
+                    const startTime = new Date(job.started_at + 'Z').getTime();
                     const elapsed = (Date.now() - startTime) / 1000;
 
                     // Restore progress tracking
@@ -291,7 +292,8 @@ const FileProcessing: React.FC = () => {
             });
 
             // Calculate REAL progress based on elapsed time since worker started
-            const startTime = new Date(estimate.started_at).getTime();
+            // IMPORTANT: started_at is UTC, append 'Z' to parse correctly
+            const startTime = new Date(estimate.started_at + 'Z').getTime();
             const elapsed = (Date.now() - startTime) / 1000;
             let currentProgress = Math.min((elapsed / estimate.estimated_seconds) * 100, 95);
 

@@ -290,10 +290,16 @@ const FileProcessing: React.FC = () => {
                 started_at: estimate.started_at
             });
 
-            // Calculate current progress based on elapsed time
+            // Calculate REAL progress based on elapsed time since worker started
             const startTime = new Date(estimate.started_at).getTime();
             const elapsed = (Date.now() - startTime) / 1000;
             let currentProgress = Math.min((elapsed / estimate.estimated_seconds) * 100, 95);
+
+            console.log('Initial progress calculation:', {
+                elapsed_seconds: elapsed,
+                estimated_seconds: estimate.estimated_seconds,
+                calculated_progress: currentProgress
+            });
 
             setProgressPercent(currentProgress);
 
@@ -344,6 +350,37 @@ const FileProcessing: React.FC = () => {
 
         pollIntervalRef.current = setInterval(async () => {
             try {
+                // Check task status if available (to detect failures)
+                if (estimate && estimate.task_arn && estimate.cluster_name) {
+                    try {
+                        const taskStatus = await checkTaskStatus(estimate.task_arn, estimate.cluster_name);
+
+                        if (taskStatus.is_complete && !taskStatus.is_success) {
+                            // Task failed!
+                            console.error('Task failed:', taskStatus.stopped_reason);
+                            cleanupProgressTracking();
+
+                            setIsProcessing(false);
+                            setProcessingStatus(`Processing failed: ${taskStatus.stopped_reason || 'Unknown error'}`);
+                            setProgressPercent(0);
+                            setTimeRemaining('');
+
+                            // Clean up estimate
+                            try {
+                                await deleteEstimate(filename);
+                                console.log('Cleaned up estimate after task failure');
+                            } catch (err) {
+                                console.error('Failed to clean up estimate:', err);
+                            }
+                            return;
+                        }
+                    } catch (taskErr) {
+                        console.warn('Failed to check task status:', taskErr);
+                        // Continue checking file existence as fallback
+                    }
+                }
+
+                // Check if file exists
                 console.log('Checking if file exists:', outputPath);
                 const exists = await checkFileExists(outputPath);
                 console.log('File exists result:', exists);

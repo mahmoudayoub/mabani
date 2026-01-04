@@ -117,7 +117,9 @@ export const getEstimate = async (filename: string): Promise<EstimateData> => {
 export const checkFileExists = async (filepath: string): Promise<boolean> => {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${API_BASE_URL}/files/check/${encodeURIComponent(filepath)}`, {
+    // Use encodeURI to preserve slashes but encode spaces
+    // encodeURIComponent would encode slashes as %2F which breaks the path
+    const response = await fetch(`${API_BASE_URL}/files/check/${encodeURI(filepath)}`, {
         method: 'GET',
         headers: headers,
     });

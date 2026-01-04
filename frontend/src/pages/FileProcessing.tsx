@@ -258,14 +258,14 @@ const FileProcessing: React.FC = () => {
     const startProgressTracking = async (filename: string) => {
         setIsProcessing(true);
         setProgressPercent(0);
-        setProcessingStatus('Initializing...');
+        setProcessingStatus('Waiting for processing to start...');
         setCompletedFilePath(null);
 
         // Poll for estimate to appear in S3 (worker will create it)
-        setProcessingStatus('Waiting for estimate...');
         let estimate: EstimateData | null = null;
 
-        for (let i = 0; i < 10; i++) {  // Try for 20 seconds
+        // Wait up to 60 seconds for worker to create estimate
+        for (let i = 0; i < 30; i++) {
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             try {
@@ -276,7 +276,7 @@ const FileProcessing: React.FC = () => {
                     break;
                 }
             } catch (error) {
-                console.warn('Waiting for estimate...', error);
+                console.warn(`Waiting for estimate (attempt ${i + 1}/30)...`, error);
             }
         }
 
@@ -290,8 +290,14 @@ const FileProcessing: React.FC = () => {
                 started_at: estimate.started_at
             });
 
-            // Start smooth progress animation from 0
-            let currentProgress = 0;
+            // Calculate current progress based on elapsed time
+            const startTime = new Date(estimate.started_at).getTime();
+            const elapsed = (Date.now() - startTime) / 1000;
+            let currentProgress = Math.min((elapsed / estimate.estimated_seconds) * 100, 95);
+
+            setProgressPercent(currentProgress);
+
+            // Continue animating progress from current point
             const updateIntervalMs = 500;
             const progressIncrement = (100 / estimate.estimated_seconds) * (updateIntervalMs / 1000);
 
@@ -300,7 +306,7 @@ const FileProcessing: React.FC = () => {
             progressIntervalRef.current = setInterval(() => {
                 currentProgress += progressIncrement;
 
-                // Stall at 95% - don't go beyond until file is ready
+                // Cap at 95% until file is ready
                 if (currentProgress >= 95) {
                     currentProgress = 95;
                     setProcessingStatus('Finalizing...');
@@ -309,8 +315,8 @@ const FileProcessing: React.FC = () => {
                 setProgressPercent(Math.min(currentProgress, 95));
 
                 // Update time remaining
-                const elapsed = (Date.now() - new Date(estimate.started_at).getTime()) / 1000;
-                const remaining = Math.max(0, estimate.estimated_seconds - elapsed);
+                const newElapsed = (Date.now() - startTime) / 1000;
+                const remaining = Math.max(0, estimate.estimated_seconds - newElapsed);
                 const minutes = Math.floor(remaining / 60);
                 const seconds = Math.floor(remaining % 60);
                 setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')} remaining`);
@@ -319,11 +325,10 @@ const FileProcessing: React.FC = () => {
             // Start polling for completion
             pollForCompletion(filename, estimate);
         } else {
-            // Fall back to indeterminate progress
-            console.warn('No estimate available after 3 attempts. Showing indeterminate progress.');
-            setProcessingStatus('Processing (time estimate unavailable)...');
-            setProgressPercent(50); // Show some progress
-            pollForCompletion(filename, null);
+            // Estimate not found after 60 seconds - show error
+            console.error('No estimate available after 60 seconds');
+            setProcessingStatus('Processing started but estimate unavailable');
+            setIsProcessing(false);
         }
     };
 

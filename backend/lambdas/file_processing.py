@@ -179,6 +179,11 @@ def check_file_exists(event, context):
     path_params = event.get("pathParameters", {}) or {}
     filepath = path_params.get("filepath")
     
+    # DEBUG: Log what we're checking
+    print(f"[DEBUG] check_file_exists called")
+    print(f"[DEBUG] filepath parameter: {filepath}")
+    print(f"[DEBUG] bucket: {FILE_PROCESSING_BUCKET}")
+    
     if not filepath:
         return create_error_response(400, "Missing required parameter: filepath")
     
@@ -186,17 +191,22 @@ def check_file_exists(event, context):
         return create_error_response(500, "Server configuration error: FILE_PROCESSING_BUCKET not set")
     
     try:
+        print(f"[DEBUG] Checking S3: s3://{FILE_PROCESSING_BUCKET}/{filepath}")
         s3_client.head_object(
             Bucket=FILE_PROCESSING_BUCKET,
             Key=filepath
         )
+        print(f"[DEBUG] File EXISTS!")
         return create_response(200, {"exists": True})
         
     except s3_client.exceptions.ClientError as e:
         if e.response['Error']['Code'] == '404':
+            print(f"[DEBUG] File NOT FOUND (404)")
             return create_response(200, {"exists": False})
+        print(f"[DEBUG] S3 Error: {str(e)}")
         return create_error_response(500, f"Failed to check file: {str(e)}")
     except Exception as e:
+        print(f"[DEBUG] Exception: {str(e)}")
         return create_error_response(500, f"Failed to check file: {str(e)}")
 
 

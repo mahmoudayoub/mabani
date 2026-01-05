@@ -5,18 +5,13 @@ import {
     listOutputFiles,
     fetchTextContent,
     listAvailableSheets,
-    checkFileExists,
+    getEstimate,
     listActiveJobs,
     deleteEstimate,
-    checkTaskStatus,
-    checkJobStatus,
     OutputFile,
-    ActiveJob
+    EstimateData
 } from '../services/fileProcessingService';
 // import { KnowledgeBase, Document } from '../types/knowledgeBase';
-
-// Type alias for compatibility
-type EstimateData = ActiveJob;
 
 
 interface SummaryData {
@@ -129,57 +124,43 @@ const FileProcessing: React.FC = () => {
 
                     pollIntervalRef.current = setInterval(async () => {
                         try {
-                            // Check task status if available
-                            if (job.task_arn && job.cluster_name) {
-                                try {
-                                    const taskStatus = await checkTaskStatus(job.task_arn, job.cluster_name);
+                            // Poll estimate file for completion status
+                            const currentEstimate = await getEstimate(job.filename);
 
-                                    if (taskStatus.is_complete && !taskStatus.is_success) {
-                                        // Task failed!
-                                        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-                                        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-                                        setIsProcessing(false);
-                                        setProcessingStatus(`Processing failed: ${taskStatus.stopped_reason || 'Unknown error'}`);
-                                        setProgressPercent(0);
-                                        setTimeRemaining('');
-
-                                        // Clean up estimate
-                                        try {
-                                            await deleteEstimate(job.filename);
-                                            console.log('Cleaned up estimate after task failure');
-                                        } catch (err) {
-                                            console.error('Failed to clean up estimate:', err);
-                                        }
-                                        return;
-                                    }
-                                } catch (taskErr) {
-                                    console.warn('Failed to check task status:', taskErr);
-                                    // Continue checking file existence as fallback
-                                }
-                            }
-
-                            // Check if file exists
-                            const exists = await checkFileExists(outputPath);
-                            if (exists) {
-                                // Clear intervals
+                            if (currentEstimate.complete) {
+                                console.log('[Resume] Completion signal received:', currentEstimate);
                                 if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
                                 if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
-                                setProgressPercent(100);
-                                setProcessingStatus('Complete!');
-                                setCompletedFilePath(outputPath);
-                                setTimeRemaining('');
+                                if (currentEstimate.success) {
+                                    setProgressPercent(100);
+                                    setProcessingStatus('Complete!');
+                                    setCompletedFilePath(outputPath);
+                                    setTimeRemaining('');
 
-                                // Delete estimate file
-                                try {
-                                    await deleteEstimate(job.filename);
-                                    console.log('Estimate deleted');
-                                } catch (err) {
-                                    console.error('Failed to delete estimate:', err);
+                                    // Delete estimate file
+                                    try {
+                                        await deleteEstimate(job.filename);
+                                        console.log('Estimate deleted');
+                                    } catch (err) {
+                                        console.error('Failed to delete estimate:', err);
+                                    }
+
+                                    setTimeout(() => fetchFiles(), 1000);
+                                } else {
+                                    setIsProcessing(false);
+                                    setProcessingStatus(`Failed: ${currentEstimate.error || 'Unknown error'}`);
+                                    setProgressPercent(0);
+                                    setTimeRemaining('');
+
+                                    try {
+                                        await deleteEstimate(job.filename);
+                                    } catch (err) {
+                                        console.error('Failed to delete estimate:', err);
+                                    }
                                 }
-
-                                setTimeout(() => fetchFiles(), 1000);
+                            } else {
+                                console.log('[Resume] Task still running...');
                             }
                         } catch (err) {
                             console.error('Poll error:', err);
@@ -353,38 +334,53 @@ const FileProcessing: React.FC = () => {
 
         pollIntervalRef.current = setInterval(async () => {
             try {
-                // Check job status (written by EventBridge when task stops)
-                const jobStatus = await checkJobStatus(filename);
+                // Poll estimate file for completion status (worker updates it before exit)
+                const currentEstimate = await getEstimate(filename);
 
-                if (jobStatus.complete) {
-                    console.log('[EventBridge] Job completion detected:', jobStatus);
+                if (currentEstimate.complete) {
+                    console.log('[Worker] Completion signal received:', currentEstimate);
                     cleanupProgressTracking();
 
-                    if (jobStatus.success) {
+                    if (currentEstimate.success) {
                         // Success!
-                        console.log('[EventBridge] Task completed successfully');
+                        console.log('[Worker] Task completed successfully');
                         setProgressPercent(100);
                         setProcessingStatus('Complete!');
                         setCompletedFilePath(outputPath);
                         setTimeRemaining('');
 
+                        // Delete estimate file (worker leaves it, frontend deletes)
+                        try {
+                            await deleteEstimate(filename);
+                            console.log('Estimate file deleted');
+                        } catch (err) {
+                            console.error('Failed to delete estimate:', err);
+                        }
+
                         // Refresh file list
                         setTimeout(() => fetchFiles(), 1000);
                     } else {
                         // Failed
-                        console.error('[EventBridge] Task failed:', jobStatus.stopped_reason);
+                        console.error('[Worker] Task failed:', currentEstimate.error);
                         setIsProcessing(false);
-                        setProcessingStatus(`Failed: ${jobStatus.stopped_reason || 'Unknown error'}`);
+                        setProcessingStatus(`Failed: ${currentEstimate.error || 'Unknown error'}`);
                         setProgressPercent(0);
                         setTimeRemaining('');
+
+                        // Delete estimate file
+                        try {
+                            await deleteEstimate(filename);
+                        } catch (err) {
+                            console.error('Failed to delete estimate:', err);
+                        }
                     }
 
                     return; // Stop polling
                 } else {
-                    console.log('[EventBridge] Task still running, waiting for completion...');
+                    console.log('[Worker] Task still running, waiting for completion signal...');
                 }
             } catch (error) {
-                console.error('[EventBridge] Error checking job status:', error);
+                console.error('[Polling] Error checking estimate:', error);
             }
         }, 3000); // Check every 3 seconds
 

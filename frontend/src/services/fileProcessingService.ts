@@ -94,6 +94,12 @@ export interface EstimateData {
     estimated_minutes: number;
     started_at: string;
     filename: string;
+    task_arn?: string;
+    cluster_name?: string;
+    // Completion fields (added by worker before exit)
+    complete?: boolean;
+    success?: boolean;
+    error?: string;
 }
 
 export const getEstimate = async (filename: string): Promise<EstimateData> => {

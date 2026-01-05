@@ -355,11 +355,11 @@ const FileProcessing: React.FC = () => {
             try {
                 // Check job status (written by EventBridge when task stops)
                 const jobStatus = await checkJobStatus(filename);
-                
+
                 if (jobStatus.complete) {
                     console.log('[EventBridge] Job completion detected:', jobStatus);
                     cleanupProgressTracking();
-                    
+
                     if (jobStatus.success) {
                         // Success!
                         console.log('[EventBridge] Task completed successfully');
@@ -367,7 +367,7 @@ const FileProcessing: React.FC = () => {
                         setProcessingStatus('Complete!');
                         setCompletedFilePath(outputPath);
                         setTimeRemaining('');
-                        
+
                         // Refresh file list
                         setTimeout(() => fetchFiles(), 1000);
                     } else {
@@ -378,14 +378,11 @@ const FileProcessing: React.FC = () => {
                         setProgressPercent(0);
                         setTimeRemaining('');
                     }
-                    
+
                     return; // Stop polling
                 } else {
                     console.log('[EventBridge] Task still running, waiting for completion...');
                 }
-            } catch (error) {
-                console.error('[EventBridge] Error checking job status:', error);
-            }
             } catch (error) {
                 console.error('[EventBridge] Error checking job status:', error);
             }

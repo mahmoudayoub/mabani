@@ -198,3 +198,26 @@ export const checkTaskStatus = async (taskArn: string, clusterName: string): Pro
 
     return await response.json();
 };
+
+export interface JobStatus {
+    complete: boolean;
+    success?: boolean;
+    exit_code?: number;
+    stopped_reason?: string;
+    completed_at?: string;
+}
+
+export const checkJobStatus = async (filename: string): Promise<JobStatus> => {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE_URL}/files/job-status/${encodeURIComponent(filename)}`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to check job status: ${response.statusText}`);
+    }
+
+    return await response.json();
+};

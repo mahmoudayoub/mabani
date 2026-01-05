@@ -332,5 +332,123 @@ def check_task_status(event, context):
         return create_error_response(500, f"Failed to check task status: {str(e)}")
 
 
+def on_task_stopped(event, context):
+    """
+    Triggered by EventBridge when an ECS task stops.
+    Writes completion status and cleans up estimate file.
+    """
+    try:
+        # Extract task details from EventBridge event
+        detail = event.get('detail', {})
+        task_arn = detail.get('taskArn')
+        containers = detail.get('containers', [])
+        stopped_reason = detail.get('stoppedReason', '')
+        
+        # Get exit code from first container
+        exit_code = 1  # Default to failure
+        if containers:
+            exit_code = containers[0].get('exitCode', 1)
+        
+        print(f"[EventBridge] Task stopped: {task_arn}")
+        print(f"[EventBridge] Exit code: {exit_code}")
+        print(f"[EventBridge] Stopped reason: {stopped_reason}")
+        
+        if not task_arn or not FILE_PROCESSING_BUCKET:
+            print("[EventBridge] Missing task_arn or bucket config")
+            return
+        
+        # Find estimate file with this task_arn
+        s3 = boto3.client('s3')
+        response = s3.list_objects_v2(
+            Bucket=FILE_PROCESSING_BUCKET,
+            Prefix='estimates/'
+        )
+        
+        estimate_key = None
+        filename = None
+        
+        for obj in response.get('Contents', []):
+            try:
+                # Read estimate file
+                estimate_obj = s3.get_object(Bucket=FILE_PROCESSING_BUCKET, Key=obj['Key'])
+                estimate_data = json.loads(estimate_obj['Body'].read())
+                
+                # Check if this estimate belongs to the stopped task
+                if estimate_data.get('task_arn') == task_arn:
+                    estimate_key = obj['Key']
+                    filename = estimate_data.get('filename')
+                    print(f"[EventBridge] Found estimate: {estimate_key}")
+                    break
+            except Exception as e:
+                print(f"[EventBridge] Error reading estimate {obj['Key']}: {str(e)}")
+                continue
+        
+        if not filename:
+            print(f"[EventBridge] No estimate found for task {task_arn}")
+            return
+        
+        # Write status file
+        from datetime import datetime
+        status = {
+            "complete": True,
+            "success": exit_code == 0,
+            "exit_code": exit_code,
+            "stopped_reason": stopped_reason,
+            "completed_at": datetime.utcnow().isoformat() + 'Z'
+        }
+        
+        status_key = f"estimates/{filename}_status.json"
+        s3.put_object(
+            Bucket=FILE_PROCESSING_BUCKET,
+            Key=status_key,
+            Body=json.dumps(status),
+            ContentType='application/json'
+        )
+        print(f"[EventBridge] Status file written: {status_key}")
+        
+        # Delete estimate file
+        if estimate_key:
+            s3.delete_object(Bucket=FILE_PROCESSING_BUCKET, Key=estimate_key)
+            print(f"[EventBridge] Estimate deleted: {estimate_key}")
+        
+        print(f"[EventBridge] Task completion handled successfully")
+        
+    except Exception as e:
+        print(f"[EventBridge] Error handling task stop: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+
+@with_error_handling
+def check_job_status(event, context):
+    """
+    Check the completion status of a job.
+    Path parameter: filename (base name without extension)
+    """
+    path_params = event.get("pathParameters", {}) or {}
+    filename = path_params.get("filename")
+    
+    if not filename:
+        return create_error_response(400, "Missing required parameter: filename")
+    
+    if not FILE_PROCESSING_BUCKET:
+        return create_error_response(500, "Server configuration error: FILE_PROCESSING_BUCKET not set")
+    
+    status_key = f"estimates/{filename}_status.json"
+    
+    try:
+        # Try to read status file
+        obj = s3_client.get_object(Bucket=FILE_PROCESSING_BUCKET, Key=status_key)
+        status = json.loads(obj['Body'].read())
+        return create_response(200, status)
+        
+    except s3_client.exceptions.NoSuchKey:
+        # Status file doesn't exist yet - job not complete
+        return create_response(200, {"complete": False})
+        
+    except Exception as e:
+        return create_error_response(500, f"Failed to check job status: {str(e)}")
+
+
 def get_s3_client():
     return boto3.client("s3")

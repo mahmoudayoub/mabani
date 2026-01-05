@@ -525,6 +525,36 @@ functions:
 
   onTaskStopped:
     handler: lambdas/file_processing.on_task_stopped
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
     environment:
       FILE_PROCESSING_BUCKET: ${self:provider.environment.FILE_PROCESSING_BUCKET}
     events:

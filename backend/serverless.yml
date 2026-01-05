@@ -526,7 +526,7 @@ functions:
   onTaskStopped:
     handler: lambdas/file_processing.on_task_stopped
     environment:
-      FILE_PROCESSING_BUCKET: ${self:custom.fileProcessingBucket}
+      FILE_PROCESSING_BUCKET: ${self:provider.environment.FILE_PROCESSING_BUCKET}
     events:
       - eventBridge:
           pattern:

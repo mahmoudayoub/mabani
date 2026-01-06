@@ -49,11 +49,15 @@ def handler(event, context):
                         'name': 'WorkerContainer',
                         'environment': [
                             {'name': 'S3_KEY', 'value': s3_key},
-                            {'name': 'JOB_MODE', 'value': mode}
+                            {'name': 'JOB_MODE', 'value': mode},
+                            {'name': 'ECS_CLUSTER_NAME', 'value': cluster}
                         ]
                     }
                 ]
             }
         )
-        print(f"Task started: {response['tasks'][0]['taskArn']}")
+        
+        # Extract task ARN from response
+        task_arn = response['tasks'][0]['taskArn']
+        print(f"Task started: {task_arn}")
 

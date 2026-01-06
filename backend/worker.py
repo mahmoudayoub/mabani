@@ -4,6 +4,7 @@ import asyncio
 import logging
 import json
 from pathlib import Path
+from datetime import datetime
 from urllib.parse import unquote_plus
 import boto3
 
@@ -177,20 +178,157 @@ async def process_fill(input_path: Path, storage):
 
     pipeline = RateFillerPipeline(rate_matcher)
     
-    output_filename = f"{input_path.stem}_filled.xlsx"
-    output_path = input_path.parent / output_filename
+    # Count items to fill and calculate estimate
+    logger.info("📊 Counting items to fill...")
+    estimate_key = None  # Track estimate key for cleanup
     
-    result = await pipeline.process_file(
-        input_file=input_path,
-        output_file=output_path,
-        namespace=settings.pinecone_namespace or "",
-        workers=settings.max_workers,
-        filter_dict=filter_dict
-    )
+    try:
+        # Read Excel to count items
+        sheets_data = await asyncio.to_thread(
+            pipeline.excel_io.read_excel, 
+            str(input_path)
+        )
+        selected_sheet = next(iter(sheets_data.keys()))
+        df, header_row_idx = sheets_data[selected_sheet]
+        columns = pipeline.excel_io.detect_columns(df)
+        parent_map = await asyncio.to_thread(
+            pipeline._build_parent_map, df, header_row_idx, columns
+        )
+        items_to_fill = await asyncio.to_thread(
+            pipeline._extract_items_for_filling,
+            df, header_row_idx, columns, parent_map
+        )
+        
+        total_items = len(items_to_fill)
+        logger.info(f"📊 Total items to fill: {total_items}")
+        
+        # Calculate estimate accounting for async parallel processing
+        # Calibrated from actual performance: 2000 items in 6 minutes
+        SECONDS_PER_BATCH = 35  # Time to process one batch of 200 items in parallel
+        BASE_OVERHEAD_SECONDS = 10   # File download, setup, upload
+        CONCURRENT_WORKERS = settings.max_workers  # Number of parallel workers (200)
+        
+        # With parallel processing, time = (batches * time_per_batch) + overhead
+        if total_items <= CONCURRENT_WORKERS:
+            # All items processed in parallel - just one "batch"
+            estimated_seconds = int(SECONDS_PER_BATCH + BASE_OVERHEAD_SECONDS)
+        else:
+            # Multiple batches needed
+            batches = (total_items + CONCURRENT_WORKERS - 1) // CONCURRENT_WORKERS  # Ceiling division
+            estimated_seconds = int((batches * SECONDS_PER_BATCH) + BASE_OVERHEAD_SECONDS)
+        
+        estimated_minutes = estimated_seconds / 60
+        
+        logger.info(f"📊 Estimated processing time: {estimated_minutes:.1f} minutes ({estimated_seconds}s)")
+        logger.info(f"📊 Processing {total_items} items with {CONCURRENT_WORKERS} workers in ~{batches if total_items > CONCURRENT_WORKERS else 1} batch(es)")
+        
+        # Get task ARN from ECS metadata endpoint
+        task_arn = None
+        cluster_name = os.getenv('ECS_CLUSTER_NAME', '')
+        
+        try:
+            from urllib.request import urlopen
+            # ECS metadata endpoint (available in Fargate tasks)
+            metadata_uri = os.getenv('ECS_CONTAINER_METADATA_URI_V4')
+            if metadata_uri:
+                with urlopen(f"{metadata_uri}/task") as response:
+                    task_metadata = json.loads(response.read().decode())
+                    task_arn = task_metadata.get('TaskARN', '')
+                    logger.info(f"📋 Task ARN: {task_arn}")
+        except Exception as e:
+            logger.warning(f"Failed to get task ARN from metadata: {e}")
+        
+        # Upload estimate file
+        estimate_data = {
+            "total_items": total_items,
+            "estimated_seconds": estimated_seconds,
+            "estimated_minutes": round(estimated_minutes, 1),
+            "started_at": datetime.now().isoformat(),
+            "filename": input_path.stem
+        }
+        
+        # Add task tracking info if available
+        if task_arn:
+            estimate_data["task_arn"] = task_arn
+        if cluster_name:
+            estimate_data["cluster_name"] = cluster_name
+        
+        estimate_key = f"estimates/{input_path.stem}_estimate.json"
+        storage.upload_json(estimate_data, estimate_key)
+        logger.info(f"✅ Uploaded estimate to {estimate_key}")
+        
+    except Exception as e:
+        logger.warning(f"Failed to calculate estimate: {e}. Proceeding without estimate.")
     
-    s3_key = f"output/fills/{output_filename}"
-    storage.upload_file(output_path, s3_key)
-    logger.info(f"Uploaded result: {s3_key}")
+    # Wrap processing in try-except to clean up estimate on failure
+    try:
+        output_filename = f"{input_path.stem}_filled.xlsx"
+        output_path = input_path.parent / output_filename
+        
+        result = await pipeline.process_file(
+            input_file=input_path,
+            output_file=output_path,
+            namespace=settings.pinecone_namespace or "",
+            workers=settings.max_workers,
+            filter_dict=filter_dict
+        )
+        
+        s3_key = f"output/fills/{output_filename}"
+        storage.upload_file(output_path, s3_key)
+        logger.info(f"Uploaded result: {s3_key}")
+        
+        # SUCCESS: Update estimate with completion status (don't delete - frontend will handle it)
+        if estimate_key and bucket_name:
+            try:
+                s3 = boto3.client('s3')
+                # Read existing estimate
+                estimate_obj = s3.get_object(Bucket=bucket_name, Key=estimate_key)
+                estimate = json.loads(estimate_obj['Body'].read().decode('utf-8'))
+                
+                # Update with completion status
+                estimate['complete'] = True
+                estimate['success'] = True
+                
+                # Write back
+                s3.put_object(
+                    Bucket=bucket_name,
+                    Key=estimate_key,
+                    Body=json.dumps(estimate),
+                    ContentType='application/json'
+                )
+                logger.info(f"✅ Updated estimate with success status: {estimate_key}")
+            except Exception as update_error:
+                logger.warning(f"Failed to update estimate (non-critical): {update_error}")
+        
+    except Exception as e:
+        # ERROR: Update estimate with failure status
+        if estimate_key and bucket_name:
+            try:
+                s3 = boto3.client('s3')
+                # Read existing estimate
+                estimate_obj = s3.get_object(Bucket=bucket_name, Key=estimate_key)
+                estimate = json.loads(estimate_obj['Body'].read().decode('utf-8'))
+                
+                # Update with error status
+                estimate['complete'] = True
+                estimate['success'] = False
+                estimate['error'] = str(e)
+                
+                # Write back
+                s3.put_object(
+                    Bucket=bucket_name,
+                    Key=estimate_key,
+                    Body=json.dumps(estimate),
+                    ContentType='application/json'
+                )
+                logger.info(f"❌ Updated estimate with error status: {estimate_key}")
+            except Exception as update_error:
+                logger.error(f"Failed to update estimate with error: {update_error}")
+        
+        # Re-raise the original error
+        logger.error(f"Processing failed: {e}")
+        raise
+    
     
     # Summary
     summary_local = result.get('summary_file')

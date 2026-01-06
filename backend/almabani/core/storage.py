@@ -160,6 +160,38 @@ class StorageService:
                 return True
             return False
 
+    def upload_json(self, data: dict, key: str) -> str:
+        """
+        Upload JSON data directly to storage.
+        data: Dictionary to serialize as JSON
+        key: The remote path (e.g. 'estimates/file_estimate.json')
+        Returns: The key used
+        """
+        import json
+        import tempfile
+        
+        if self.type == 's3':
+            try:
+                json_str = json.dumps(data, indent=2)
+                self.s3_client.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=json_str,
+                    ContentType='application/json'
+                )
+                logger.info(f"Uploaded JSON to s3://{self.bucket}/{key}")
+                return key
+            except ClientError as e:
+                logger.error(f"S3 JSON Upload error: {e}")
+                raise
+        else:
+            # Local fallback
+            dest_path = self.settings.project_root / 'app' / 'data' / key
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(dest_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            return str(dest_path)
+
 _storage_service = None
 
 def get_storage() -> StorageService:

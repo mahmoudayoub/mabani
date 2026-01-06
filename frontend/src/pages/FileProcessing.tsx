@@ -385,8 +385,6 @@ const FileProcessing: React.FC = () => {
                 console.error('[Polling] Error checking estimate:', error);
             }
         }, 3000); // Check every 3 seconds
-
-        // No timeout - polling continues until worker signals complete=true
     };
 
     const cleanupProgressTracking = () => {

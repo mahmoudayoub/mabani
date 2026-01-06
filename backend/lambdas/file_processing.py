@@ -143,6 +143,8 @@ def get_estimate(event, context):
     Get processing estimate for a file.
     Path parameter: filename (without extension)
     """
+    from urllib.parse import unquote
+    
     path_params = event.get("pathParameters", {}) or {}
     filename = path_params.get("filename")
     
@@ -152,9 +154,14 @@ def get_estimate(event, context):
     if not FILE_PROCESSING_BUCKET:
         return create_error_response(500, "Server configuration error: FILE_PROCESSING_BUCKET not set")
     
+    # URL decode the filename (handles %20 -> space)
+    filename = unquote(filename)
+    
     # Remove extension if provided
     filename_base = filename.replace('.xlsx', '').replace('_filled', '')
     estimate_key = f"estimates/{filename_base}_estimate.json"
+    
+    print(f"[DEBUG] get_estimate: filename={filename}, key={estimate_key}")
     
     try:
         response = s3_client.get_object(
@@ -162,11 +169,14 @@ def get_estimate(event, context):
             Key=estimate_key
         )
         estimate_data = json.loads(response["Body"].read())
+        print(f"[DEBUG] get_estimate: found estimate, complete={estimate_data.get('complete')}")
         return create_response(200, estimate_data)
         
     except s3_client.exceptions.NoSuchKey:
+        print(f"[DEBUG] get_estimate: file not found at {estimate_key}")
         return create_response(404, {"error": "Estimate not found"})
     except Exception as e:
+        print(f"[DEBUG] get_estimate: error {str(e)}")
         return create_error_response(500, f"Failed to get estimate: {str(e)}")
 
 

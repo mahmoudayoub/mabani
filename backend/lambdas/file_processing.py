@@ -270,6 +270,8 @@ def delete_estimate(event, context):
     Delete estimate file when job completes.
     Path parameter: filename
     """
+    from urllib.parse import unquote
+    
     path_params = event.get("pathParameters", {}) or {}
     filename = path_params.get("filename")
     
@@ -279,9 +281,14 @@ def delete_estimate(event, context):
     if not FILE_PROCESSING_BUCKET:
         return create_error_response(500, "Server configuration error: FILE_PROCESSING_BUCKET not set")
     
+    # URL decode the filename (handles %20 -> space)
+    filename = unquote(filename)
+    
     # Remove extension if provided
     filename_base = filename.replace('.xlsx', '').replace('_filled', '')
     estimate_key = f"estimates/{filename_base}_estimate.json"
+    
+    print(f"[DEBUG] delete_estimate: deleting {estimate_key}")
     
     try:
         s3_client.delete_object(

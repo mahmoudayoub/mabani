@@ -322,7 +322,7 @@ const FileProcessing: React.FC = () => {
         }
     };
 
-    const pollForCompletion = (filename: string, estimate: EstimateData | null) => {
+    const pollForCompletion = (filename: string, _estimate: EstimateData | null) => {
         const filenameBase = filename.replace('.xlsx', '');
         const outputPath = `output/fills/${filenameBase}_filled.xlsx`;
 
@@ -336,6 +336,8 @@ const FileProcessing: React.FC = () => {
             try {
                 // Poll estimate file for completion status (worker updates it before exit)
                 const currentEstimate = await getEstimate(filename);
+                console.log('[DEBUG] Estimate data:', JSON.stringify(currentEstimate));
+                console.log('[DEBUG] complete:', currentEstimate.complete, typeof currentEstimate.complete);
 
                 if (currentEstimate.complete) {
                     console.log('[Worker] Completion signal received:', currentEstimate);
@@ -384,14 +386,7 @@ const FileProcessing: React.FC = () => {
             }
         }, 3000); // Check every 3 seconds
 
-        // Cleanup after max time (estimate * 3 to be safe, or 30 min default)
-        const maxWaitMs = estimate ? estimate.estimated_seconds * 3 * 1000 : 30 * 60 * 1000;
-        setTimeout(() => {
-            if (progressPercent < 100) {
-                cleanupProgressTracking();
-                setProcessingStatus('Processing took longer than expected. Please check results.');
-            }
-        }, maxWaitMs);
+        // No timeout - polling continues until worker signals complete=true
     };
 
     const cleanupProgressTracking = () => {

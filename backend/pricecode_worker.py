@@ -84,7 +84,7 @@ async def process_index(input_path: Path, storage):
         "source_file": input_path.name,
         "indexed_count": count,
         "completed_at": datetime.now().isoformat(),
-        "index_name": pricecode_index
+        "index_name": os.getenv('PRICECODE_INDEX_NAME', 'almabani-pricecode')
     }
     
     result_key = f"output/pricecode/index/{input_path.stem}_indexed.json"

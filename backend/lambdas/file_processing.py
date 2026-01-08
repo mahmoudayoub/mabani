@@ -5,6 +5,7 @@ from lambdas.shared.lambda_helpers import create_response, create_error_response
 
 s3_client = boto3.client("s3")
 FILE_PROCESSING_BUCKET = os.environ.get("FILE_PROCESSING_BUCKET")
+PRICECODE_BUCKET = os.environ.get("PRICECODE_BUCKET")
 
 @with_error_handling
 def generate_upload_url(event, context):
@@ -353,3 +354,181 @@ def check_task_status(event, context):
 
 def get_s3_client():
     return boto3.client("s3")
+
+
+# ============================================================
+# PRICE CODE ALLOCATION HANDLERS
+# ============================================================
+
+@with_error_handling
+def pricecode_upload_url(event, context):
+    """
+    Generates a presigned URL for uploading a file for price code allocation.
+    Query params:
+        - filename: Name of the file (required)
+        - mode: 'index' or 'allocate' (required)
+    """
+    from urllib.parse import unquote
+    
+    query_params = event.get("queryStringParameters", {}) or {}
+    filename = query_params.get("filename")
+    mode = query_params.get("mode")
+    
+    if not filename:
+        return create_error_response(400, "Missing required parameter: filename")
+    if not mode or mode not in ["index", "allocate"]:
+        return create_error_response(400, "Mode must be 'index' or 'allocate'")
+    if not PRICECODE_BUCKET:
+        return create_error_response(500, "Server configuration error: PRICECODE_BUCKET not set")
+    
+    filename = unquote(filename)
+    
+    # Determine S3 path based on mode
+    if mode == "index":
+        s3_key = f"input/pricecode/index/{filename}"
+    else:
+        s3_key = f"input/pricecode/allocate/{filename}"
+    
+    try:
+        presigned_url = s3_client.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={
+                "Bucket": PRICECODE_BUCKET,
+                "Key": s3_key,
+                "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            ExpiresIn=3600
+        )
+        return create_response(200, {"url": presigned_url, "key": s3_key})
+    except Exception as e:
+        return create_error_response(500, f"Failed to generate upload URL: {str(e)}")
+
+
+@with_error_handling
+def pricecode_status(event, context):
+    """
+    Get processing status/estimate for a price code job.
+    Path parameter: filename
+    """
+    from urllib.parse import unquote
+    
+    path_params = event.get("pathParameters", {}) or {}
+    filename = path_params.get("filename")
+    
+    if not filename:
+        return create_error_response(400, "Missing required parameter: filename")
+    if not PRICECODE_BUCKET:
+        return create_error_response(500, "Server configuration error: PRICECODE_BUCKET not set")
+    
+    filename = unquote(filename)
+    filename_base = filename.replace('.xlsx', '').replace('_pricecode', '')
+    estimate_key = f"estimates/pc_{filename_base}_estimate.json"
+    
+    print(f"[DEBUG] pricecode_status: looking for {estimate_key}")
+    
+    try:
+        response = s3_client.get_object(
+            Bucket=PRICECODE_BUCKET,
+            Key=estimate_key
+        )
+        estimate_data = json.loads(response["Body"].read())
+        print(f"[DEBUG] pricecode_status: found, complete={estimate_data.get('complete')}")
+        return create_response(200, estimate_data)
+        
+    except s3_client.exceptions.NoSuchKey:
+        return create_response(404, {"error": "Estimate not found"})
+    except Exception as e:
+        return create_error_response(500, f"Failed to get status: {str(e)}")
+
+
+@with_error_handling
+def pricecode_download(event, context):
+    """
+    Get presigned download URL for completed price code file.
+    Path parameter: filename
+    """
+    from urllib.parse import unquote
+    
+    path_params = event.get("pathParameters", {}) or {}
+    filename = path_params.get("filename")
+    
+    if not filename:
+        return create_error_response(400, "Missing required parameter: filename")
+    if not PRICECODE_BUCKET:
+        return create_error_response(500, "Server configuration error: PRICECODE_BUCKET not set")
+    
+    filename = unquote(filename)
+    filename_base = filename.replace('.xlsx', '').replace('_pricecode', '')
+    output_key = f"output/pricecode/{filename_base}_pricecode.xlsx"
+    
+    try:
+        # Check if file exists
+        s3_client.head_object(Bucket=PRICECODE_BUCKET, Key=output_key)
+        
+        presigned_url = s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={
+                "Bucket": PRICECODE_BUCKET,
+                "Key": output_key
+            },
+            ExpiresIn=3600
+        )
+        return create_response(200, {"url": presigned_url, "key": output_key, "filename": f"{filename_base}_pricecode.xlsx"})
+    except s3_client.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == '404':
+            return create_response(404, {"error": "Output file not found"})
+        raise
+    except Exception as e:
+        return create_error_response(500, f"Failed to generate download URL: {str(e)}")
+
+
+@with_error_handling
+def list_available_price_codes(event, context):
+    """List available price code sets from the S3 registry file."""
+    if not PRICECODE_BUCKET:
+        return create_error_response(500, "Server configuration error: PRICECODE_BUCKET not set")
+    
+    try:
+        response = s3_client.get_object(
+            Bucket=PRICECODE_BUCKET,
+            Key="metadata/available_price_codes.json"
+        )
+        content = json.loads(response["Body"].read())
+        return create_response(200, {"price_codes": content.get("price_codes", [])})
+        
+    except s3_client.exceptions.NoSuchKey:
+        # Registry file doesn't exist yet
+        return create_response(200, {"price_codes": []})
+    except Exception as e:
+        return create_error_response(500, f"Failed to list price codes: {str(e)}")
+
+
+@with_error_handling
+def delete_pricecode_estimate(event, context):
+    """
+    Delete estimate file for price code job when complete.
+    Path parameter: filename
+    """
+    from urllib.parse import unquote
+    
+    path_params = event.get("pathParameters", {}) or {}
+    filename = path_params.get("filename")
+    
+    if not filename:
+        return create_error_response(400, "Missing required parameter: filename")
+    if not PRICECODE_BUCKET:
+        return create_error_response(500, "Server configuration error: PRICECODE_BUCKET not set")
+    
+    filename = unquote(filename)
+    filename_base = filename.replace('.xlsx', '').replace('_pricecode', '')
+    estimate_key = f"estimates/pc_{filename_base}_estimate.json"
+    
+    try:
+        s3_client.delete_object(
+            Bucket=PRICECODE_BUCKET,
+            Key=estimate_key
+        )
+        return create_response(200, {"deleted": True, "key": estimate_key})
+    except Exception as e:
+        return create_error_response(500, f"Failed to delete estimate: {str(e)}")
+

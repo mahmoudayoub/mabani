@@ -56,6 +56,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, signOut }) => {
       current: location.pathname === "/file-processing",
     },
     {
+      name: "Code Allocation",
+      href: "/code-allocation",
+      current: location.pathname === "/code-allocation",
+    },
+    {
       name: "Profile",
       href: "/profile",
       current: location.pathname === "/profile",

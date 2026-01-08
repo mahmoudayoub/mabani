@@ -11,6 +11,7 @@ import SafetyConfig from "./pages/SafetyConfig";
 import SafetyLogs from "./pages/SafetyLogs";
 import HealthAndSafety from "./pages/HealthAndSafety";
 import FileProcessing from "./pages/FileProcessing";
+import CodeAllocation from "./pages/CodeAllocation";
 import Layout from "./components/Layout";
 
 // Configure Amplify
@@ -110,6 +111,7 @@ function App() {
               <Route path="/safety-config" element={<SafetyConfig />} />
               <Route path="/safety-logs" element={<SafetyLogs />} />
               <Route path="/file-processing" element={<FileProcessing />} />
+              <Route path="/code-allocation" element={<CodeAllocation />} />
             </Routes>
 
           </Layout>

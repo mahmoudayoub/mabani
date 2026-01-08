@@ -27,14 +27,12 @@ class PriceCodeMatcher:
         async_openai_client,
         embeddings_service,
         vector_store_service,
-        index_name: str = "almabani-pricecode",
         top_k: int = 20,
         model: str = "gpt-4o-mini"
     ):
         self.openai_client = async_openai_client
         self.embeddings_service = embeddings_service
         self.vector_store_service = vector_store_service
-        self.index_name = index_name
         self.top_k = top_k
         self.model = model
     
@@ -52,8 +50,8 @@ class PriceCodeMatcher:
         embeddings = await self.embeddings_service.generate_embeddings_batch([description])
         query_embedding = embeddings[0]
         
-        # Search Pinecone
-        index = self.vector_store_service.get_index(self.index_name)
+        # Search Pinecone (index name is already set in VectorStoreService)
+        index = self.vector_store_service.get_index()
         results = await asyncio.to_thread(
             index.query,
             vector=query_embedding,

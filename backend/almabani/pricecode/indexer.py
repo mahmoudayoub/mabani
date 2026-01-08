@@ -23,12 +23,10 @@ class PriceCodeIndexer:
     def __init__(
         self,
         embeddings_service,
-        vector_store_service,
-        index_name: str = "almabani-pricecode"
+        vector_store_service
     ):
         self.embeddings_service = embeddings_service
         self.vector_store_service = vector_store_service
-        self.index_name = index_name
     
     def read_price_codes_from_excel(self, file_path: Path) -> List[Dict[str, Any]]:
         """
@@ -129,8 +127,8 @@ class PriceCodeIndexer:
                 }
             })
         
-        # Upsert to Pinecone
-        index = self.vector_store_service.get_index(self.index_name)
+        # Upsert to Pinecone (index name is already set in VectorStoreService)
+        index = self.vector_store_service.get_index()
         
         for i in range(0, len(vectors), batch_size):
             batch = vectors[i:i + batch_size]

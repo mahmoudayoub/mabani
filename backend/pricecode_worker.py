@@ -71,13 +71,9 @@ async def process_index(input_path: Path, storage):
     
     settings, _, embeddings_service, vector_store_service = get_services()
     
-    # Get Pinecone index name for price codes (separate from rate filler)
-    pricecode_index = os.getenv('PRICECODE_INDEX_NAME', 'almabani-pricecode')
-    
     indexer = PriceCodeIndexer(
         embeddings_service=embeddings_service,
-        vector_store_service=vector_store_service,
-        index_name=pricecode_index
+        vector_store_service=vector_store_service
     )
     
     # Index the file
@@ -135,9 +131,6 @@ async def process_allocate(input_path: Path, storage):
     settings, openai_async, embeddings_service, vector_store_service = get_services()
     bucket_name = os.getenv('S3_BUCKET_NAME')
     
-    # Get Pinecone index name
-    pricecode_index = os.getenv('PRICECODE_INDEX_NAME', 'almabani-pricecode')
-    
     # Create estimate file
     estimate_key = None
     try:
@@ -187,7 +180,6 @@ async def process_allocate(input_path: Path, storage):
         async_openai_client=openai_async,
         embeddings_service=embeddings_service,
         vector_store_service=vector_store_service,
-        index_name=pricecode_index,
         top_k=20,
         model=settings.openai_chat_model
     )

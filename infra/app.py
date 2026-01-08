@@ -1,6 +1,7 @@
 import os
 import aws_cdk as cdk
 from almabani_stack import AlmabaniStack
+from pricecode_stack import PriceCodeStack
 from dotenv import load_dotenv
 
 # Load env vars from project root
@@ -24,6 +25,11 @@ env = cdk.Environment(
     region=region
 )
 
+# Main Almabani Stack (rate filler)
 AlmabaniStack(app, "AlmabaniStack", env=env)
+
+# Price Code Stack (standalone mode - creates its own VPC/bucket)
+# To share VPC/bucket with main stack, pass shared_vpc and shared_bucket parameters
+PriceCodeStack(app, "PriceCodeStack", env=env)
 
 app.synth()

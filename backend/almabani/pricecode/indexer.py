@@ -110,7 +110,7 @@ class PriceCodeIndexer:
         all_embeddings = []
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i:i + batch_size]
-            embeddings = await self.embeddings_service.embed_texts(batch_texts)
+            embeddings = await self.embeddings_service.generate_embeddings_batch(batch_texts)
             all_embeddings.extend(embeddings)
             logger.info(f"Embedded batch {i//batch_size + 1}/{(len(texts) + batch_size - 1)//batch_size}")
         

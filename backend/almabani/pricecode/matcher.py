@@ -49,7 +49,7 @@ class PriceCodeMatcher:
         Returns list of candidates with price_code, description, score
         """
         # Embed the description
-        embeddings = await self.embeddings_service.embed_texts([description])
+        embeddings = await self.embeddings_service.generate_embeddings_batch([description])
         query_embedding = embeddings[0]
         
         # Search Pinecone

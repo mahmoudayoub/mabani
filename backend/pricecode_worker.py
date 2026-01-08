@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from almabani.config.settings import Settings, get_settings
 from almabani.core.storage import StorageService, get_storage
-from almabani.vectorstore.embeddings import OpenAIEmbeddings
-from almabani.vectorstore.pinecone_service import PineconeService
+from almabani.core.embeddings import EmbeddingsService
+from almabani.core.vector_store import VectorStoreService
 from almabani.pricecode.indexer import PriceCodeIndexer
 from almabani.pricecode.matcher import PriceCodeMatcher
 from almabani.pricecode.pipeline import PriceCodePipeline
@@ -35,17 +35,28 @@ logger = logging.getLogger("pricecode_worker")
 
 def get_services():
     """Initialize all required services"""
+    from almabani.config.settings import get_pinecone_client
     settings = get_settings()
     
-    openai_async = AsyncOpenAI(api_key=settings.openai_api_key)
-    
-    embeddings_service = OpenAIEmbeddings(
+    openai_async = AsyncOpenAI(
         api_key=settings.openai_api_key,
-        model=settings.openai_embedding_model
+        timeout=settings.openai_timeout,
+        max_retries=settings.openai_max_retries
     )
     
-    vector_store_service = PineconeService(
-        api_key=settings.pinecone_api_key,
+    pinecone_client = get_pinecone_client()
+    
+    embeddings_service = EmbeddingsService(
+        async_client=openai_async,
+        model=settings.openai_embedding_model,
+        max_workers=settings.max_workers
+    )
+    
+    # Use price code index instead of main index
+    pricecode_index = os.getenv('PRICECODE_INDEX_NAME', 'almabani-pricecode')
+    vector_store_service = VectorStoreService(
+        client=pinecone_client,
+        index_name=pricecode_index,
         environment=settings.pinecone_environment
     )
     

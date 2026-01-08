@@ -11,7 +11,7 @@ pyyaml>=6.0.0
 
 # AI & Vector Search
 openai>=1.0.0
-pinecone[grpc]>=5.0.0  # Changed from pinecone-client, includes gRPC support
+pinecone[grpc,asyncio]>=5.0.0  # Includes gRPC and async support
 
 # CLI & Utilities
 typer>=0.9.0

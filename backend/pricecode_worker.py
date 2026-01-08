@@ -69,11 +69,10 @@ async def process_index(input_path: Path, storage):
     """
     logger.info(f"Starting INDEX job for {input_path}")
     
-    settings, _, embeddings_service, vector_store_service = get_services()
+    settings, _, embeddings_service, _ = get_services()
     
     indexer = PriceCodeIndexer(
-        embeddings_service=embeddings_service,
-        vector_store_service=vector_store_service
+        embeddings_service=embeddings_service
     )
     
     # Index the file
@@ -175,11 +174,10 @@ async def process_allocate(input_path: Path, storage):
     except Exception as e:
         logger.warning(f"Failed to create estimate: {e}")
     
-    # Create matcher and pipeline
+    # Create matcher and pipeline (native async Pinecone)
     matcher = PriceCodeMatcher(
         async_openai_client=openai_async,
         embeddings_service=embeddings_service,
-        vector_store_service=vector_store_service,
         top_k=20,
         model=settings.openai_chat_model
     )

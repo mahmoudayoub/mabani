@@ -1,5 +1,7 @@
 """
 Price Code Matcher - One-shot matching of descriptions to price codes.
+
+Uses native async Pinecone operations.
 """
 
 import logging
@@ -8,6 +10,7 @@ from typing import Dict, Any, Optional, List
 import asyncio
 
 from .prompts import PRICECODE_MATCH_SYSTEM, PRICECODE_MATCH_USER
+from almabani.core.async_vector_store import get_async_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +21,7 @@ class PriceCodeMatcher:
     
     Flow:
     1. Embed the input description
-    2. Vector search with top_k=20
+    2. Vector search with top_k=20 (native async)
     3. LLM one-shot decision: match or no match
     """
     
@@ -26,13 +29,11 @@ class PriceCodeMatcher:
         self,
         async_openai_client,
         embeddings_service,
-        vector_store_service,
         top_k: int = 20,
         model: str = "gpt-4o-mini"
     ):
         self.openai_client = async_openai_client
         self.embeddings_service = embeddings_service
-        self.vector_store_service = vector_store_service
         self.top_k = top_k
         self.model = model
     
@@ -42,7 +43,7 @@ class PriceCodeMatcher:
         namespace: str = ""
     ) -> List[Dict[str, Any]]:
         """
-        Search for candidate price codes using vector similarity.
+        Search for candidate price codes using native async vector similarity.
         
         Returns list of candidates with price_code, description, score
         """
@@ -50,22 +51,19 @@ class PriceCodeMatcher:
         embeddings = await self.embeddings_service.generate_embeddings_batch([description])
         query_embedding = embeddings[0]
         
-        # Search Pinecone (index name is already set in VectorStoreService)
-        index = self.vector_store_service.get_index()
-        results = await asyncio.to_thread(
-            index.query,
-            vector=query_embedding,
-            top_k=self.top_k,
-            namespace=namespace,
-            include_metadata=True
-        )
+        # Search Pinecone with native async
+        async with get_async_vector_store() as vector_store:
+            matches = await vector_store.query(
+                vector=query_embedding,
+                top_k=self.top_k,
+                namespace=namespace,
+                include_metadata=True
+            )
         
         candidates = []
-        matches = results.matches if hasattr(results, 'matches') else results.get('matches', [])
-        
         for match in matches:
-            metadata = match.metadata if hasattr(match, 'metadata') else match.get('metadata', {})
-            score = match.score if hasattr(match, 'score') else match.get('score', 0)
+            metadata = match.get('metadata', {})
+            score = match.get('score', 0)
             
             candidates.append({
                 "price_code": metadata.get("price_code", ""),
@@ -155,7 +153,7 @@ class PriceCodeMatcher:
         Match a description to a price code.
         
         Full flow:
-        1. Vector search for candidates
+        1. Vector search for candidates (native async)
         2. LLM decision
         
         Returns:

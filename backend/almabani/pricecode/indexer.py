@@ -1,12 +1,16 @@
 """
 Price Code Indexer - Index price codes from Excel files into Pinecone.
+
+Uses native async Pinecone operations.
 """
 
 import logging
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import asyncio
+import os
+
+from almabani.core.async_vector_store import get_async_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +26,9 @@ class PriceCodeIndexer:
     
     def __init__(
         self,
-        embeddings_service,
-        vector_store_service
+        embeddings_service
     ):
         self.embeddings_service = embeddings_service
-        self.vector_store_service = vector_store_service
     
     def read_price_codes_from_excel(self, file_path: Path) -> List[Dict[str, Any]]:
         """
@@ -91,7 +93,7 @@ class PriceCodeIndexer:
         batch_size: int = 100
     ) -> int:
         """
-        Embed and upsert records to Pinecone.
+        Embed and upsert records to Pinecone using native async.
         
         Returns: Number of vectors indexed
         """
@@ -116,6 +118,9 @@ class PriceCodeIndexer:
         vectors = []
         for idx, (record, embedding) in enumerate(zip(records, all_embeddings)):
             vector_id = f"pc_{record['source_file']}_{record['category']}_{idx}"
+            # Sanitize ID for Pinecone
+            vector_id = vector_id.replace(' ', '_').replace('/', '_')[:512]
+            
             vectors.append({
                 "id": vector_id,
                 "values": embedding,
@@ -127,20 +132,16 @@ class PriceCodeIndexer:
                 }
             })
         
-        # Upsert to Pinecone (index name is already set in VectorStoreService)
-        index = self.vector_store_service.get_index()
-        
-        for i in range(0, len(vectors), batch_size):
-            batch = vectors[i:i + batch_size]
-            await asyncio.to_thread(
-                index.upsert,
-                vectors=batch,
-                namespace=namespace
+        # Upsert to Pinecone using native async
+        async with get_async_vector_store() as vector_store:
+            count = await vector_store.upsert(
+                vectors=vectors,
+                namespace=namespace,
+                batch_size=batch_size
             )
-            logger.info(f"Upserted batch {i//batch_size + 1}/{(len(vectors) + batch_size - 1)//batch_size}")
         
-        logger.info(f"Successfully indexed {len(vectors)} price codes")
-        return len(vectors)
+        logger.info(f"Successfully indexed {count} price codes")
+        return count
     
     async def index_from_excel(
         self,

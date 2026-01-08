@@ -15,7 +15,8 @@ from .matcher import PriceCodeMatcher
 
 # Reuse existing parsing components
 from almabani.parsers.excel_parser import ExcelParser
-from almabani.parsers.hierarchy import HierarchyProcessor, ItemType
+from almabani.parsers.hierarchy_processor import HierarchyProcessor
+from almabani.core.models import ItemType
 
 logger = logging.getLogger(__name__)
 

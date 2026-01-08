@@ -54,11 +54,11 @@ const Dashboard: React.FC = () => {
     },
     {
       id: "ai-t",
-      name: "Task Allocation",
-      acronym: "AI-T",
-      description: "AI-driven task assignment",
+      name: "Code Allocation",
+      acronym: "AI-C",
+      description: "AI-driven code assignment",
       color: "primary",
-      path: undefined,
+      path: "/code-allocation",
       icon: (
         <svg
           className="w-8 h-8"

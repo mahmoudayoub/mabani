@@ -503,46 +503,48 @@ const FileProcessing: React.FC = () => {
     // Landing Page View
     if (currentView === 'landing') {
         return (
-            <div className="px-4 py-6 sm:px-6 lg:px-8">
-                <div className="mb-8 text-center">
-                    <h1 className="text-3xl font-bold text-gray-900">Price Allocation</h1>
-                    <p className="text-sm text-gray-600 mt-2">Choose your operation</p>
-                </div>
+            <div className="min-h-screen bg-gray-100 py-8">
+                <div className="max-w-4xl mx-auto px-4">
+                    {/* Header */}
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Price Allocation</h1>
+                        <p className="text-gray-600 mt-2">
+                            Fill Bill of Quantities or upload data to Smart Library
+                        </p>
+                    </div>
 
-                <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Filling Option */}
-                    <button
-                        onClick={() => {
-                            setMode('fill');
-                            setCurrentView('fill');
-                        }}
-                        className="group bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-primary-500"
-                    >
-                        <div className="flex items-center justify-center w-16 h-16 bg-primary-100 rounded-lg mb-4 group-hover:bg-primary-200 transition-colors">
-                            <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                        </div>
-                        <h2 className="text-xl font-semibold text-gray-900 mb-2">Filling</h2>
-                        <p className="text-sm text-gray-600">Extract data and fill Bill of Quantities using AI-powered matching from your smart library.</p>
-                    </button>
+                    {/* Mode Selection Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Fill BOQ Option */}
+                        <button
+                            onClick={() => {
+                                setMode('fill');
+                                setCurrentView('fill');
+                            }}
+                            className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-blue-500 group"
+                        >
+                            <div className="text-5xl mb-4">📊</div>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Fill BOQ</h2>
+                            <p className="text-gray-600">
+                                Extract data and fill Bill of Quantities using AI-powered matching from your smart library.
+                            </p>
+                        </button>
 
-                    {/* Upload to Smart Library Option */}
-                    <button
-                        onClick={() => {
-                            setMode('parse');
-                            setCurrentView('parse');
-                        }}
-                        className="group bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-green-500"
-                    >
-                        <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-lg mb-4 group-hover:bg-green-200 transition-colors">
-                            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                            </svg>
-                        </div>
-                        <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload to Smart Library</h2>
-                        <p className="text-sm text-gray-600">Parse and index Excel files to expand your searchable knowledge base.</p>
-                    </button>
+                        {/* Upload to Smart Library Option */}
+                        <button
+                            onClick={() => {
+                                setMode('parse');
+                                setCurrentView('parse');
+                            }}
+                            className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-green-500 group"
+                        >
+                            <div className="text-5xl mb-4">📁</div>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload to Smart Library</h2>
+                            <p className="text-gray-600">
+                                Parse and index Excel files to expand your searchable knowledge base.
+                            </p>
+                        </button>
+                    </div>
                 </div>
             </div>
         );

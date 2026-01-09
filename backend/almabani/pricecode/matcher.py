@@ -45,13 +45,15 @@ class PriceCodeMatcher:
         self,
         description: str,
         namespace: str = "",
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        vector_store: Any = None
     ) -> List[Dict[str, Any]]:
         """
         Search for candidate price codes using native async vector similarity.
         
         Args:
-            filter_dict: Optional Pinecone filter, e.g., {"source_file": {"$in": ["AI Codes - Civil"]}}
+            filter_dict: Optional Pinecone filter
+            vector_store: Optional shared AsyncVectorStore instance
         
         Returns list of candidates with price_code, description, score
         """
@@ -59,8 +61,8 @@ class PriceCodeMatcher:
         embeddings = await self.embeddings_service.generate_embeddings_batch([description])
         query_embedding = embeddings[0]
         
-        # Search Pinecone with native async
-        async with get_async_vector_store() as vector_store:
+        # Search Pinecone (reuse shared connection or create new one)
+        if vector_store:
             matches = await vector_store.query(
                 vector=query_embedding,
                 top_k=self.top_k,
@@ -68,6 +70,15 @@ class PriceCodeMatcher:
                 include_metadata=True,
                 filter_dict=filter_dict
             )
+        else:
+            async with get_async_vector_store() as vs:
+                matches = await vs.query(
+                    vector=query_embedding,
+                    top_k=self.top_k,
+                    namespace=namespace,
+                    include_metadata=True,
+                    filter_dict=filter_dict
+                )
         
         candidates = []
         for match in matches:
@@ -181,13 +192,15 @@ class PriceCodeMatcher:
         self,
         description: str,
         namespace: str = "",
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        vector_store: Any = None
     ) -> Dict[str, Any]:
         """
         Match a description to a price code.
         
         Args:
             filter_dict: Optional filter, e.g., {"source_file": {"$in": ["AI Codes - Civil"]}}
+            vector_store: Optional shared AsyncVectorStore instance
         
         Full flow:
         1. Vector search for candidates (native async)
@@ -206,7 +219,12 @@ class PriceCodeMatcher:
         logger.debug(f"Matching: {description[:100]}...")
         
         # Get candidates
-        candidates = await self.search_candidates(description, namespace, filter_dict)
+        candidates = await self.search_candidates(
+            description, 
+            namespace, 
+            filter_dict,
+            vector_store=vector_store
+        )
         
         # LLM match
         result = await self.llm_match(description, candidates)

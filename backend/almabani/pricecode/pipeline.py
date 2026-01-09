@@ -412,15 +412,21 @@ class PriceCodePipeline:
             filter_dict = {"source_file": {"$in": source_files}}
             logger.info(f"Filtering by source files: {source_files}")
         
-        async def process_item(item):
+        from almabani.core.async_vector_store import get_async_vector_store
+        
+        async def process_item(item, vs):
             async with semaphore:
                 # Build search text with hierarchy context
                 search_text = self.build_search_text(item)
-                result = await self.matcher.match(search_text, namespace, filter_dict)
+                # Pass vector store to reuse connection
+                result = await self.matcher.match(search_text, namespace, filter_dict, vector_store=vs)
                 return item, result
         
-        tasks = [process_item(item) for item in items]
-        results = await asyncio.gather(*tasks)
+        # Use shared vector store connection for all items
+        results = []
+        async with get_async_vector_store() as vector_store:
+            tasks = [process_item(item, vector_store) for item in items]
+            results = await asyncio.gather(*tasks)
         
         elapsed = (datetime.now() - start_time).total_seconds()
         

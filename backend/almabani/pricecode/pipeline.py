@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 import asyncio
 from datetime import datetime
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 
 from .matcher import PriceCodeMatcher
 
@@ -28,10 +30,104 @@ class PriceCodePipeline:
     Uses the same hierarchy extraction as RateFillerPipeline for consistency.
     """
     
+    # Color coding
+    GREEN_FILL = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')  # Match
+    RED_FILL = PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid')  # No match
+    
     def __init__(self, matcher: PriceCodeMatcher):
         self.matcher = matcher
         self.excel_parser = ExcelParser()
         self.hierarchy_processor = HierarchyProcessor()
+        
+    def write_results(
+        self,
+        input_file: Path,
+        output_file: Path,
+        sheet_name: str,
+        results: List[Tuple[Dict[str, Any], Dict[str, Any]]],
+        columns: Dict[str, str],
+        header_row_idx: int
+    ) -> None:
+        """
+        Write results to Excel with color coding and reference columns.
+        """
+        logger.info(f"Writing filled Excel: {output_file}")
+        
+        # Load workbook
+        wb = load_workbook(input_file)
+        ws = wb[sheet_name]
+        
+        # Determine column indices (1-based)
+        def get_col_idx(name: str):
+            if not name: return None
+            # Find column by header value
+            row = header_row_idx + 1
+            for col in range(1, ws.max_column + 1):
+                cell_val = ws.cell(row=row, column=col).value
+                if cell_val and str(cell_val).strip() == str(name).strip():
+                    return col
+            return None
+            
+        code_col_idx = get_col_idx(columns.get('code'))
+        desc_col_idx = get_col_idx(columns.get('code_description'))
+        
+        # Create output columns if they don't exist
+        start_col = ws.max_column + 1
+        
+        # Reference Sheet
+        ref_sheet_idx = start_col
+        ws.cell(row=header_row_idx + 1, column=ref_sheet_idx).value = "Ref Sheet"
+        
+        # Reference Category
+        ref_cat_idx = start_col + 1
+        ws.cell(row=header_row_idx + 1, column=ref_cat_idx).value = "Ref Category"
+        
+        # Reference Row
+        ref_row_idx = start_col + 2
+        ws.cell(row=header_row_idx + 1, column=ref_row_idx).value = "Ref Row"
+        
+        logger.info(f"Created reference columns at indices {ref_sheet_idx}, {ref_cat_idx}, {ref_row_idx}")
+        
+        # Write results
+        for item, result in results:
+            row_idx = item['row_index'] + 1  # 1-based
+            
+            # Fill color
+            fill = self.GREEN_FILL if result['matched'] else self.RED_FILL
+            
+            # 1. Price Code
+            if code_col_idx:
+                cell = ws.cell(row=row_idx, column=code_col_idx)
+                if result.get('price_code'):
+                    cell.value = result['price_code']
+                cell.fill = fill
+            
+            # 2. Price Description
+            if desc_col_idx and result.get('price_description'):
+                cell = ws.cell(row=row_idx, column=desc_col_idx)
+                cell.value = result['price_description']
+            
+            # 3. Reference fields
+            if result['matched']:
+                if result.get('reference_sheet'):
+                    ws.cell(row=row_idx, column=ref_sheet_idx).value = result['reference_sheet']
+                
+                if result.get('reference_category'):
+                    ws.cell(row=row_idx, column=ref_cat_idx).value = result['reference_category']
+                
+                if result.get('reference_row'):
+                    ws.cell(row=row_idx, column=ref_row_idx).value = result['reference_row']
+            
+            # 4. If not matched, color the Item Code cell red if exists
+            if not result['matched'] and columns.get('item'):
+                input_code_idx = get_col_idx(columns.get('item'))
+                if input_code_idx:
+                     ws.cell(row=row_idx, column=input_code_idx).fill = self.RED_FILL
+        
+        # Save
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        wb.save(output_file)
+        logger.info(f"Saved filled Excel to: {output_file}")
     
     def _build_parent_map(
         self,
@@ -271,37 +367,30 @@ class PriceCodePipeline:
         tasks = [process_item(item) for item in items]
         results = await asyncio.gather(*tasks)
         
-        # Update DataFrame with results
-        code_col = columns.get('code')
-        desc_col = columns.get('code_description')
-        
-        for item, result in results:
-            row_idx = item['row_index']
-            
-            if result['matched']:
-                matched_count += 1
-                if code_col:
-                    df.at[row_idx, code_col] = result['price_code']
-                if desc_col:
-                    df.at[row_idx, desc_col] = result['price_description']
-            else:
-                not_matched_count += 1
-        
-        # Save output
-        logger.info(f"Saving to {output_file}...")
-        df.to_excel(output_file, sheet_name=sheet_name, index=False)
+        # Save output using rich Excel writer
+        await asyncio.to_thread(
+            self.write_results,
+            input_file,
+            output_file,
+            sheet_name,
+            results,
+            columns,
+            header_row_idx
+        )
         
         elapsed = (datetime.now() - start_time).total_seconds()
         
         report = {
             "total_items": len(items),
-            "matched": matched_count,
-            "not_matched": not_matched_count,
-            "match_rate": matched_count / len(items) if items else 0,
+            "matched": sum(1 for _, res in results if res['matched']),
+            "not_matched": sum(1 for _, res in results if not res['matched']),
+            "match_rate": sum(1 for _, res in results if res['matched']) / len(items) if items else 0,
+            "output_file": str(output_file),
             "elapsed_seconds": elapsed,
-            "output_file": str(output_file)
+            "items_per_second": len(items) / elapsed if elapsed > 0 else 0
         }
         
-        logger.info(f"Completed: {matched_count}/{len(items)} matched ({report['match_rate']:.1%})")
+        logger.info(f"Report: {report}")
+        return report
         
         return report

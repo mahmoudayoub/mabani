@@ -74,8 +74,12 @@ class PriceCodeIndexer:
                     records.append({
                         "price_code": code,
                         "description": description,
-                        "category": sheet_name,
-                        "source_file": source_file
+                        "category": sheet_name,  # Keep legacy field for now
+                        "source_file": source_file,
+                        # New reference fields
+                        "reference_sheet": sheet_name,
+                        "reference_category": sheet_name,
+                        "reference_row": idx + 2  # 1-based, accounting for 0-index + 1 header (assuming header=0)
                     })
                 
                 logger.info(f"Extracted {len(records)} records from {sheet_name}")

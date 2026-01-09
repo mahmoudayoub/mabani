@@ -134,13 +134,37 @@ class PriceCodeMatcher:
             
             content = response.choices[0].message.content
             result = json.loads(content)
+            # Find the matched candidate to extract metadata
+            matched_candidate = None
+            if result.get("matched") and result.get("price_code"):
+                code = result["price_code"]
+                # Look for exact match first
+                for cand in candidates:
+                    if cand["metadata"].get("price_code") == code:
+                        matched_candidate = cand
+                        break
             
+            # Extract reference metadata
+            ref_sheet = None
+            ref_category = None
+            ref_row = None
+            
+            if matched_candidate:
+                meta = matched_candidate["metadata"]
+                ref_sheet = meta.get("reference_sheet") or meta.get("category")
+                ref_category = meta.get("reference_category") or meta.get("category")
+                ref_row = meta.get("reference_row")
+
             return {
                 "matched": result.get("matched", False),
                 "price_code": result.get("price_code"),
                 "price_description": result.get("price_description"),
                 "confidence": result.get("confidence", 0.0),
-                "reason": result.get("reason", "")
+                "reason": result.get("reason", ""),
+                # Add reference metadata
+                "reference_sheet": ref_sheet,
+                "reference_category": ref_category,
+                "reference_row": ref_row
             }
             
         except Exception as e:

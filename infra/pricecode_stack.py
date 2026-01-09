@@ -85,9 +85,9 @@ class PriceCodeStack(Stack):
             platform=ecr_assets.Platform.LINUX_AMD64
         )
 
-        # 5. Fargate Task Definition - 4GB RAM for large Excel files
+        # 5. Fargate Task Definition - 8GB RAM for large Excel files
         task_def = ecs.FargateTaskDefinition(self, "PriceCodeTaskDef",
-            memory_limit_mib=4096,  # 4GB RAM
+            memory_limit_mib=8192,  # 8GB RAM
             cpu=2048  # 2 vCPU
         )
         

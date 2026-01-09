@@ -125,25 +125,19 @@ class PriceCodePipeline:
                 if input_code_idx:
                      ws.cell(row=row_idx, column=input_code_idx).fill = self.RED_FILL
         
-        # Create Summary sheet if report provided
         if report:
-            summary_text = self._generate_summary(input_file, output_file, sheet_name, report)
-            if "Summary" in wb.sheetnames:
-                del wb["Summary"]
-            ws_summary = wb.create_sheet("Summary", 0)  # Create as first sheet
-            
-            # Write lines to cells
-            for i, line in enumerate(summary_text.split('\n')):
-                ws_summary.cell(row=i+1, column=1).value = line
-                
-            # Adjust column width
-            ws_summary.column_dimensions['A'].width = 80
-            logger.info("Created Summary sheet")
+             logger.info(f"Writing results, match rate: {report.get('match_rate', 0):.1%}")
             
         # Save
         output_file.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output_file)
         logger.info(f"Saved filled Excel to: {output_file}")
+
+    def _write_summary_file(self, file_path: Path, content: str) -> None:
+        """Write summary content to a text file."""
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        logger.info(f"Summary written to: {file_path}")
     def _generate_summary(
         self,
         input_file: Path,
@@ -453,7 +447,17 @@ class PriceCodePipeline:
             report  # Pass report for summary sheet
         )
         
-        logger.info(f"Report: {report}")
-        return report
+        # Generate and save summary file
+        summary_file = output_file.with_suffix('.txt')
+        summary_content = self._generate_summary(
+            input_file=input_file,
+            output_file=output_file,
+            sheet_name=sheet_name,
+            report=report
+        )
+        await asyncio.to_thread(self._write_summary_file, summary_file, summary_content)
         
+        report["summary_file"] = str(summary_file)
+        
+        logger.info(f"Report: {report}")
         return report

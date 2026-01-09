@@ -215,6 +215,14 @@ async def process_allocate(input_path: Path, storage):
         s3_key = f"output/pricecode/fills/{output_filename}"
         storage.upload_file(output_path, s3_key)
         logger.info(f"Uploaded result: {s3_key}")
+
+        # Upload summary file if exists
+        if result.get("summary_file"):
+            summary_path = Path(result["summary_file"])
+            if summary_path.exists():
+                s3_key_summary = f"output/pricecode/fills/{summary_path.name}"
+                storage.upload_file(summary_path, s3_key_summary)
+                logger.info(f"Uploaded summary: {s3_key_summary}")
         
         # Update estimate with success
         if estimate_key and bucket_name:

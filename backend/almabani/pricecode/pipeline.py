@@ -7,7 +7,7 @@ Uses the same hierarchy parsing logic as RateFillerPipeline.
 import logging
 import pandas as pd
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 import asyncio
 from datetime import datetime
 from openpyxl import load_workbook

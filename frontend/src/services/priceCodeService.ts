@@ -158,6 +158,25 @@ export const listPriceCodeOutputFiles = async (): Promise<PriceCodeOutputFile[]>
 };
 
 /**
+ * List active price code jobs (for resuming state)
+ */
+export const listActivePriceCodeJobs = async (): Promise<PriceCodeEstimate[]> => {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE_URL}/pricecode/active-jobs`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to list active jobs: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.active_jobs || [];
+};
+
+/**
  * Delete estimate file for a price code job
  */
 export const deletePriceCodeEstimate = async (filename: string): Promise<void> => {

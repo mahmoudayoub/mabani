@@ -124,10 +124,70 @@ class PriceCodePipeline:
                 if input_code_idx:
                      ws.cell(row=row_idx, column=input_code_idx).fill = self.RED_FILL
         
+        # Create Summary sheet if report provided
+        if report:
+            summary_text = self._generate_summary(input_file, output_file, sheet_name, report)
+            if "Summary" in wb.sheetnames:
+                del wb["Summary"]
+            ws_summary = wb.create_sheet("Summary", 0)  # Create as first sheet
+            
+            # Write lines to cells
+            for i, line in enumerate(summary_text.split('\n')):
+                ws_summary.cell(row=i+1, column=1).value = line
+                
+            # Adjust column width
+            ws_summary.column_dimensions['A'].width = 80
+            logger.info("Created Summary sheet")
+            
         # Save
         output_file.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output_file)
         logger.info(f"Saved filled Excel to: {output_file}")
+    def _generate_summary(
+        self,
+        input_file: Path,
+        output_file: Path,
+        sheet_name: str,
+        report: Dict[str, Any]
+    ) -> str:
+        """Generate a text summary of the processing results."""
+        lines = []
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Header
+        lines.append("=" * 70)
+        lines.append("ALMABANI PRICE CODE ALLOCATION - PROCESSING SUMMARY")
+        lines.append("=" * 70)
+        lines.append("")
+        
+        # File info
+        lines.append("FILE INFORMATION")
+        lines.append("-" * 40)
+        lines.append(f"  Input File:    {input_file.name}")
+        lines.append(f"  Output File:   {output_file.name}")
+        lines.append(f"  Sheet:         {sheet_name}")
+        lines.append(f"  Generated:     {timestamp}")
+        lines.append(f"  Processing Time: {report['elapsed_seconds']:.1f}s")
+        lines.append("")
+        
+        # Statistics
+        lines.append("PROCESSING STATISTICS")
+        lines.append("-" * 40)
+        lines.append(f"  Total Items:     {report['total_items']}")
+        lines.append(f"  Matched:         {report['matched']}")
+        lines.append(f"  Not Matched:     {report['not_matched']}")
+        lines.append("")
+        
+        # Success rate
+        if report['total_items'] > 0:
+            lines.append(f"  Match Rate:      {report['match_rate']:.1%}")
+        
+        lines.append("")
+        lines.append("=" * 70)
+        lines.append("END OF SUMMARY")
+        lines.append("=" * 70)
+        
+        return "\n".join(lines)
     
     def _build_parent_map(
         self,
@@ -367,19 +427,9 @@ class PriceCodePipeline:
         tasks = [process_item(item) for item in items]
         results = await asyncio.gather(*tasks)
         
-        # Save output using rich Excel writer
-        await asyncio.to_thread(
-            self.write_results,
-            input_file,
-            output_file,
-            sheet_name,
-            results,
-            columns,
-            header_row_idx
-        )
-        
         elapsed = (datetime.now() - start_time).total_seconds()
         
+        # Build report dictionary first so it can be passed to write_results
         report = {
             "total_items": len(items),
             "matched": sum(1 for _, res in results if res['matched']),
@@ -389,6 +439,18 @@ class PriceCodePipeline:
             "elapsed_seconds": elapsed,
             "items_per_second": len(items) / elapsed if elapsed > 0 else 0
         }
+        
+        # Save output using rich Excel writer, passing the report
+        await asyncio.to_thread(
+            self.write_results,
+            input_file,
+            output_file,
+            sheet_name,
+            results,
+            columns,
+            header_row_idx,
+            report  # Pass report for summary sheet
+        )
         
         logger.info(f"Report: {report}")
         return report

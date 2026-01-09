@@ -184,6 +184,21 @@ async def process_allocate(input_path: Path, storage):
     
     pipeline = PriceCodePipeline(matcher)
     
+    # Read source_files filter from S3 metadata
+    source_files = None
+    s3_key = os.getenv('S3_KEY')
+    if s3_key and bucket_name:
+        try:
+            s3 = boto3.client('s3')
+            head = s3.head_object(Bucket=bucket_name, Key=s3_key)
+            metadata = head.get('Metadata', {})
+            source_files_str = metadata.get('source-files', '')
+            if source_files_str:
+                source_files = [s.strip() for s in source_files_str.split(',') if s.strip()]
+                logger.info(f"Filtering by source files from metadata: {source_files}")
+        except Exception as e:
+            logger.warning(f"Failed to read S3 metadata: {e}")
+    
     # Process file
     try:
         output_filename = f"{input_path.stem}_pricecode.xlsx"
@@ -193,6 +208,7 @@ async def process_allocate(input_path: Path, storage):
             input_file=input_path,
             output_file=output_path,
             namespace="",
+            source_files=source_files,
             max_concurrent=20
         )
         

@@ -175,10 +175,15 @@ class PriceCodePipeline:
         input_file: Path,
         output_file: Optional[Path] = None,
         namespace: str = "",
+        source_files: Optional[List[str]] = None,
         max_concurrent: int = 20
     ) -> Dict[str, Any]:
         """
         Process an Excel file to allocate price codes.
+        
+        Args:
+            source_files: Optional list of source files to filter by, e.g., ["AI Codes - Civil"]
+                          If None, searches all indexed price codes.
         """
         start_time = datetime.now()
         
@@ -244,11 +249,17 @@ class PriceCodePipeline:
         
         semaphore = asyncio.Semaphore(max_concurrent)
         
+        # Build filter if source_files specified
+        filter_dict = None
+        if source_files:
+            filter_dict = {"source_file": {"$in": source_files}}
+            logger.info(f"Filtering by source files: {source_files}")
+        
         async def process_item(item):
             async with semaphore:
                 # Build search text with hierarchy context
                 search_text = self.build_search_text(item)
-                result = await self.matcher.match(search_text, namespace)
+                result = await self.matcher.match(search_text, namespace, filter_dict)
                 return item, result
         
         tasks = [process_item(item) for item in items]

@@ -40,10 +40,14 @@ class PriceCodeMatcher:
     async def search_candidates(
         self,
         description: str,
-        namespace: str = ""
+        namespace: str = "",
+        filter_dict: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
         Search for candidate price codes using native async vector similarity.
+        
+        Args:
+            filter_dict: Optional Pinecone filter, e.g., {"source_file": {"$in": ["AI Codes - Civil"]}}
         
         Returns list of candidates with price_code, description, score
         """
@@ -57,7 +61,8 @@ class PriceCodeMatcher:
                 vector=query_embedding,
                 top_k=self.top_k,
                 namespace=namespace,
-                include_metadata=True
+                include_metadata=True,
+                filter_dict=filter_dict
             )
         
         candidates = []
@@ -147,10 +152,14 @@ class PriceCodeMatcher:
     async def match(
         self,
         description: str,
-        namespace: str = ""
+        namespace: str = "",
+        filter_dict: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Match a description to a price code.
+        
+        Args:
+            filter_dict: Optional filter, e.g., {"source_file": {"$in": ["AI Codes - Civil"]}}
         
         Full flow:
         1. Vector search for candidates (native async)
@@ -169,7 +178,7 @@ class PriceCodeMatcher:
         logger.debug(f"Matching: {description[:100]}...")
         
         # Get candidates
-        candidates = await self.search_candidates(description, namespace)
+        candidates = await self.search_candidates(description, namespace, filter_dict)
         
         # LLM match
         result = await self.llm_match(description, candidates)
@@ -186,6 +195,7 @@ class PriceCodeMatcher:
         self,
         descriptions: List[str],
         namespace: str = "",
+        filter_dict: Optional[Dict[str, Any]] = None,
         max_concurrent: int = 10
     ) -> List[Dict[str, Any]]:
         """
@@ -195,7 +205,7 @@ class PriceCodeMatcher:
         
         async def match_one(desc):
             async with semaphore:
-                return await self.match(desc, namespace)
+                return await self.match(desc, namespace, filter_dict)
         
         tasks = [match_one(desc) for desc in descriptions]
         results = await asyncio.gather(*tasks)

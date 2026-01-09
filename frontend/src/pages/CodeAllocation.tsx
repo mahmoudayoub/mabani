@@ -148,7 +148,7 @@ const CodeAllocation: React.FC = () => {
                     if (status.success) {
                         setProgressPercent(100);
                         setProcessingStatus('Complete!');
-                        setCompletedFilePath(`output/pricecode/${filenameBase}_pricecode.xlsx`);
+                        setCompletedFilePath(`output/pricecode/fills/${filenameBase}_pricecode.xlsx`);
                         setTimeRemaining('');
                         setResultData(status.result || null);
 
@@ -158,6 +158,14 @@ const CodeAllocation: React.FC = () => {
                             console.log('Estimate file deleted');
                         } catch (err) {
                             console.error('Failed to delete estimate:', err);
+                        }
+
+                        // Refresh file list
+                        try {
+                            const files = await listPriceCodeOutputFiles();
+                            setOutputFiles(files);
+                        } catch (err) {
+                            console.error('Failed to refresh file list:', err);
                         }
                     } else {
                         setIsProcessing(false);

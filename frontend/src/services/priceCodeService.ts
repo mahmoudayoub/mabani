@@ -43,12 +43,21 @@ export interface PriceCodeEstimate {
 /**
  * Get presigned upload URL for price code file
  */
-export const getPriceCodeUploadUrl = async (filename: string, mode: 'index' | 'allocate'): Promise<{ url: string; key: string }> => {
+export const getPriceCodeUploadUrl = async (
+    filename: string,
+    mode: 'index' | 'allocate',
+    sourceFiles?: string[]
+): Promise<{ url: string; key: string }> => {
     const headers = await getAuthHeaders();
     const params = new URLSearchParams({
         filename: filename,
         mode: mode
     });
+
+    // Add source files as comma-separated string for allocate mode
+    if (sourceFiles && sourceFiles.length > 0) {
+        params.append('sourceFiles', sourceFiles.join(','));
+    }
 
     const response = await fetch(`${API_BASE_URL}/pricecode/upload-url?${params}`, {
         method: 'POST',
@@ -142,9 +151,13 @@ export const deletePriceCodeEstimate = async (filename: string): Promise<void> =
 /**
  * Upload file to S3 using presigned URL
  */
-export const uploadPriceCodeFile = async (file: File, mode: 'index' | 'allocate'): Promise<string> => {
-    // Get presigned URL
-    const { url, key } = await getPriceCodeUploadUrl(file.name, mode);
+export const uploadPriceCodeFile = async (
+    file: File,
+    mode: 'index' | 'allocate',
+    sourceFiles?: string[]
+): Promise<string> => {
+    // Get presigned URL with source files metadata
+    const { url, key } = await getPriceCodeUploadUrl(file.name, mode, sourceFiles);
 
     // Upload to S3
     const uploadResponse = await fetch(url, {

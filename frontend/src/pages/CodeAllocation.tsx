@@ -77,8 +77,12 @@ const CodeAllocation: React.FC = () => {
         setUploadError(null);
 
         try {
-            // Upload file
-            await uploadPriceCodeFile(selectedFile, currentMode);
+            // Upload file with selected codes as source-files metadata
+            await uploadPriceCodeFile(
+                selectedFile,
+                currentMode,
+                currentMode === 'allocate' ? selectedCodes : undefined
+            );
 
             if (currentMode === 'allocate') {
                 // Start processing for allocate mode

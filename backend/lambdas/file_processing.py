@@ -367,12 +367,14 @@ def pricecode_upload_url(event, context):
     Query params:
         - filename: Name of the file (required)
         - mode: 'index' or 'allocate' (required)
+        - sourceFiles: Comma-separated list of price code sets (optional, for allocate mode)
     """
     from urllib.parse import unquote
     
     query_params = event.get("queryStringParameters", {}) or {}
     filename = query_params.get("filename")
     mode = query_params.get("mode")
+    source_files = query_params.get("sourceFiles")
     
     if not filename:
         return create_error_response(400, "Missing required parameter: filename")
@@ -389,13 +391,24 @@ def pricecode_upload_url(event, context):
     else:
         s3_key = f"input/pricecode/allocate/{filename}"
     
+    # Prepare metadata
+    metadata = {
+        "mode": mode,
+        "filename": filename
+    }
+    
+    # Add source-files metadata if present (for allocate mode)
+    if source_files:
+        metadata["source-files"] = source_files
+    
     try:
         presigned_url = s3_client.generate_presigned_url(
             ClientMethod="put_object",
             Params={
                 "Bucket": PRICECODE_BUCKET,
                 "Key": s3_key,
-                "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                "ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "Metadata": metadata
             },
             ExpiresIn=3600
         )

@@ -545,3 +545,38 @@ def delete_pricecode_estimate(event, context):
     except Exception as e:
         return create_error_response(500, f"Failed to delete estimate: {str(e)}")
 
+
+@with_error_handling
+def list_pricecode_output_files(event, context):
+    """List completed price code output files from input/pricecode/fills/."""
+    if not PRICECODE_BUCKET:
+        return create_error_response(500, "Server configuration error: PRICECODE_BUCKET not set")
+    
+    try:
+        response = s3_client.list_objects_v2(
+            Bucket=PRICECODE_BUCKET,
+            Prefix="input/pricecode/fills/"
+        )
+        
+        files = []
+        for obj in response.get("Contents", []):
+            key = obj["Key"]
+            # Skip directory marker
+            if key.endswith("/"):
+                continue
+            
+            filename = key.split("/")[-1]
+            files.append({
+                "key": key,
+                "filename": filename,
+                "size": obj["Size"],
+                "lastModified": obj["LastModified"].isoformat()
+            })
+        
+        # Sort by last modified, newest first
+        files.sort(key=lambda x: x["lastModified"], reverse=True)
+        
+        return create_response(200, {"files": files})
+        
+    except Exception as e:
+        return create_error_response(500, f"Failed to list output files: {str(e)}")

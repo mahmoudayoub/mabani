@@ -4,8 +4,10 @@ import {
     getPriceCodeStatus,
     getPriceCodeDownloadUrl,
     listAvailablePriceCodes,
+    listPriceCodeOutputFiles,
     deletePriceCodeEstimate,
-    PriceCodeEstimate
+    PriceCodeEstimate,
+    PriceCodeOutputFile
 } from '../services/priceCodeService';
 
 type Mode = 'index' | 'allocate';
@@ -38,6 +40,10 @@ const CodeAllocation: React.FC = () => {
     const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
     const [showCodePicker, setShowCodePicker] = useState(false);
 
+    // Output Files State
+    const [outputFiles, setOutputFiles] = useState<PriceCodeOutputFile[]>([]);
+    const [loadingOutputFiles, setLoadingOutputFiles] = useState(false);
+
     // Refs for intervals
     const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -56,6 +62,22 @@ const CodeAllocation: React.FC = () => {
             }
         };
         fetchCodes();
+    }, []);
+
+    // Load output files on mount
+    useEffect(() => {
+        const fetchOutputFiles = async () => {
+            setLoadingOutputFiles(true);
+            try {
+                const files = await listPriceCodeOutputFiles();
+                setOutputFiles(files);
+            } catch (error) {
+                console.error('Failed to load output files:', error);
+            } finally {
+                setLoadingOutputFiles(false);
+            }
+        };
+        fetchOutputFiles();
     }, []);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -456,6 +478,64 @@ const CodeAllocation: React.FC = () => {
                                     <li key={code} className="py-3 flex items-center">
                                         <span className="text-2xl mr-3">📋</span>
                                         <span className="font-medium text-gray-900">{code}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                )}
+
+                {/* Completed Files List (allocate mode) */}
+                {currentMode === 'allocate' && (
+                    <div className="bg-white rounded-xl shadow-sm p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold">Completed Files</h2>
+                            <button
+                                onClick={async () => {
+                                    setLoadingOutputFiles(true);
+                                    try {
+                                        const files = await listPriceCodeOutputFiles();
+                                        setOutputFiles(files);
+                                    } finally {
+                                        setLoadingOutputFiles(false);
+                                    }
+                                }}
+                                className="text-blue-600 hover:text-blue-800 text-sm"
+                            >
+                                Refresh
+                            </button>
+                        </div>
+
+                        {loadingOutputFiles ? (
+                            <p className="text-gray-400">Loading...</p>
+                        ) : outputFiles.length === 0 ? (
+                            <p className="text-gray-400">No completed files yet.</p>
+                        ) : (
+                            <ul className="divide-y divide-gray-100">
+                                {outputFiles.map(file => (
+                                    <li key={file.key} className="py-3 flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <span className="text-2xl mr-3">📄</span>
+                                            <div>
+                                                <span className="font-medium text-gray-900">{file.filename}</span>
+                                                <p className="text-xs text-gray-500">
+                                                    {(file.size / 1024).toFixed(1)} KB • {new Date(file.lastModified).toLocaleString()}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    const { url } = await getPriceCodeDownloadUrl(file.filename);
+                                                    window.open(url, '_blank');
+                                                } catch (error) {
+                                                    console.error('Download failed:', error);
+                                                }
+                                            }}
+                                            className="text-blue-600 hover:text-blue-800 text-sm"
+                                        >
+                                            📥 Download
+                                        </button>
                                     </li>
                                 ))}
                             </ul>

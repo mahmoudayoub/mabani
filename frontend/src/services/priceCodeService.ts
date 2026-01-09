@@ -131,6 +131,32 @@ export const listAvailablePriceCodes = async (): Promise<string[]> => {
     return data.price_codes || [];
 };
 
+export interface PriceCodeOutputFile {
+    key: string;
+    filename: string;
+    size: number;
+    lastModified: string;
+}
+
+/**
+ * List completed price code output files
+ */
+export const listPriceCodeOutputFiles = async (): Promise<PriceCodeOutputFile[]> => {
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${API_BASE_URL}/pricecode/files`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to list output files: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.files || [];
+};
+
 /**
  * Delete estimate file for a price code job
  */

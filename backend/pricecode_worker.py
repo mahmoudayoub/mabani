@@ -174,12 +174,11 @@ async def process_allocate(input_path: Path, storage):
     except Exception as e:
         logger.warning(f"Failed to create estimate: {e}")
     
-    # Create matcher and pipeline (native async Pinecone)
+    # Create matcher and pipeline (settings loaded from .env)
     matcher = PriceCodeMatcher(
         async_openai_client=openai_async,
-        embeddings_service=embeddings_service,
-        top_k=20,
-        model=settings.openai_chat_model
+        embeddings_service=embeddings_service
+        # top_k and model loaded from settings automatically
     )
     
     pipeline = PriceCodePipeline(matcher)

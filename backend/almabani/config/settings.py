@@ -67,16 +67,23 @@ class Settings(BaseSettings):
     
     # ==================== Vector Search Settings ====================
     similarity_threshold: float = 0.5
-    top_k: int = 6
+    top_k: int = 6  # Rate filler default
     
     # ==================== Processing Settings ====================
     batch_size: int = 500
     max_workers: int = 200
     pinecone_batch_size: int = 300
+    max_concurrent: int = 20  # Max concurrent matching tasks
     
     # ==================== Rate Limits ====================
     embeddings_rpm: int = 3000
     chat_rpm: int = 5000
+    
+    # ==================== Price Code Settings ====================
+    pricecode_index_name: str = 'almabani-pricecode'
+    pricecode_top_k: int = 20  # Price code uses more candidates
+    pricecode_batch_size: int = 100
+    pricecode_max_concurrent: int = 20
     
     # ==================== Logging Settings ====================
     log_level: str = 'INFO'

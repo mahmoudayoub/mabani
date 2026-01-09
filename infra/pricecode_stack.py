@@ -115,6 +115,10 @@ class PriceCodeStack(Stack):
                 "STORAGE_TYPE": "s3",
                 "S3_BUCKET_NAME": bucket.bucket_name,
                 "AWS_REGION": self.region,
+                # Price code settings (can override via env)
+                "PRICECODE_TOP_K": os.getenv("PRICECODE_TOP_K", "20"),
+                "PRICECODE_BATCH_SIZE": os.getenv("PRICECODE_BATCH_SIZE", "100"),
+                "PRICECODE_MAX_CONCURRENT": os.getenv("PRICECODE_MAX_CONCURRENT", "20"),
             },
             secrets=secrets,
             command=["python3", "pricecode_worker.py"]

@@ -176,7 +176,7 @@ class PriceCodePipeline:
         output_file: Optional[Path] = None,
         namespace: str = "",
         source_files: Optional[List[str]] = None,
-        max_concurrent: int = 20
+        max_concurrent: int = None
     ) -> Dict[str, Any]:
         """
         Process an Excel file to allocate price codes.
@@ -184,7 +184,13 @@ class PriceCodePipeline:
         Args:
             source_files: Optional list of source files to filter by, e.g., ["AI Codes - Civil"]
                           If None, searches all indexed price codes.
+            max_concurrent: Max concurrent matching tasks (from settings if None)
         """
+        # Load max_concurrent from settings if not provided
+        if max_concurrent is None:
+            from almabani.config.settings import get_settings
+            max_concurrent = get_settings().pricecode_max_concurrent
+        
         start_time = datetime.now()
         
         if output_file is None:

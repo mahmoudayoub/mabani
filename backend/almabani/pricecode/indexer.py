@@ -90,13 +90,17 @@ class PriceCodeIndexer:
         self,
         records: List[Dict[str, Any]],
         namespace: str = "",
-        batch_size: int = 100
+        batch_size: int = None
     ) -> int:
         """
         Embed and upsert records to Pinecone using native async.
         
         Returns: Number of vectors indexed
         """
+        # Load batch_size from settings if not provided
+        if batch_size is None:
+            from almabani.config.settings import get_settings
+            batch_size = get_settings().pricecode_batch_size
         if not records:
             logger.warning("No records to index")
             return 0

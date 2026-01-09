@@ -29,13 +29,17 @@ class PriceCodeMatcher:
         self,
         async_openai_client,
         embeddings_service,
-        top_k: int = 20,
-        model: str = "gpt-4o-mini"
+        top_k: int = None,
+        model: str = None
     ):
+        # Load defaults from settings if not provided
+        from almabani.config.settings import get_settings
+        settings = get_settings()
+        
         self.openai_client = async_openai_client
         self.embeddings_service = embeddings_service
-        self.top_k = top_k
-        self.model = model
+        self.top_k = top_k if top_k is not None else settings.pricecode_top_k
+        self.model = model if model is not None else settings.openai_chat_model
     
     async def search_candidates(
         self,

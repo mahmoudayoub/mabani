@@ -161,7 +161,7 @@ async def process_allocate(input_path: Path, storage):
         estimate_data = {
             "total_items": total_items,
             "estimated_seconds": estimated_seconds,
-            "started_at": datetime.now().isoformat(),
+            "started_at": datetime.utcnow().isoformat(),  # UTC per spec
             "filename": input_path.stem,
             "task_arn": task_arn,
             "cluster_name": cluster_name
@@ -211,8 +211,8 @@ async def process_allocate(input_path: Path, storage):
             max_concurrent=20
         )
         
-        # Upload result
-        s3_key = f"output/pricecode/{output_filename}"
+        # Upload result to fills folder (spec: input/pricecode/fills/)
+        s3_key = f"input/pricecode/fills/{output_filename}"
         storage.upload_file(output_path, s3_key)
         logger.info(f"Uploaded result: {s3_key}")
         

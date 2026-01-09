@@ -38,17 +38,30 @@ class AsyncVectorStoreService:
         """Async context manager entry - initialize async client."""
         from pinecone import PineconeAsyncio
         
+        # Create async client as context manager
         self._pc = PineconeAsyncio(api_key=self.api_key)
-        self._index = self._pc.Index(self.index_name)
-        logger.info(f"Connected to async Pinecone index: {self.index_name}")
+        # Enter the PineconeAsyncio context manager
+        await self._pc.__aenter__()
+        
+        # Get index host URL from index name
+        index_desc = await self._pc.describe_index(name=self.index_name)
+        host = index_desc.host
+        
+        # Create async index client using host URL
+        self._index = self._pc.IndexAsyncio(host=host)
+        await self._index.__aenter__()
+        
+        logger.info(f"Connected to async Pinecone index: {self.index_name} at {host}")
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit - cleanup."""
-        if self._pc:
-            await self._pc.close()
-            self._pc = None
+        if self._index:
+            await self._index.__aexit__(exc_type, exc_val, exc_tb)
             self._index = None
+        if self._pc:
+            await self._pc.__aexit__(exc_type, exc_val, exc_tb)
+            self._pc = None
         return False
     
     async def query(

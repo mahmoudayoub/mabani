@@ -136,6 +136,7 @@ export interface PriceCodeOutputFile {
     filename: string;
     size: number;
     lastModified: string;
+    downloadUrl: string;
 }
 
 /**

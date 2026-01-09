@@ -41,8 +41,7 @@ const CodeAllocation: React.FC = () => {
 
     const handleViewSummary = async (file: PriceCodeOutputFile) => {
         try {
-            const { url } = await getPriceCodeDownloadUrl(file.filename);
-            const text = await fetchTextContent(url);
+            const text = await fetchTextContent(file.downloadUrl);
             setViewTitle(file.filename);
             setViewContent(text);
         } catch (error) {
@@ -633,14 +632,7 @@ const CodeAllocation: React.FC = () => {
                                                 </button>
                                             )}
                                             <button
-                                                onClick={async () => {
-                                                    try {
-                                                        const { url } = await getPriceCodeDownloadUrl(file.filename);
-                                                        window.open(url, '_blank');
-                                                    } catch (error) {
-                                                        console.error('Download failed:', error);
-                                                    }
-                                                }}
+                                                onClick={() => window.open(file.downloadUrl, '_blank')}
                                                 className="text-blue-600 hover:text-blue-800 text-sm"
                                             >
                                                 📥 Download

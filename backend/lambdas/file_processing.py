@@ -471,26 +471,41 @@ def pricecode_download(event, context):
         return create_error_response(500, "Server configuration error: PRICECODE_BUCKET not set")
     
     filename = unquote(filename)
-    filename_base = filename.replace('.xlsx', '').replace('_pricecode', '')
-    output_key = f"output/pricecode/fills/{filename_base}_pricecode.xlsx"
+    output_prefix = "output/pricecode/fills/"
     
-    try:
-        # Check if file exists
-        s3_client.head_object(Bucket=PRICECODE_BUCKET, Key=output_key)
+    # Try multiple key possibilities
+    # 1. Exact match (e.g. for .txt files)
+    # 2. Standard pricecode format (for base names)
+    keys_to_try = [
+        f"{output_prefix}{filename}",
+    ]
+    
+    if not filename.endswith('_pricecode.xlsx'):
+        base = filename.replace('.xlsx', '').replace('_pricecode', '')
+        keys_to_try.append(f"{output_prefix}{base}_pricecode.xlsx")
         
+    found_key = None
+    for key in keys_to_try:
+        try:
+            s3_client.head_object(Bucket=PRICECODE_BUCKET, Key=key)
+            found_key = key
+            break
+        except s3_client.exceptions.ClientError:
+            continue
+            
+    if not found_key:
+        return create_response(404, {"error": "Output file not found"})
+        
+    try:
         presigned_url = s3_client.generate_presigned_url(
             ClientMethod="get_object",
             Params={
                 "Bucket": PRICECODE_BUCKET,
-                "Key": output_key
+                "Key": found_key
             },
             ExpiresIn=3600
         )
-        return create_response(200, {"url": presigned_url, "key": output_key, "filename": f"{filename_base}_pricecode.xlsx"})
-    except s3_client.exceptions.ClientError as e:
-        if e.response['Error']['Code'] == '404':
-            return create_response(404, {"error": "Output file not found"})
-        raise
+        return create_response(200, {"url": presigned_url, "key": found_key, "filename": found_key.split('/')[-1]})
     except Exception as e:
         return create_error_response(500, f"Failed to generate download URL: {str(e)}")
 
@@ -562,15 +577,29 @@ def list_pricecode_output_files(event, context):
         for obj in response.get("Contents", []):
             key = obj["Key"]
             # Skip directory marker
-            if key.endswith("/"):
+            if key.endswith("/") or key == "output/pricecode/fills/":
                 continue
             
+            # Generate presigned URL
+            try:
+                download_url = s3_client.generate_presigned_url(
+                    ClientMethod="get_object",
+                    Params={
+                        "Bucket": PRICECODE_BUCKET,
+                        "Key": key
+                    },
+                    ExpiresIn=3600
+                )
+            except Exception:
+                download_url = ""
+
             filename = key.split("/")[-1]
             files.append({
                 "key": key,
                 "filename": filename,
                 "size": obj["Size"],
-                "lastModified": obj["LastModified"].isoformat()
+                "lastModified": obj["LastModified"].isoformat(),
+                "downloadUrl": download_url
             })
         
         # Sort by last modified, newest first

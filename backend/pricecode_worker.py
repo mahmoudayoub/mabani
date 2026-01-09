@@ -211,8 +211,8 @@ async def process_allocate(input_path: Path, storage):
             max_concurrent=20
         )
         
-        # Upload result to fills folder (spec: input/pricecode/fills/)
-        s3_key = f"input/pricecode/fills/{output_filename}"
+        # Upload result to fills folder
+        s3_key = f"output/pricecode/fills/{output_filename}"
         storage.upload_file(output_path, s3_key)
         logger.info(f"Uploaded result: {s3_key}")
         

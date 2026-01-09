@@ -472,7 +472,7 @@ def pricecode_download(event, context):
     
     filename = unquote(filename)
     filename_base = filename.replace('.xlsx', '').replace('_pricecode', '')
-    output_key = f"output/pricecode/{filename_base}_pricecode.xlsx"
+    output_key = f"input/pricecode/fills/{filename_base}_pricecode.xlsx"
     
     try:
         # Check if file exists

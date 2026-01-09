@@ -79,7 +79,7 @@ export const getPriceCodeStatus = async (filename: string): Promise<PriceCodeEst
     const headers = await getAuthHeaders();
     const filenameBase = filename.replace('.xlsx', '').replace('_pricecode', '');
 
-    const response = await fetch(`${API_BASE_URL}/pricecode/status/${encodeURIComponent(filenameBase)}`, {
+    const response = await fetch(`${API_BASE_URL}/pricecode/status/${encodeURI(filenameBase)}`, {
         method: 'GET',
         headers: headers,
     });
@@ -99,7 +99,7 @@ export const getPriceCodeDownloadUrl = async (filename: string): Promise<{ url: 
     const headers = await getAuthHeaders();
     const filenameBase = filename.replace('.xlsx', '').replace('_pricecode', '');
 
-    const response = await fetch(`${API_BASE_URL}/pricecode/download/${encodeURIComponent(filenameBase)}`, {
+    const response = await fetch(`${API_BASE_URL}/pricecode/download/${encodeURI(filenameBase)}`, {
         method: 'GET',
         headers: headers,
     });
@@ -183,7 +183,7 @@ export const deletePriceCodeEstimate = async (filename: string): Promise<void> =
     const headers = await getAuthHeaders();
     const filenameBase = filename.replace('.xlsx', '').replace('_pricecode', '');
 
-    const response = await fetch(`${API_BASE_URL}/pricecode/estimate/${encodeURIComponent(filenameBase)}`, {
+    const response = await fetch(`${API_BASE_URL}/pricecode/estimate/${encodeURI(filenameBase)}`, {
         method: 'DELETE',
         headers: headers,
     });
@@ -218,4 +218,12 @@ export const uploadPriceCodeFile = async (
     }
 
     return key;
+};
+
+export const fetchTextContent = async (url: string): Promise<string> => {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch text content: ${response.statusText}`);
+    }
+    return await response.text();
 };

@@ -7,6 +7,7 @@ import {
     listPriceCodeOutputFiles,
     listActivePriceCodeJobs,
     deletePriceCodeEstimate,
+    fetchTextContent,
     PriceCodeEstimate,
     PriceCodeOutputFile
 } from '../services/priceCodeService';
@@ -35,6 +36,20 @@ const CodeAllocation: React.FC = () => {
     const [completedFilePath, setCompletedFilePath] = useState<string | null>(null);
     const [resultData, setResultData] = useState<{ matched: number; not_matched: number; match_rate: number } | null>(null);
     const [showSummary, setShowSummary] = useState(false);
+    const [viewContent, setViewContent] = useState<string | null>(null);
+    const [viewTitle, setViewTitle] = useState<string>('');
+
+    const handleViewSummary = async (file: PriceCodeOutputFile) => {
+        try {
+            const { url } = await getPriceCodeDownloadUrl(file.filename);
+            const text = await fetchTextContent(url);
+            setViewTitle(file.filename);
+            setViewContent(text);
+        } catch (error) {
+            console.error('Failed to view file:', error);
+            alert('Failed to view file content.');
+        }
+    };
 
     // Available Price Codes (for allocation mode)
     const [availableCodes, setAvailableCodes] = useState<string[]>([]);
@@ -608,19 +623,29 @@ const CodeAllocation: React.FC = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={async () => {
-                                                try {
-                                                    const { url } = await getPriceCodeDownloadUrl(file.filename);
-                                                    window.open(url, '_blank');
-                                                } catch (error) {
-                                                    console.error('Download failed:', error);
-                                                }
-                                            }}
-                                            className="text-blue-600 hover:text-blue-800 text-sm"
-                                        >
-                                            📥 Download
-                                        </button>
+                                        <div className="flex items-center space-x-3">
+                                            {file.filename.endsWith('.txt') && (
+                                                <button
+                                                    onClick={() => handleViewSummary(file)}
+                                                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                                >
+                                                    View
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const { url } = await getPriceCodeDownloadUrl(file.filename);
+                                                        window.open(url, '_blank');
+                                                    } catch (error) {
+                                                        console.error('Download failed:', error);
+                                                    }
+                                                }}
+                                                className="text-blue-600 hover:text-blue-800 text-sm"
+                                            >
+                                                📥 Download
+                                            </button>
+                                        </div>
                                     </li>
                                 ))}
                             </ul>
@@ -629,10 +654,11 @@ const CodeAllocation: React.FC = () => {
                 )}
 
                 {/* Summary Modal */}
-                {resultData && showSummary && (
+                {/* Summary Modal */}
+                {((resultData && showSummary) || viewContent) && (
                     <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
                         <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => setShowSummary(false)}></div>
+                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => { setShowSummary(false); setViewContent(null); }}></div>
                             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
                             <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
                                 <div>
@@ -643,35 +669,43 @@ const CodeAllocation: React.FC = () => {
                                     </div>
                                     <div className="mt-3 text-center sm:mt-5">
                                         <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-                                            Allocation Summary
+                                            {viewContent ? viewTitle : 'Allocation Summary'}
                                         </h3>
                                         <div className="mt-4 text-left">
-                                            <div className="bg-gray-50 rounded-lg p-4">
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <p className="text-sm font-medium text-gray-500">Total Items</p>
-                                                        <p className="mt-1 text-2xl font-semibold text-gray-900">{resultData.matched + resultData.not_matched}</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-medium text-gray-500">Match Rate</p>
-                                                        <p className={`mt-1 text-2xl font-semibold ${resultData.match_rate > 0.8 ? 'text-green-600' :
-                                                            resultData.match_rate > 0.5 ? 'text-yellow-600' : 'text-red-600'
-                                                            }`}>
-                                                            {(resultData.match_rate * 100).toFixed(1)}%
-                                                        </p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-medium text-gray-500">Matched</p>
-                                                        <p className="mt-1 text-lg font-medium text-green-600">{resultData.matched}</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-medium text-gray-500">Not Matched</p>
-                                                        <p className="mt-1 text-lg font-medium text-red-600">{resultData.not_matched}</p>
+                                            {viewContent ? (
+                                                <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-auto">
+                                                    <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
+                                                        {viewContent}
+                                                    </pre>
+                                                </div>
+                                            ) : resultData ? (
+                                                <div className="bg-gray-50 rounded-lg p-4">
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500">Total Items</p>
+                                                            <p className="mt-1 text-2xl font-semibold text-gray-900">{resultData.matched + resultData.not_matched}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500">Match Rate</p>
+                                                            <p className={`mt-1 text-2xl font-semibold ${resultData.match_rate > 0.8 ? 'text-green-600' :
+                                                                resultData.match_rate > 0.5 ? 'text-yellow-600' : 'text-red-600'
+                                                                }`}>
+                                                                {(resultData.match_rate * 100).toFixed(1)}%
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500">Matched</p>
+                                                            <p className="mt-1 text-lg font-medium text-green-600">{resultData.matched}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500">Not Matched</p>
+                                                            <p className="mt-1 text-lg font-medium text-red-600">{resultData.not_matched}</p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
+                                            ) : null}
 
-                                            {completedFilePath && (
+                                            {!viewContent && completedFilePath && (
                                                 <div className="mt-4 flex justify-center">
                                                     <button
                                                         type="button"
@@ -689,7 +723,7 @@ const CodeAllocation: React.FC = () => {
                                     <button
                                         type="button"
                                         className="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm"
-                                        onClick={() => setShowSummary(false)}
+                                        onClick={() => { setShowSummary(false); setViewContent(null); }}
                                     >
                                         Close
                                     </button>

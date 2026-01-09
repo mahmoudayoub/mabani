@@ -196,10 +196,10 @@ class PriceCodePipeline:
         if output_file is None:
             output_file = input_file.parent / f"{input_file.stem}_pricecode.xlsx"
         
-        # Read Excel
+        # Read Excel using excel_io (the I/O helper in ExcelParser)
         logger.info(f"Reading {input_file}...")
         sheets_data = await asyncio.to_thread(
-            self.excel_parser.read_excel, 
+            self.excel_parser.excel_io.read_excel, 
             str(input_file)
         )
         
@@ -207,8 +207,8 @@ class PriceCodePipeline:
         sheet_name = next(iter(sheets_data.keys()))
         df, header_row_idx = sheets_data[sheet_name]
         
-        # Detect columns
-        columns = self.excel_parser.detect_columns(df)
+        # Detect columns using excel_io
+        columns = self.excel_parser.excel_io.detect_columns(df)
         logger.info(f"Detected columns: {columns}")
         
         # Detect Code column for output

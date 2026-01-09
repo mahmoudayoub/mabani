@@ -171,6 +171,8 @@ class PriceCodePipeline:
         lines.append(f"  Total Items:     {report['total_items']}")
         lines.append(f"  Matched:         {report['matched']}")
         lines.append(f"  Not Matched:     {report['not_matched']}")
+        if report.get('errors', 0) > 0:
+            lines.append(f"  Errors:          {report['errors']}")
         lines.append("")
         
         # Success rate
@@ -431,10 +433,12 @@ class PriceCodePipeline:
         elapsed = (datetime.now() - start_time).total_seconds()
         
         # Build report dictionary first so it can be passed to write_results
+        error_count = sum(1 for _, res in results if str(res.get('reason', '')).startswith('LLM error'))
         report = {
             "total_items": len(items),
             "matched": sum(1 for _, res in results if res['matched']),
             "not_matched": sum(1 for _, res in results if not res['matched']),
+            "errors": error_count,
             "match_rate": sum(1 for _, res in results if res['matched']) / len(items) if items else 0,
             "output_file": str(output_file),
             "elapsed_seconds": elapsed,
@@ -450,7 +454,7 @@ class PriceCodePipeline:
             results,
             columns,
             header_row_idx,
-            report  # Pass report for summary sheet
+            report  # Pass report for summary sheet 
         )
         
         # Generate and save summary file

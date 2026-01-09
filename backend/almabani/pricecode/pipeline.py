@@ -46,7 +46,8 @@ class PriceCodePipeline:
         sheet_name: str,
         results: List[Tuple[Dict[str, Any], Dict[str, Any]]],
         columns: Dict[str, str],
-        header_row_idx: int
+        header_row_idx: int,
+        report: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Write results to Excel with color coding and reference columns.

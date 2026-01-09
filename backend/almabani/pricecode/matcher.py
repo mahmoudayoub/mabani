@@ -128,7 +128,7 @@ class PriceCodeMatcher:
                         candidates=candidates_text
                     )}
                 ],
-                temperature=0.1,
+                temperature=1.0 if self.model and self.model.startswith(('o1', 'o3')) else 0.1,
                 response_format={"type": "json_object"}
             )
             

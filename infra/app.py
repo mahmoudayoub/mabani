@@ -8,12 +8,15 @@ from dotenv import load_dotenv
 # .env is in parent directory relative to infra/
 # We moved env to backend/env
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend', 'env')
-load_dotenv(env_path)
-
-# Also check .env file if env was just a flat file without .env extension
-if not os.path.exists(env_path):
+if os.path.exists(env_path):
+    load_dotenv(env_path, override=True)
+else:
+    # Fallback to root .env
     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
-    load_dotenv(env_path)
+    load_dotenv(env_path, override=True)
+
+print(f"Loaded environment from: {env_path}")
+print(f"OPENAI_CHAT_MODEL: {os.getenv('OPENAI_CHAT_MODEL')}")
 
 app = cdk.App()
 account = '239146712026'

@@ -151,7 +151,7 @@ OUTPUT JSON FORMAT:
 
         try:
             response = await self.openai_client.chat.completions.create(
-                model=self.model or "gpt-4o",
+                model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}

@@ -418,10 +418,19 @@ class PriceCodePipeline:
         
         async def process_item(item, vs):
             async with semaphore:
-                # Build search text with hierarchy context
-                search_text = self.build_search_text(item)
-                # Pass vector store to reuse connection
-                result = await self.matcher.match(search_text, namespace, filter_dict, vector_store=vs)
+                # Pass structured context to matcher
+                result = await self.matcher.match(
+                    description=item.get('description', ''),
+                    namespace=namespace,
+                    filter_dict=filter_dict,
+                    vector_store=vs,
+                    # New context fields
+                    parent=item.get('parent'),
+                    grandparent=item.get('grandparent'),
+                    unit=item.get('unit'),
+                    item_code=item.get('item_code'),
+                    category_path=item.get('category_path')
+                )
                 return item, result
         
         # Use shared vector store connection for all items

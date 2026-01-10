@@ -89,7 +89,8 @@ class PriceCodeMatcher:
                 "price_code": metadata.get("price_code", ""),
                 "description": metadata.get("description", ""),
                 "category": metadata.get("category", ""),
-                "score": score
+                "score": score,
+                "metadata": metadata
             })
         
         return candidates
@@ -102,42 +103,58 @@ class PriceCodeMatcher:
         return "\n".join(lines)
     
     async def llm_match(
-        self,
-        description: str,
-        candidates: List[Dict[str, Any]]
+        self, 
+        description: str, 
+        candidates: List[Dict[str, Any]],
+        parent: Optional[str] = None,
+        grandparent: Optional[str] = None,
+        unit: Optional[str] = None,
+        item_code: Optional[str] = None,
+        category_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Use LLM to determine if any candidate matches the description.
-        
-        Returns:
-        {
-            "matched": bool,
-            "price_code": str or None,
-            "price_description": str or None,
-            "confidence": float,
-            "reason": str
-        }
+        Ask LLM to identify the best match using strict structured prompts.
         """
         if not candidates:
-            return {
-                "matched": False,
-                "price_code": None,
-                "price_description": None,
-                "confidence": 0.0,
-                "reason": "No candidates found in vector search"
-            }
+            return {"matched": False, "reason": "No candidates"}
+
+        # Build prompt using helper methods
+        target_info = self._build_target_info(description, unit, item_code, parent, grandparent, category_path)
+        candidates_text = self._build_candidates_text(candidates)
         
-        candidates_text = self.format_candidates(candidates)
+        system_prompt = (
+            "You are a Price Code allocation expert. "
+            "Your task is to identify the correct Price Code for a BOQ item from a list of candidates.\n"
+            "Rules:\n"
+            "1. Analyze the Target Item (Hierarchy, Description, Unit) and compare with Candidates.\n"
+            "2. Select the candidate (by Index) that represents the SAME work item.\n"
+            "3. If no candidate is a valid match, return matched=false.\n"
+            "4. Return strict JSON."
+        )
         
+        user_prompt = f"""TARGET ITEM:
+{target_info}
+
+CANDIDATES:
+{candidates_text}
+
+Analyze the candidates. Check hierarchy description overlap.
+Identify the best match index (1-based from the list above) or determining if none match.
+
+OUTPUT JSON FORMAT:
+{{
+    "matched": true/false,
+    "match_index": 1,  // 1-based index (Required if matched=true)
+    "reason": "Short explanation"
+}}
+"""
+
         try:
             response = await self.openai_client.chat.completions.create(
-                model=self.model,
+                model=self.openai_chat_model or "gpt-4o",
                 messages=[
-                    {"role": "system", "content": PRICECODE_MATCH_SYSTEM},
-                    {"role": "user", "content": PRICECODE_MATCH_USER.format(
-                        description=description,
-                        candidates=candidates_text
-                    )}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
                 temperature=1.0,
                 response_format={"type": "json_object"}
@@ -145,97 +162,149 @@ class PriceCodeMatcher:
             
             content = response.choices[0].message.content
             result = json.loads(content)
-            # Find the matched candidate to extract metadata
-            matched_candidate = None
-            if result.get("matched") and result.get("price_code"):
-                code = result["price_code"]
-                # Look for exact match first
-                for cand in candidates:
-                    if cand["metadata"].get("price_code") == code:
-                        matched_candidate = cand
-                        break
             
-            # Extract reference metadata
-            ref_sheet = None
-            ref_category = None
-            ref_row = None
+            # Find the matched candidate to extract metadata using INDEX
+            if result.get("matched") and result.get("match_index"):
+                idx = result["match_index"]
+                if isinstance(idx, int) and 1 <= idx <= len(candidates):
+                    # Candidates are 1-based in prompt, 0-based in list
+                    cand = candidates[idx - 1]
+                    
+                    # Merge metadata
+                    result["price_code"] = cand.get("price_code")
+                    result["price_description"] = cand.get("description")
+                    result["score"] = cand.get("score")
+                    
+                    # Extract reference metadata if present
+                    meta = cand.get("metadata", {}) or {}
+                    result["reference_sheet"] = meta.get("reference_sheet")
+                    result["reference_category"] = meta.get("reference_category")
+                    result["reference_row"] = meta.get("reference_row")
+                else:
+                    # Invalid index
+                    result["matched"] = False
+                    result["reason"] = f"LLM returned invalid index: {idx}"
             
-            if matched_candidate:
-                meta = matched_candidate["metadata"]
-                ref_sheet = meta.get("reference_sheet") or meta.get("category")
-                ref_category = meta.get("reference_category") or meta.get("category")
-                ref_row = meta.get("reference_row")
-
-            return {
-                "matched": result.get("matched", False),
-                "price_code": result.get("price_code"),
-                "price_description": result.get("price_description"),
-                "confidence": result.get("confidence", 0.0),
-                "reason": result.get("reason", ""),
-                # Add reference metadata
-                "reference_sheet": ref_sheet,
-                "reference_category": ref_category,
-                "reference_row": ref_row
-            }
-            
+            return result
+        
         except Exception as e:
-            logger.error(f"LLM matching error: {e}")
+            logger.error(f"LLM match error: {e}")
             return {
                 "matched": False,
-                "price_code": None,
-                "price_description": None,
-                "confidence": 0.0,
                 "reason": f"LLM error: {str(e)}"
             }
+
+    def _build_target_info(
+        self,
+        description: str,
+        unit: Optional[str],
+        item_code: Optional[str],
+        parent: Optional[str],
+        grandparent: Optional[str],
+        category_path: Optional[str] = None
+    ) -> str:
+        """
+        Build target item information string for LLM prompts.
+        Structure matches the unit rate pipeline logic.
+        """
+        parts = []
+        
+        # Build hierarchy string
+        hierarchy_parts = []
+        if grandparent:
+            hierarchy_parts.append(str(grandparent))
+        if parent:
+            hierarchy_parts.append(str(parent))
+        if hierarchy_parts:
+            parts.append(f"Hierarchy: {' > '.join(hierarchy_parts)}")
+        
+        # Context tail from category path
+        if category_path:
+             parts.append(f"Context: {category_path}")
+
+        # Description (required)
+        parts.append(f"Description: {description}")
+        
+        # Unit (optional for price code but good context)
+        if unit:
+            parts.append(f"Unit: {unit}")
+        
+        # Item code (optional)
+        if item_code:
+            parts.append(f"Item Code: {item_code}")
+        
+        return '\n'.join(parts)
     
+    def _build_candidates_text(self, candidates: List[Dict]) -> str:
+        """
+        Build candidates text for LLM prompts.
+        Format: [Index] [Code] Description
+        """
+        lines = []
+        for i, cand in enumerate(candidates, 1):
+            code = cand.get('price_code', 'NO_CODE')
+            desc = cand.get('description', '')
+            lines.append(f"[{i}] [{code}] {desc}")
+        return "\n".join(lines)
+
+    
+            
     async def match(
         self,
         description: str,
         namespace: str = "",
         filter_dict: Optional[Dict[str, Any]] = None,
-        vector_store: Any = None
+        vector_store: Any = None,
+        # New context fields
+        parent: Optional[str] = None,
+        grandparent: Optional[str] = None,
+        unit: Optional[str] = None,
+        item_code: Optional[str] = None,
+        category_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Match a description to a price code.
-        
-        Args:
-            filter_dict: Optional filter, e.g., {"source_file": {"$in": ["AI Codes - Civil"]}}
-            vector_store: Optional shared AsyncVectorStore instance
-        
-        Full flow:
-        1. Vector search for candidates (native async)
-        2. LLM decision
-        
-        Returns:
-        {
-            "matched": bool,
-            "price_code": str or None,
-            "price_description": str or None,
-            "confidence": float,
-            "reason": str,
-            "candidates_count": int
-        }
         """
-        logger.debug(f"Matching: {description[:100]}...")
+        # 1. Search candidates (using description + context)
+        # Enrich query with hierarchy if available (Unit Rate logic)
+        query_parts = []
+        hierarchy_parts = []
+        if grandparent:
+            hierarchy_parts.append(str(grandparent))
+        if parent:
+            hierarchy_parts.append(str(parent))
         
-        # Get candidates
+        if hierarchy_parts:
+            query_parts.append(f"Category: {' > '.join(hierarchy_parts)}")
+        
+        query_parts.append(description)
+        # Note: We don't add Unit to query for Price Code as candidates in index might not have unit embedding context
+        
+        search_query = ". ".join(query_parts)
+
         candidates = await self.search_candidates(
-            description, 
-            namespace, 
-            filter_dict,
+            search_query, 
+            namespace=namespace, 
+            filter_dict=filter_dict,
             vector_store=vector_store
         )
         
-        # LLM match
-        result = await self.llm_match(description, candidates)
-        result["candidates_count"] = len(candidates)
+        if not candidates:
+            return {
+                "matched": False,
+                "reason": "No candidates found"
+            }
         
-        if result["matched"]:
-            logger.info(f"Matched: {result['price_code']} (confidence: {result['confidence']:.2f})")
-        else:
-            logger.debug(f"No match found: {result['reason']}")
-        
-        return result
+        # 2. LLM Match with hierarchy context
+        return await self.llm_match(
+            description, 
+            candidates, 
+            parent=parent, 
+            grandparent=grandparent, 
+            unit=unit, 
+            item_code=item_code, 
+            category_path=category_path
+        )
     
     async def match_batch(
         self,

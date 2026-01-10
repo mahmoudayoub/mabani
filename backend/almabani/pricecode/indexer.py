@@ -143,7 +143,10 @@ class PriceCodeIndexer:
                     "price_code": record["price_code"],
                     "description": record["description"],
                     "category": record["category"],
-                    "source_file": record["source_file"]
+                    "source_file": record["source_file"],
+                    "reference_sheet": record.get("reference_sheet", ""),
+                    "reference_category": record.get("reference_category", ""),
+                    "reference_row": record.get("reference_row", 0)
                 }
             })
         

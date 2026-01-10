@@ -610,33 +610,32 @@ const CodeAllocation: React.FC = () => {
                         ) : outputFiles.length === 0 ? (
                             <p className="text-gray-400">No completed files yet.</p>
                         ) : (
-                            <ul className="divide-y divide-gray-100">
+                            <ul className="divide-y divide-gray-200">
                                 {outputFiles.map(file => (
-                                    <li key={file.key} className="py-3 flex items-center justify-between">
-                                        <div className="flex items-center">
-                                            <span className="text-2xl mr-3">📄</span>
-                                            <div>
-                                                <span className="font-medium text-gray-900">{file.filename}</span>
-                                                <p className="text-xs text-gray-500">
-                                                    {(file.size / 1024).toFixed(1)} KB • {new Date(file.lastModified).toLocaleString()}
-                                                </p>
-                                            </div>
+                                    <li key={file.key} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-gray-900 truncate">{file.filename}</p>
+                                            <p className="text-xs text-gray-500">
+                                                {new Date(file.lastModified).toLocaleString()} &bull; {(file.size / 1024).toFixed(1)} KB
+                                            </p>
                                         </div>
-                                        <div className="flex items-center space-x-3">
+                                        <div className="ml-4 flex-shrink-0 flex space-x-4">
                                             {file.filename.endsWith('.txt') && (
                                                 <button
                                                     onClick={() => handleViewSummary(file)}
-                                                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                                    className="font-medium text-indigo-600 hover:text-indigo-500 text-sm"
                                                 >
                                                     View
                                                 </button>
                                             )}
-                                            <button
-                                                onClick={() => window.open(file.downloadUrl, '_blank')}
-                                                className="text-blue-600 hover:text-blue-800 text-sm"
+                                            <a
+                                                href={file.downloadUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="font-medium text-primary-600 hover:text-primary-500 text-sm"
                                             >
-                                                📥 Download
-                                            </button>
+                                                Download
+                                            </a>
                                         </div>
                                     </li>
                                 ))}

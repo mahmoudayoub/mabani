@@ -14,6 +14,63 @@ import {
 
 type Mode = 'index' | 'allocate';
 
+interface PriceCodeSummary {
+    fileInfo: {
+        inputFile: string;
+        outputFile: string;
+        sheet: string;
+        generated: string;
+        processingTime: string;
+    };
+    stats: {
+        totalItems: number;
+        matched: number;
+        notMatched: number;
+        errors: number;
+        matchRate: string;
+    };
+}
+
+const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
+    try {
+        const lines = text.split('\n').map(l => l.trim());
+        const summary: any = { fileInfo: {}, stats: {} };
+        let currentSection = '';
+
+        lines.forEach(line => {
+            if (line.includes('FILE INFORMATION')) currentSection = 'info';
+            else if (line.includes('PROCESSING STATISTICS')) currentSection = 'stats';
+            else if (line.includes(':')) {
+                const [key, ...values] = line.split(':');
+                const value = values.join(':').trim();
+                const cleanKey = key.trim().toLowerCase();
+
+                if (currentSection === 'info') {
+                    if (cleanKey === 'input file') summary.fileInfo.inputFile = value;
+                    else if (cleanKey === 'output file') summary.fileInfo.outputFile = value;
+                    else if (cleanKey === 'sheet') summary.fileInfo.sheet = value;
+                    else if (cleanKey === 'generated') summary.fileInfo.generated = value;
+                    else if (cleanKey === 'processing time') summary.fileInfo.processingTime = value;
+                } else if (currentSection === 'stats') {
+                    if (cleanKey === 'total items') summary.stats.totalItems = parseInt(value) || 0;
+                    else if (cleanKey === 'matched') summary.stats.matched = parseInt(value) || 0;
+                    else if (cleanKey === 'not matched') summary.stats.notMatched = parseInt(value) || 0;
+                    else if (cleanKey === 'errors') summary.stats.errors = parseInt(value) || 0;
+                    else if (cleanKey === 'match rate') summary.stats.matchRate = value;
+                }
+            }
+        });
+
+        // Basic validation
+        if (!summary.stats.totalItems && !summary.fileInfo.inputFile) return null;
+
+        return summary as PriceCodeSummary;
+    } catch (e) {
+        console.error('Failed to parse summary:', e);
+        return null;
+    }
+};
+
 const CodeAllocation: React.FC = () => {
     // View State
     const [currentView, setCurrentView] = useState<'landing' | 'allocate' | 'index'>('landing');
@@ -37,13 +94,24 @@ const CodeAllocation: React.FC = () => {
     const [resultData, setResultData] = useState<{ matched: number; not_matched: number; match_rate: number } | null>(null);
     const [showSummary, setShowSummary] = useState(false);
     const [viewContent, setViewContent] = useState<string | null>(null);
+    const [viewSummaryData, setViewSummaryData] = useState<PriceCodeSummary | null>(null);
     const [viewTitle, setViewTitle] = useState<string>('');
 
     const handleViewSummary = async (file: PriceCodeOutputFile) => {
         try {
             const text = await fetchTextContent(file.downloadUrl);
-            setViewTitle(file.filename);
-            setViewContent(text);
+            const parsed = parsePriceCodeSummary(text);
+
+            if (parsed) {
+                setViewSummaryData(parsed);
+                setViewTitle('Allocation Summary');
+                setViewContent(null);
+            } else {
+                setViewContent(text);
+                setViewSummaryData(null);
+                setViewTitle(file.filename);
+            }
+            setShowSummary(true); // Ensure modal opens
         } catch (error) {
             console.error('Failed to view file:', error);
             alert('Failed to view file content.');
@@ -646,10 +714,10 @@ const CodeAllocation: React.FC = () => {
 
                 {/* Summary Modal */}
                 {/* Summary Modal */}
-                {((resultData && showSummary) || viewContent) && (
+                {((resultData && showSummary) || viewContent || viewSummaryData) && (
                     <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
                         <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => { setShowSummary(false); setViewContent(null); }}></div>
+                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => { setShowSummary(false); setViewContent(null); setViewSummaryData(null); }}></div>
                             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
                             <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
                                 <div>
@@ -660,10 +728,53 @@ const CodeAllocation: React.FC = () => {
                                     </div>
                                     <div className="mt-3 text-center sm:mt-5">
                                         <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-                                            {viewContent ? viewTitle : 'Allocation Summary'}
+                                            {viewTitle || 'Allocation Summary'}
                                         </h3>
                                         <div className="mt-4 text-left">
-                                            {viewContent ? (
+                                            {viewSummaryData ? (
+                                                <div className="space-y-4">
+                                                    <div className="bg-gray-50 rounded-lg p-4">
+                                                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">File Information</h4>
+                                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                                            <div><span className="text-gray-500">Input File:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.inputFile}</span></div>
+                                                            <div><span className="text-gray-500">Sheet:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.sheet}</span></div>
+                                                            <div className="col-span-2"><span className="text-gray-500">Generated:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.generated}</span></div>
+                                                            <div className="col-span-2"><span className="text-gray-500">Time:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.processingTime}</span></div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="bg-gray-50 rounded-lg p-4">
+                                                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Processing Statistics</h4>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500">Total Items</p>
+                                                                <p className="mt-1 text-2xl font-semibold text-gray-900">{viewSummaryData.stats.totalItems}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500">Match Rate</p>
+                                                                <p className={`mt-1 text-2xl font-semibold ${parseFloat(viewSummaryData.stats.matchRate) > 80 ? 'text-green-600' :
+                                                                        parseFloat(viewSummaryData.stats.matchRate) > 50 ? 'text-yellow-600' : 'text-red-600'
+                                                                    }`}>
+                                                                    {viewSummaryData.stats.matchRate}
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500">Matched</p>
+                                                                <p className="mt-1 text-lg font-medium text-green-600">{viewSummaryData.stats.matched}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500">Not Matched</p>
+                                                                <p className="mt-1 text-lg font-medium text-red-600">{viewSummaryData.stats.notMatched}</p>
+                                                            </div>
+                                                            {viewSummaryData.stats.errors > 0 && (
+                                                                <div className="col-span-2 mt-2 pt-2 border-t border-gray-200">
+                                                                    <p className="text-sm font-medium text-red-600">Errors: {viewSummaryData.stats.errors}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : viewContent ? (
                                                 <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-auto">
                                                     <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
                                                         {viewContent}
@@ -696,7 +807,7 @@ const CodeAllocation: React.FC = () => {
                                                 </div>
                                             ) : null}
 
-                                            {!viewContent && completedFilePath && (
+                                            {!viewContent && !viewSummaryData && completedFilePath && (
                                                 <div className="mt-4 flex justify-center">
                                                     <button
                                                         type="button"
@@ -714,7 +825,7 @@ const CodeAllocation: React.FC = () => {
                                     <button
                                         type="button"
                                         className="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm"
-                                        onClick={() => { setShowSummary(false); setViewContent(null); }}
+                                        onClick={() => { setShowSummary(false); setViewContent(null); setViewSummaryData(null); }}
                                     >
                                         Close
                                     </button>

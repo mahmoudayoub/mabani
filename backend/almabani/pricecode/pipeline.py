@@ -365,15 +365,44 @@ class PriceCodePipeline:
         logger.info(f"Detected columns: {columns}")
         
         # Detect Code column for output
-        # Strict detection to avoid grabbing "Item Code" or generic "Code" columns which are often source IDs
+        # Hierarchy of checks:
+        # 1. "Price Code" (Explicit)
+        # 2. "Code" (Generic) - but verified to NOT be the Item column
+        
+        detected_code_col = None
+        
+        # 1. Strict textual match first
         for col in df.columns:
             col_lower = str(col).lower()
             if 'price code' in col_lower:
-                columns['code'] = col
+                detected_code_col = col
                 break
         
-        # If 'Price Code' distinct column not found, we will create a new one in write_results
-        # rather than guessing 'Code' is the target.
+        # 2. Fallback to generic "Code" if no explicit "Price Code" found
+        if not detected_code_col:
+            for col in df.columns:
+                col_lower = str(col).lower()
+                # Must contain 'code' but NOT 'description' or 'item' (unless it's just 'code')
+                if 'code' in col_lower and 'description' not in col_lower and 'item' not in col_lower:
+                    # HEURISTIC CHECK:
+                    # Check first few non-null values. If they look like BOQ Item IDs (e.g. matches the Item column pattern), 
+                    # we risk skipping specific rows. 
+                    # However, user explicitly requested to consider "Code".
+                    # We will assume "Code" is the target unless it's obviously the Item Numbering column.
+                    
+                    # If we already identified an 'item' column, ensure this 'code' column isn't practically identical
+                    item_col_name = columns.get('item')
+                    if item_col_name and item_col_name != col:
+                         detected_code_col = col
+                         break
+                    elif not item_col_name:
+                         # If no item column found yet, this might be it, but we are looking for Price Code destination.
+                         # We'll take it as a candidate.
+                         detected_code_col = col
+                         break
+        
+        if detected_code_col:
+            columns['code'] = detected_code_col
         
         # Detect output Description column (different from input description)
         code_col_idx = list(df.columns).index(columns['code']) if columns.get('code') else None

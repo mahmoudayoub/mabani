@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     
     # ==================== OpenAI Settings ====================
     openai_embedding_model: str = 'text-embedding-3-small'
-    openai_chat_model: str = 'gpt-4o-mini'
+    openai_chat_model: str = 'gpt-5-mini-2025-08-07'
     openai_temperature: float = 1.0
     openai_max_retries: int = 3
     openai_timeout: int = 60

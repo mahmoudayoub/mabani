@@ -30,21 +30,23 @@ class PriceCodeIndexer:
     ):
         self.embeddings_service = embeddings_service
     
-    def read_price_codes_from_excel(self, file_path: Path) -> List[Dict[str, Any]]:
+    def yield_records_from_excel(self, file_path: Path, batch_size: int = 1000):
         """
-        Read price codes from Excel file.
+        Yield price codes from Excel file in batches.
         
         Expected columns: 'Price Code', 'Price Code Description'
         May have multiple sheets (categories like Civil, Electrical, etc.)
         """
-        records = []
         source_file = file_path.stem
+        records_batch = []
         
         try:
             xls = pd.ExcelFile(file_path)
             
             for sheet_name in xls.sheet_names:
                 logger.info(f"Reading sheet: {sheet_name}")
+                # Use stream-like reading if possible, but pandas reads whole sheet.
+                # Since sheets usually < memory limit, we focus on not accumulating ALL sheets.
                 df = pd.read_excel(xls, sheet_name=sheet_name)
                 
                 # Find the price code and description columns
@@ -71,24 +73,29 @@ class PriceCodeIndexer:
                     if not code or not description or code == 'nan':
                         continue
                     
-                    records.append({
+                    records_batch.append({
                         "price_code": code,
                         "description": description,
-                        "category": sheet_name,  # Keep legacy field for now
+                        "category": sheet_name,  # Keep legacy field
                         "source_file": source_file,
                         # New reference fields
                         "reference_sheet": sheet_name,
                         "reference_category": sheet_name,
-                        "reference_row": idx + 2  # 1-based, accounting for 0-index + 1 header (assuming header=0)
+                        "reference_row": idx + 2
                     })
+                    
+                    # Yield batch if full
+                    if len(records_batch) >= batch_size:
+                        yield records_batch
+                        records_batch = []
                 
-                logger.info(f"Extracted {len(records)} records from {sheet_name}")
+            # Yield remaining
+            if records_batch:
+                yield records_batch
         
         except Exception as e:
             logger.error(f"Error reading Excel file {file_path}: {e}")
             raise
-        
-        return records
     
     async def index_records(
         self,
@@ -157,9 +164,22 @@ class PriceCodeIndexer:
         namespace: str = ""
     ) -> int:
         """
-        Read Excel file and index all price codes.
+        Read Excel file and index all price codes using streaming to save memory.
         
         Returns: Number of vectors indexed
         """
-        records = self.read_price_codes_from_excel(file_path)
-        return await self.index_records(records, namespace=namespace)
+        from almabani.config.settings import get_settings
+        batch_size = get_settings().pricecode_batch_size or 100
+        
+        total_count = 0
+        # Use a slightly larger read batch for efficiency vs embedding batch
+        read_batch_size = batch_size * 5 
+        
+        logger.info(f"Starting streaming index of {file_path}")
+        
+        for batch in self.yield_records_from_excel(file_path, batch_size=read_batch_size):
+            count = await self.index_records(batch, namespace=namespace, batch_size=batch_size)
+            total_count += count
+            logger.info(f"Progress: {total_count} records indexed so far")
+            
+        return total_count

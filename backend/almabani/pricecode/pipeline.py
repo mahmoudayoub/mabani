@@ -365,11 +365,15 @@ class PriceCodePipeline:
         logger.info(f"Detected columns: {columns}")
         
         # Detect Code column for output
+        # Strict detection to avoid grabbing "Item Code" or generic "Code" columns which are often source IDs
         for col in df.columns:
             col_lower = str(col).lower()
-            if 'code' in col_lower and 'description' not in col_lower:
+            if 'price code' in col_lower:
                 columns['code'] = col
                 break
+        
+        # If 'Price Code' distinct column not found, we will create a new one in write_results
+        # rather than guessing 'Code' is the target.
         
         # Detect output Description column (different from input description)
         code_col_idx = list(df.columns).index(columns['code']) if columns.get('code') else None

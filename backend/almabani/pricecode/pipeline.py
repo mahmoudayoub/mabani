@@ -103,10 +103,10 @@ class PriceCodePipeline:
                     cell.value = result['price_code']
                 cell.fill = fill
             
-            # 2. Price Description
-            if desc_col_idx and result.get('price_description'):
-                cell = ws.cell(row=row_idx, column=desc_col_idx)
-                cell.value = result['price_description']
+            # 2. Price Description - DISABLED
+            # if desc_col_idx and result.get('price_description'):
+            #     cell = ws.cell(row=row_idx, column=desc_col_idx)
+            #     cell.value = result['price_description']
             
             # 3. Reference fields
             if result['matched']:
@@ -405,14 +405,15 @@ class PriceCodePipeline:
             columns['code'] = detected_code_col
         
         # Detect output Description column (different from input description)
-        code_col_idx = list(df.columns).index(columns['code']) if columns.get('code') else None
-        for col in df.columns:
-            col_lower = str(col).lower()
-            if 'description' in col_lower and col != columns.get('description'):
-                col_idx = list(df.columns).index(col)
-                if code_col_idx is not None and col_idx > code_col_idx:
-                    columns['code_description'] = col
-                    break
+        # DISABLED: User requested not to fill Price Description
+        # code_col_idx = list(df.columns).index(columns['code']) if columns.get('code') else None
+        # for col in df.columns:
+        #     col_lower = str(col).lower()
+        #     if 'description' in col_lower and col != columns.get('description'):
+        #         col_idx = list(df.columns).index(col)
+        #         if code_col_idx is not None and col_idx > code_col_idx:
+        #             columns['code_description'] = col
+        #             break
         
         # Build parent map (same hierarchy logic as rate filler)
         parent_map = await asyncio.to_thread(

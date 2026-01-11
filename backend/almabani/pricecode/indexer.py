@@ -132,7 +132,9 @@ class PriceCodeIndexer:
         # Prepare vectors for upsert
         vectors = []
         for idx, (record, embedding) in enumerate(zip(records, all_embeddings)):
-            vector_id = f"pc_{record['source_file']}_{record['category']}_{idx}"
+            # Use reference_row as the unique ID part (it's absolute Excel row)
+            ref_row = record.get('reference_row', idx)
+            vector_id = f"pc_{record['source_file']}_{record['category']}_{ref_row}"
             # Sanitize ID for Pinecone
             vector_id = vector_id.replace(' ', '_').replace('/', '_')[:512]
             

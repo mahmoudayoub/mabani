@@ -101,7 +101,8 @@ class PriceCodeIndexer:
         self,
         records: List[Dict[str, Any]],
         namespace: str = "",
-        batch_size: int = None
+        batch_size: int = None,
+        vector_store: Any = None
     ) -> int:
         """
         Embed and upsert records to Pinecone using native async.
@@ -153,12 +154,19 @@ class PriceCodeIndexer:
             })
         
         # Upsert to Pinecone using native async
-        async with get_async_vector_store() as vector_store:
+        if vector_store:
             count = await vector_store.upsert(
                 vectors=vectors,
                 namespace=namespace,
                 batch_size=batch_size
             )
+        else:
+            async with get_async_vector_store() as vs:
+                count = await vs.upsert(
+                    vectors=vectors,
+                    namespace=namespace,
+                    batch_size=batch_size
+                )
         
         logger.info(f"Successfully indexed {count} price codes")
         return count
@@ -182,9 +190,16 @@ class PriceCodeIndexer:
         
         logger.info(f"Starting streaming index of {file_path}")
         
-        for batch in self.yield_records_from_excel(file_path, batch_size=read_batch_size):
-            count = await self.index_records(batch, namespace=namespace, batch_size=batch_size)
-            total_count += count
-            logger.info(f"Progress: {total_count} records indexed so far")
+        # Open connection ONCE for the entire job
+        async with get_async_vector_store() as vector_store:
+            for batch in self.yield_records_from_excel(file_path, batch_size=read_batch_size):
+                count = await self.index_records(
+                    batch, 
+                    namespace=namespace, 
+                    batch_size=batch_size,
+                    vector_store=vector_store
+                )
+                total_count += count
+                logger.info(f"Progress: {total_count} records indexed so far")
             
         return total_count

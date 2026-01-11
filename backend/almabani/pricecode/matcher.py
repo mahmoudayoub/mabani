@@ -128,8 +128,9 @@ class PriceCodeMatcher:
             "Rules:\n"
             "1. Analyze the Target Item (Hierarchy, Description, Unit) and compare with Candidates.\n"
             "2. Select the candidate (by Index) that represents the SAME work item.\n"
-            "3. If no candidate is a valid match, return matched=false.\n"
-            "4. Return strict JSON."
+            "3. MATCHING IS STRICT: The Candidate Unit MUST be compatible with the TARGET UNIT. If units mismatch (e.g. m vs m2), it is NOT a match.\n"
+            "4. If no candidate is a valid match, return matched=false.\n"
+            "5. Return strict JSON."
         )
         
         user_prompt = f"""TARGET ITEM:
@@ -194,6 +195,19 @@ OUTPUT JSON FORMAT:
                 "reason": f"LLM error: {str(e)}"
             }
 
+    @staticmethod
+    def _context_tail_from_path(category_path: str) -> str:
+        """
+        Return a context string starting from the third level of the path (drop the first two segments).
+        If fewer than 3 segments exist, return the available tail.
+        """
+        if not category_path:
+            return ""
+        parts = [p.strip() for p in category_path.split('>') if p.strip()]
+        if len(parts) > 2:
+            parts = parts[2:]
+        return ' > '.join(parts)
+
     def _build_target_info(
         self,
         description: str,
@@ -220,14 +234,18 @@ OUTPUT JSON FORMAT:
         
         # Context tail from category path
         if category_path:
-             parts.append(f"Context: {category_path}")
+            context_tail = self._context_tail_from_path(category_path)
+            if context_tail:
+                parts.append(f"Context: {context_tail}")
 
         # Description (required)
         parts.append(f"Description: {description}")
         
-        # Unit (optional for price code but good context)
+        # Unit (required and emphasized - this is the TARGET UNIT that candidates must match)
         if unit:
-            parts.append(f"Unit: {unit}")
+            parts.append(f"TARGET UNIT: {unit}")
+        else:
+            parts.append("TARGET UNIT: (not specified)")
         
         # Item code (optional)
         if item_code:
@@ -278,7 +296,10 @@ OUTPUT JSON FORMAT:
             query_parts.append(f"Category: {' > '.join(hierarchy_parts)}")
         
         query_parts.append(description)
-        # Note: We don't add Unit to query for Price Code as candidates in index might not have unit embedding context
+        
+        # Add Unit to query for strict matching
+        if unit:
+            query_parts.append(f"Unit: {unit}")
         
         search_query = ". ".join(query_parts)
 

@@ -129,8 +129,10 @@ class PriceCodeMatcher:
             "1. Analyze the Target Item (Hierarchy, Description, Unit) and compare with Candidates.\n"
             "2. Select the candidate (by Index) that represents the SAME work item.\n"
             "3. MATCHING IS STRICT: The Candidate Unit MUST be compatible with the TARGET UNIT. If units mismatch (e.g. m vs m2), it is NOT a match.\n"
-            "4. If no candidate is a valid match, return matched=false.\n"
-            "5. Return strict JSON."
+            "4. NO ASSUMPTIONS: If the Target is vague (e.g. 'Excavation') and the Candidate is specific (e.g. 'Excavation depth 2m, in Rock'), you MUST REJECT it. Do NOT assume the Target implies the specific details.\n"
+            "5. FULL COVERAGE: The Candidate must not have mandatory constraints (ranges, types, distances) that are undefined in the Target.\n"
+            "6. If no candidate is valid, return matched=false.\n"
+            "7. Return strict JSON."
         )
         
         user_prompt = f"""TARGET ITEM:

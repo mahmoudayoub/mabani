@@ -75,19 +75,11 @@ class PriceCodePipeline:
         # Create output columns if they don't exist
         start_col = ws.max_column + 1
         
-        # Reference Sheet
-        ref_sheet_idx = start_col
-        ws.cell(row=header_row_idx + 1, column=ref_sheet_idx).value = "Ref Sheet"
+        # Reference Column (Consolidated)
+        ref_col_idx = start_col
+        ws.cell(row=header_row_idx + 1, column=ref_col_idx).value = "Reference"
         
-        # Reference Category
-        ref_cat_idx = start_col + 1
-        ws.cell(row=header_row_idx + 1, column=ref_cat_idx).value = "Ref Category"
-        
-        # Reference Row
-        ref_row_idx = start_col + 2
-        ws.cell(row=header_row_idx + 1, column=ref_row_idx).value = "Ref Row"
-        
-        logger.info(f"Created reference columns at indices {ref_sheet_idx}, {ref_cat_idx}, {ref_row_idx}")
+        logger.info(f"Created reference column at index {ref_col_idx}")
         
         # Write results
         for item, result in results:
@@ -108,16 +100,20 @@ class PriceCodePipeline:
             #     cell = ws.cell(row=row_idx, column=desc_col_idx)
             #     cell.value = result['price_description']
             
-            # 3. Reference fields
+            # 3. Reference fields (Consolidated)
             if result['matched']:
+                # Format: Source - Sheet - Description
+                # Note: source_file is the filename, reference_sheet is the tab name
+                parts = []
+                if result.get('source_file'):
+                    parts.append(str(result['source_file']))
                 if result.get('reference_sheet'):
-                    ws.cell(row=row_idx, column=ref_sheet_idx).value = result['reference_sheet']
+                    parts.append(str(result['reference_sheet']))
+                if result.get('price_description'):
+                    parts.append(str(result['price_description']))
                 
-                if result.get('reference_category'):
-                    ws.cell(row=row_idx, column=ref_cat_idx).value = result['reference_category']
-                
-                if result.get('reference_row'):
-                    ws.cell(row=row_idx, column=ref_row_idx).value = result['reference_row']
+                ref_text = " - ".join(parts)
+                ws.cell(row=row_idx, column=ref_col_idx).value = ref_text
             
             # 4. If not matched, color the Item Code cell red if exists
             if not result['matched'] and columns.get('item'):

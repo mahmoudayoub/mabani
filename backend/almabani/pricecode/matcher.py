@@ -178,6 +178,7 @@ OUTPUT JSON FORMAT:
                     
                     # Extract reference metadata if present
                     meta = cand.get("metadata", {}) or {}
+                    result["source_file"] = meta.get("source_file")
                     result["reference_sheet"] = meta.get("reference_sheet")
                     result["reference_category"] = meta.get("reference_category")
                     result["reference_row"] = meta.get("reference_row")

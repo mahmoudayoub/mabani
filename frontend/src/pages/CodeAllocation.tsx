@@ -752,9 +752,7 @@ const CodeAllocation: React.FC = () => {
                                                             </div>
                                                             <div>
                                                                 <p className="text-sm font-medium text-gray-500">Match Rate</p>
-                                                                <p className={`mt-1 text-2xl font-semibold ${parseFloat(viewSummaryData.stats.matchRate) > 80 ? 'text-green-600' :
-                                                                        parseFloat(viewSummaryData.stats.matchRate) > 50 ? 'text-yellow-600' : 'text-red-600'
-                                                                    }`}>
+                                                                <p className="mt-1 text-2xl font-semibold text-green-600">
                                                                     {viewSummaryData.stats.matchRate}
                                                                 </p>
                                                             </div>

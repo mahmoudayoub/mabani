@@ -1,75 +1,38 @@
 """
 LLM Prompts for Price Code matching.
+Updated to support strict specificity and two-level confidence (EXACT/HIGH).
 """
 
-PRICECODE_MATCH_SYSTEM = """You are a construction price code matching expert. Your task is to find an EXACT match between a BOQ item and standardized price codes.
+PRICECODE_MATCH_SYSTEM = (
+    "You are a Price Code allocation expert. "
+    "Your task is to identify the correct Price Code for a BOQ item from a list of candidates.\n"
+    "Rules:\n"
+    "1. Analyze the Target Item (Hierarchy, Description, Unit) and compare with Candidates.\n"
+    "2. Select the candidate (by Index) that represents the SAME work item.\n"
+    "3. MATCHING IS STRICT: The Candidate Unit MUST be compatible with the TARGET UNIT. If units mismatch (e.g. m vs m2), it is NOT a match.\n"
+    "4. NO ASSUMPTIONS: If the Target is vague (e.g. 'Excavation') and the Candidate is specific (e.g. 'Excavation depth 2m, in Rock'), you MUST REJECT it.\n"
+    "5. FULL COVERAGE: The Candidate must not have mandatory constraints that are undefined in the Target.\n"
+    "6. CONFIDENCE LEVELS:\n"
+    "   - 'EXACT' (Green): STRICT IDENTITY. All information in the Target is present in the Candidate, AND all information in the Candidate is present in the Target. No extra details on either side.\n"
+    "   - 'HIGH' (Yellow): Valid match, but asymmetric. Either the Candidate has extra non-conflicting info (e.g. brand, specific method) OR the Target has extra minor info not in the Candidate. Essential scope must still match.\n"
+    "7. If no candidate is valid, return matched=false.\n"
+    "8. Return strict JSON."
+)
 
-You will be given:
-1. A BOQ item description that needs a price code
-2. A list of candidate price codes with their descriptions (ranked by similarity)
+PRICECODE_MATCH_USER = """TARGET ITEM:
+{target_info}
 
-Your job is to determine if any candidate is an EXACT match for the BOQ item.
+CANDIDATES:
+{candidates_text}
 
-STRICT MATCHING RULES - ALL must be true for a match:
-1. SAME WORK TYPE: The work/activity must be identical (e.g., demolition, excavation, concrete)
-2. SAME MATERIAL: Materials must match exactly (e.g., hot mix asphalt, reinforced concrete)
-3. SAME SPECIFICATIONS: Dimensions, thicknesses, grades must be the same or compatible
-4. SAME METHOD: Installation/execution method must match
-5. SAME UNIT: Measurement units should align (m2, m3, lf, etc.)
+Analyze the candidates. Check hierarchy description overlap.
+Identify the best match index (1-based from the list above) or determining if none match.
 
-DO NOT MATCH if:
-- The candidate is a general/parent category and the BOQ item is specific
-- Specifications differ (e.g., 30cm vs 50cm thickness)
-- Materials differ (e.g., asphalt vs concrete)
-- The scope is different even if materials are similar
-
-WHEN IN DOUBT, RETURN NO_MATCH. It is better to have no match than a wrong match."""
-
-PRICECODE_MATCH_USER = """BOQ Item Description:
-{description}
-
-Candidate Price Codes (ranked by similarity):
-{candidates}
-
-Analyze each candidate carefully. Find an EXACT match where:
-- Work type is identical
-- Materials are the same
-- Specifications match
-- Method/process matches
-
-Return your response as JSON:
+OUTPUT JSON FORMAT:
 {{
-  "matched": true or false,
-  "price_code": "the matched code" or null if no match,
-  "price_description": "the matched description" or null if no match,
-  "confidence": 0.0 to 1.0,
-  "reason": "brief explanation - state what matches/differs between BOQ item and candidate"
-}}
-
-IMPORTANT: Only return matched=true if you find an EXACT match. If specs differ or you are unsure, return matched=false."""
-
-PRICECODE_BATCH_MATCH_SYSTEM = """You are a construction price code matching expert. You will match multiple BOQ items to price codes in one batch.
-
-STRICT MATCHING - Only match if:
-- Work type is identical
-- Materials are the same  
-- Specifications (dimensions, grades, methods) match exactly
-- Measurement units align
-
-WHEN IN DOUBT, RETURN NO_MATCH. Wrong matches are worse than no matches."""
-
-PRICECODE_BATCH_MATCH_USER = """Match the following BOQ items to price codes:
-
-{items}
-
-Return JSON array:
-[
-  {{
-    "item_index": 0,
     "matched": true/false,
-    "price_code": "code" or null,
-    "price_description": "description" or null,
-    "confidence": 0.0-1.0
-  }},
-  ...
-]"""
+    "match_index": 1,  // 1-based index (Required if matched=true)
+    "confidence_level": "EXACT" | "HIGH", // Required if matched=true
+    "reason": "Short explanation of why it matched and why that confidence level"
+}}
+"""

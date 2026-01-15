@@ -31,7 +31,8 @@ class PriceCodePipeline:
     """
     
     # Color coding
-    GREEN_FILL = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')  # Match
+    GREEN_FILL = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')  # Exact Match
+    YELLOW_FILL = PatternFill(start_color='FFFFE0', end_color='FFFFE0', fill_type='solid') # High Match
     RED_FILL = PatternFill(start_color='FFB6C1', end_color='FFB6C1', fill_type='solid')  # No match
     
     def __init__(self, matcher: PriceCodeMatcher):
@@ -79,14 +80,24 @@ class PriceCodePipeline:
         ref_col_idx = start_col
         ws.cell(row=header_row_idx + 1, column=ref_col_idx).value = "Reference"
         
-        logger.info(f"Created reference column at index {ref_col_idx}")
+        # Reason Column
+        reason_col_idx = start_col + 1
+        ws.cell(row=header_row_idx + 1, column=reason_col_idx).value = "Reason"
+        
+        logger.info(f"Created Reference column at {ref_col_idx}, Reason column at {reason_col_idx}")
         
         # Write results
         for item, result in results:
             row_idx = item['row_index'] + 1  # 1-based
             
-            # Fill color
-            fill = self.GREEN_FILL if result['matched'] else self.RED_FILL
+            # Determine fill color based on Match + Confidence
+            fill = self.RED_FILL
+            if result['matched']:
+                confidence = result.get('confidence_level', 'HIGH') # Default to HIGH/Yellow if missing
+                if str(confidence).upper() == 'EXACT':
+                    fill = self.GREEN_FILL
+                else:
+                    fill = self.YELLOW_FILL
             
             # 1. Price Code
             if code_col_idx:
@@ -115,7 +126,11 @@ class PriceCodePipeline:
                 ref_text = " - ".join(parts)
                 ws.cell(row=row_idx, column=ref_col_idx).value = ref_text
             
-            # 4. If not matched, color the Item Code cell red if exists
+            # 4. Reason Column (Always write if present, useful for debug)
+            if result.get('reason'):
+                ws.cell(row=row_idx, column=reason_col_idx).value = result['reason']
+            
+            # 5. If not matched, color the Item Code cell red if exists
             if not result['matched'] and columns.get('item'):
                 input_code_idx = get_col_idx(columns.get('item'))
                 if input_code_idx:
@@ -165,8 +180,10 @@ class PriceCodePipeline:
         lines.append("PROCESSING STATISTICS")
         lines.append("-" * 40)
         lines.append(f"  Total Items:     {report['total_items']}")
-        lines.append(f"  Matched:         {report['matched']}")
-        lines.append(f"  Not Matched:     {report['not_matched']}")
+        lines.append(f"  Total Matched:   {report['matched']}")
+        lines.append(f"    - Exact Match:   {report.get('matched_exact', 0)} (Green)")
+        lines.append(f"    - High Conf:     {report.get('matched_high', 0)} (Yellow)")
+        lines.append(f"  Not Matched:     {report['not_matched']} (Red)")
         if report.get('errors', 0) > 0:
             lines.append(f"  Errors:          {report['errors']}")
         lines.append("")
@@ -473,12 +490,18 @@ class PriceCodePipeline:
         
         # Build report dictionary first so it can be passed to write_results
         error_count = sum(1 for _, res in results if str(res.get('reason', '')).startswith('LLM error'))
+        matched_results = [res for _, res in results if res['matched']]
+        matched_exact = sum(1 for res in matched_results if str(res.get('confidence_level', '')).upper() == 'EXACT')
+        matched_high = sum(1 for res in matched_results if str(res.get('confidence_level', '')).upper() != 'EXACT')
+        
         report = {
             "total_items": len(items),
-            "matched": sum(1 for _, res in results if res['matched']),
+            "matched": len(matched_results),
+            "matched_exact": matched_exact,
+            "matched_high": matched_high,
             "not_matched": sum(1 for _, res in results if not res['matched']),
             "errors": error_count,
-            "match_rate": sum(1 for _, res in results if res['matched']) / len(items) if items else 0,
+            "match_rate": len(matched_results) / len(items) if items else 0,
             "output_file": str(output_file),
             "elapsed_seconds": elapsed,
             "items_per_second": len(items) / elapsed if elapsed > 0 else 0

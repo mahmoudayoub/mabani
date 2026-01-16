@@ -88,6 +88,7 @@ const CodeAllocation: React.FC = () => {
     const [processingStatus, setProcessingStatus] = useState('');
     const [timeRemaining, setTimeRemaining] = useState('');
     const [estimateData, setEstimateData] = useState<PriceCodeEstimate | null>(null);
+    const [startTime, setStartTime] = useState<number | null>(null);
 
     // Completion State
     const [completedFilePath, setCompletedFilePath] = useState<string | null>(null);
@@ -167,42 +168,14 @@ const CodeAllocation: React.FC = () => {
 
                     // Calculate elapsed time
                     // IMPORTANT: started_at is UTC, append 'Z' to parse correctly
-                    const startTime = new Date(job.started_at + 'Z').getTime();
-                    const elapsed = (Date.now() - startTime) / 1000;
+                    const jobStartTime = new Date(job.started_at + 'Z').getTime();
+                    setStartTime(jobStartTime);
+                    const elapsed = (Date.now() - jobStartTime) / 1000;
 
                     // Calculate initial progress
                     const initialProgress = Math.min((elapsed / job.estimated_seconds) * 100, 95);
                     setProgressPercent(initialProgress);
                     setProcessingStatus(initialProgress >= 95 ? 'Finalizing...' : 'Processing...');
-
-                    // Continue animating progress from current point
-                    let currentProgress = initialProgress;
-                    const updateIntervalMs = 500;
-                    const progressIncrement = (100 / job.estimated_seconds) * (updateIntervalMs / 1000);
-
-                    // Clear any existing interval
-                    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-
-                    progressIntervalRef.current = setInterval(() => {
-                        currentProgress += progressIncrement;
-
-                        if (currentProgress >= 95) {
-                            currentProgress = 95;
-                            setProcessingStatus('Finalizing...');
-                        }
-
-                        setProgressPercent(Math.min(currentProgress, 95));
-
-                        // Update time remaining
-                        const newElapsed = (Date.now() - startTime) / 1000;
-                        const remaining = Math.max(0, job.estimated_seconds - newElapsed);
-
-                        if (remaining > 60) {
-                            setTimeRemaining(`~${Math.ceil(remaining / 60)} min remaining`);
-                        } else {
-                            setTimeRemaining(`${Math.ceil(remaining)} sec remaining`);
-                        }
-                    }, updateIntervalMs);
 
                     // Start polling for completion
                     startPolling(job.filename);
@@ -262,9 +235,11 @@ const CodeAllocation: React.FC = () => {
                 setIsProcessing(true);
                 setProcessingStatus('Processing started...');
 
+                // Set start time for progress animation
+                setStartTime(Date.now());
+
                 // Start polling for status
                 startPolling(selectedFile.name);
-                startProgressAnimation();
             } else {
                 // Index mode - just show success
                 setProcessingStatus('File uploaded for indexing. Processing will begin shortly.');
@@ -341,12 +316,14 @@ const CodeAllocation: React.FC = () => {
         }, 3000);
     };
 
-    const startProgressAnimation = () => {
-        const startTime = Date.now();
+    // Progress Animation Effect
+    useEffect(() => {
+        if (!isProcessing || !startTime || !estimateData?.estimated_seconds) return;
+
+        // Clear any existing interval to be safe
+        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
 
         progressIntervalRef.current = setInterval(() => {
-            if (!estimateData?.estimated_seconds) return;
-
             const elapsed = (Date.now() - startTime) / 1000;
             const progress = Math.min((elapsed / estimateData.estimated_seconds) * 95, 95);
 
@@ -359,7 +336,11 @@ const CodeAllocation: React.FC = () => {
                 setTimeRemaining(`~${Math.ceil(remaining)} sec remaining`);
             }
         }, 1000);
-    };
+
+        return () => {
+            if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+        };
+    }, [isProcessing, startTime, estimateData?.estimated_seconds]);
 
     const cleanupProgressTracking = () => {
         if (progressIntervalRef.current) {
@@ -429,7 +410,7 @@ const CodeAllocation: React.FC = () => {
                             </p>
                         </button>
 
-                        {/* Index Codes Option */}
+                        {/* Smart Library Option */}
                         <button
                             onClick={() => {
                                 setCurrentMode('index');
@@ -438,9 +419,9 @@ const CodeAllocation: React.FC = () => {
                             className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-green-500 group"
                         >
                             <div className="text-5xl mb-4">📁</div>
-                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Index Codes</h2>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Smart Library</h2>
                             <p className="text-gray-600">
-                                Upload and index price code files to your library.
+                                Upload and add price code files to your library.
                             </p>
                         </button>
                     </div>
@@ -457,7 +438,7 @@ const CodeAllocation: React.FC = () => {
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">Code Allocation</h1>
                         <p className="text-gray-600 mt-2">
-                            {currentMode === 'allocate' ? 'Allocate codes to BOQ' : 'Index price codes'}
+                            {currentMode === 'allocate' ? 'Allocate codes to BOQ' : 'Manage Smart Library'}
                         </p>
                     </div>
                     <button
@@ -474,7 +455,7 @@ const CodeAllocation: React.FC = () => {
                 {/* Upload Section */}
                 <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
                     <h2 className="text-lg font-semibold mb-4">
-                        {currentMode === 'index' ? 'Upload Price Codes' : 'Upload BOQ File'}
+                        {currentMode === 'index' ? 'Upload to Smart Library' : 'Upload BOQ File'}
                     </h2>
 
                     {/* Code Selection (allocate mode only) */}
@@ -495,7 +476,7 @@ const CodeAllocation: React.FC = () => {
                                     {loadingCodes ? (
                                         <p className="text-gray-400">Loading codes...</p>
                                     ) : availableCodes.length === 0 ? (
-                                        <p className="text-gray-400">No price codes indexed yet. Use "Index Codes" mode first.</p>
+                                        <p className="text-gray-400">No price codes in library. Use "Smart Library" mode first.</p>
                                     ) : (
                                         <div className="space-y-2 max-h-48 overflow-y-auto">
                                             {availableCodes.map(code => (

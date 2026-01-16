@@ -25,6 +25,8 @@ interface PriceCodeSummary {
     stats: {
         totalItems: number;
         matched: number;
+        exactMatch?: number;
+        highConf?: number;
         notMatched: number;
         errors: number;
         matchRate: string;
@@ -53,7 +55,9 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
                     else if (cleanKey === 'processing time') summary.fileInfo.processingTime = value;
                 } else if (currentSection === 'stats') {
                     if (cleanKey === 'total items') summary.stats.totalItems = parseInt(value) || 0;
-                    else if (cleanKey === 'matched') summary.stats.matched = parseInt(value) || 0;
+                    else if (cleanKey === 'total matched' || cleanKey === 'matched') summary.stats.matched = parseInt(value) || 0;
+                    else if (cleanKey.includes('exact match')) summary.stats.exactMatch = parseInt(value) || 0;
+                    else if (cleanKey.includes('high conf')) summary.stats.highConf = parseInt(value) || 0;
                     else if (cleanKey === 'not matched') summary.stats.notMatched = parseInt(value) || 0;
                     else if (cleanKey === 'errors') summary.stats.errors = parseInt(value) || 0;
                     else if (cleanKey === 'match rate') summary.stats.matchRate = value;
@@ -740,6 +744,18 @@ const CodeAllocation: React.FC = () => {
                                                             <div>
                                                                 <p className="text-sm font-medium text-gray-500">Matched</p>
                                                                 <p className="mt-1 text-lg font-medium text-green-600">{viewSummaryData.stats.matched}</p>
+                                                                {(viewSummaryData.stats.exactMatch !== undefined || viewSummaryData.stats.highConf !== undefined) && (
+                                                                    <div className="mt-1 text-xs space-y-1">
+                                                                        <div className="flex justify-between items-center text-gray-600">
+                                                                            <span>Exact:</span>
+                                                                            <span className="font-semibold text-green-700">{viewSummaryData.stats.exactMatch || 0}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between items-center text-gray-600">
+                                                                            <span>High Conf:</span>
+                                                                            <span className="font-semibold text-yellow-700">{viewSummaryData.stats.highConf || 0}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                             <div>
                                                                 <p className="text-sm font-medium text-gray-500">Not Matched</p>

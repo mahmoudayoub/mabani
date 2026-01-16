@@ -357,6 +357,28 @@ const CodeAllocation: React.FC = () => {
         }
     };
 
+    const handleViewCompleteSummary = () => {
+        if (!completedFilePath) {
+            setShowSummary(true);
+            return;
+        }
+
+        // Try to find the matching text file in the output list
+        const filename = completedFilePath.split('/').pop() || '';
+        const baseName = filename.replace('.xlsx', '');
+
+        const summaryFile = outputFiles.find(f =>
+            f.filename.endsWith('.txt') && f.filename.includes(baseName)
+        );
+
+        if (summaryFile) {
+            handleViewSummary(summaryFile);
+        } else {
+            console.warn('Summary text file not found directly. Falling back to simple view.');
+            setShowSummary(true);
+        }
+    };
+
     const handleDownload = async () => {
         if (!completedFilePath) return;
 
@@ -579,9 +601,12 @@ const CodeAllocation: React.FC = () => {
                             </div>
                             <div className="flex items-center space-x-3">
                                 <button
-                                    onClick={() => setShowSummary(true)}
-                                    className="text-blue-600 hover:text-blue-800 font-medium px-4 py-2"
+                                    onClick={handleViewCompleteSummary}
+                                    className="bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 font-medium px-4 py-2 rounded-lg transition-colors flex items-center"
                                 >
+                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
                                     View Summary
                                 </button>
                                 <button

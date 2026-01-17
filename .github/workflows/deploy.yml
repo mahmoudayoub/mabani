@@ -86,6 +86,8 @@ jobs:
         run: ./scripts/deploy/deploy.sh dev backend
 
       - name: Update Configuration
+        env:
+          VITE_DELETION_API_URL: ${{ secrets.VITE_DELETION_API_URL }}
         run: ./scripts/deploy/deploy.sh dev config
 
       - name: Deploy Frontend

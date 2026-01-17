@@ -9,9 +9,12 @@ import {
     listActiveJobs,
     deleteEstimate,
     OutputFile,
-    EstimateData
+    EstimateData,
+    deleteSheet
 } from '../services/fileProcessingService';
-// import { KnowledgeBase, Document } from '../types/knowledgeBase';
+
+
+
 
 
 interface SummaryData {
@@ -207,6 +210,24 @@ const FileProcessing: React.FC = () => {
             setSelectedSheets(prev => prev.filter(name => name !== sheetName));
         }
     };
+
+    const handleSheetDelete = async (sheetName: string) => {
+        if (!confirm(`Are you sure you want to delete "${sheetName}"? This will remove it from the available list and delete its associated vectors.`)) {
+            return;
+        }
+
+        try {
+            await deleteSheet(sheetName);
+            // Remove from available sheets
+            setAvailableSheets(prev => prev.filter(name => name !== sheetName));
+            // Remove from selected sheets if present
+            setSelectedSheets(prev => prev.filter(name => name !== sheetName));
+        } catch (error) {
+            console.error('Failed to delete sheet:', error);
+            alert(`Failed to delete sheet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    };
+
 
     const handleUpload = async () => {
         if (!selectedFile) return;
@@ -620,16 +641,30 @@ const FileProcessing: React.FC = () => {
                                         ) : (
                                             <div className="max-h-60 overflow-y-auto space-y-2">
                                                 {availableSheets.map(sheetName => (
-                                                    <label key={sheetName} className="flex items-start space-x-2 cursor-pointer p-2 hover:bg-white rounded transition-colors">
-                                                        <input
-                                                            type="checkbox"
-                                                            className="mt-1 h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                                                            checked={selectedSheets.includes(sheetName)}
-                                                            onChange={(e) => handleSheetToggle(sheetName, e.target.checked)}
-                                                        />
-                                                        <div className="text-xs">
-                                                            <p className="font-medium text-gray-900 break-all">{sheetName}</p>
+                                                    <label key={sheetName} className="flex items-center justify-between p-2 hover:bg-white rounded transition-colors group">
+                                                        <div className="flex items-start space-x-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-1 h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                                                checked={selectedSheets.includes(sheetName)}
+                                                                onChange={(e) => handleSheetToggle(sheetName, e.target.checked)}
+                                                            />
+                                                            <div className="text-xs">
+                                                                <p className="font-medium text-gray-900 break-all">{sheetName}</p>
+                                                            </div>
                                                         </div>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                handleSheetDelete(sheetName);
+                                                            }}
+                                                            className="text-gray-400 hover:text-red-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            title="Delete Datasheet"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
                                                     </label>
                                                 ))}
                                             </div>

@@ -177,4 +177,32 @@ export const deleteEstimate = async (filename: string): Promise<void> => {
     }
 };
 
+export const deleteSheet = async (sheetName: string): Promise<void> => {
+    // HARDCODED External API URL for Datasheet Deletion
+    const deletionApiUrl = "https://auwdkyf4ka.execute-api.eu-west-1.amazonaws.com/prod/";
+
+    // If using external API directly, it might not need auth headers if public?
+    // User said "backend is configured to accept it... but currently does not validate it (Public endpoint)"
+    // So sending headers is safe.
+    const headers = await getAuthHeaders();
+
+    // Use encodeURIComponent for the sheet name in the path
+    const encodedName = encodeURIComponent(sheetName);
+
+    // Construct URL. If External, path is /files/sheets/{name} appended to Base.
+    // Ensure slash handling.
+    const baseUrl = deletionApiUrl.endsWith('/') ? deletionApiUrl.slice(0, -1) : deletionApiUrl;
+
+    const response = await fetch(`${baseUrl}/files/sheets/${encodedName}`, {
+        method: 'DELETE',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Failed to delete sheet: ${response.statusText}`);
+    }
+};
+
+
 

@@ -138,12 +138,15 @@ const CodeAllocation: React.FC = () => {
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // Load available price codes on mount
+    // Load available price codes on mount
     useEffect(() => {
         const fetchCodes = async () => {
             setLoadingCodes(true);
             try {
                 const codes = await listAvailablePriceCodes();
                 setAvailableCodes(codes);
+                // Select all codes by default
+                setSelectedCodes(codes);
             } catch (error) {
                 console.error('Failed to fetch price codes:', error);
             } finally {

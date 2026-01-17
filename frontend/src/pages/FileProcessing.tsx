@@ -189,6 +189,8 @@ const FileProcessing: React.FC = () => {
             try {
                 const sheets = await listAvailableSheets();
                 setAvailableSheets(sheets);
+                // Select all sheets by default
+                setSelectedSheets(sheets);
             } catch (error) {
                 console.error("Failed to fetch available sheets", error);
             } finally {

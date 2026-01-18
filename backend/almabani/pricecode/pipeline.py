@@ -126,8 +126,8 @@ class PriceCodePipeline:
                 ref_text = " - ".join(parts)
                 ws.cell(row=row_idx, column=ref_col_idx).value = ref_text
             
-            # 4. Reason Column (Always write if present, useful for debug)
-            if result.get('reason'):
+            # 4. Reason Column (Only write if matched)
+            if result['matched'] and result.get('reason'):
                 ws.cell(row=row_idx, column=reason_col_idx).value = result['reason']
             
             # 5. If not matched, color the Item Code cell red if exists

@@ -658,7 +658,7 @@ const FileProcessing: React.FC = () => {
                                                                 e.preventDefault();
                                                                 handleSheetDelete(sheetName);
                                                             }}
-                                                            className="text-gray-400 hover:text-red-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            className="text-gray-400 hover:text-red-600 p-1 transition-opacity"
                                                             title="Delete Datasheet"
                                                         >
                                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -855,136 +855,138 @@ const FileProcessing: React.FC = () => {
             </div>
 
             {/* Summary Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-                    <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => setIsModalOpen(false)}></div>
-                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-                        <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
+            {
+                isModalOpen && (
+                    <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+                        <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => setIsModalOpen(false)}></div>
+                            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                            <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
 
-                            {loadingSummary || !summaryData ? (
-                                <div className="text-center py-4">Loading summary...</div>
-                            ) : (
-                                <div>
-                                    <div className="mb-4 pb-4 border-b border-gray-200">
-                                        <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">Processing Summary</h3>
-                                        <p className="mt-1 text-sm text-gray-500">Generated on {summaryData.generated}</p>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4 mb-6">
-                                        <div>
-                                            <p className="text-xs text-gray-500 uppercase">Input File</p>
-                                            <p className="font-medium">{summaryData.input}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500 uppercase">Sheet</p>
-                                            <p className="font-medium">{summaryData.sheet}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500 uppercase">Processing Time</p>
-                                            <p className="font-medium">{summaryData.processingTime}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-gray-500 uppercase">Fill Rate</p>
-                                            <p className="text-xl font-bold text-green-600">{summaryData.stats.fillRate}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="mb-6">
-                                        <h4 className="text-sm font-medium text-gray-900 mb-3">Statistics</h4>
-                                        <div className="grid grid-cols-4 gap-4 bg-gray-50 p-4 rounded-lg">
-                                            <div>
-                                                <p className="text-xs text-gray-500">Total</p>
-                                                <p className="text-lg font-semibold">{summaryData.stats.totalItems}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Processed</p>
-                                                <p className="text-lg font-semibold">{summaryData.stats.processed}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-gray-500">Errors</p>
-                                                <p className="text-lg font-semibold text-red-600">{summaryData.stats.errors}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
+                                {loadingSummary || !summaryData ? (
+                                    <div className="text-center py-4">Loading summary...</div>
+                                ) : (
                                     <div>
-                                        <h4 className="text-sm font-medium text-gray-900 mb-3">Matching Breakdown</h4>
-                                        <div className="space-y-3">
-                                            {/* Exact Matches - Green */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-sm font-medium text-gray-700">Exact Matches</span>
-                                                    <div className="flex items-center">
-                                                        <span className="text-sm font-semibold text-green-700 mr-2">{summaryData.stats.exactMatches}</span>
-                                                        <span className="text-xs text-gray-500">({summaryData.ratios.exact})</span>
-                                                    </div>
-                                                </div>
-                                                <div className="w-full bg-gray-200 rounded-full h-3">
-                                                    <div className="bg-green-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.exact }}></div>
-                                                </div>
-                                            </div>
+                                        <div className="mb-4 pb-4 border-b border-gray-200">
+                                            <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">Processing Summary</h3>
+                                            <p className="mt-1 text-sm text-gray-500">Generated on {summaryData.generated}</p>
+                                        </div>
 
-                                            {/* Expert Matches - Yellow */}
+                                        <div className="grid grid-cols-2 gap-4 mb-6">
                                             <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-sm font-medium text-gray-700">Expert Matches</span>
-                                                    <div className="flex items-center">
-                                                        <span className="text-sm font-semibold text-yellow-700 mr-2">{summaryData.stats.expertMatches}</span>
-                                                        <span className="text-xs text-gray-500">({summaryData.ratios.expert})</span>
-                                                    </div>
-                                                </div>
-                                                <div className="w-full bg-gray-200 rounded-full h-3">
-                                                    <div className="bg-yellow-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.expert }}></div>
-                                                </div>
+                                                <p className="text-xs text-gray-500 uppercase">Input File</p>
+                                                <p className="font-medium">{summaryData.input}</p>
                                             </div>
-
-                                            {/* Estimates - Orange */}
                                             <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-sm font-medium text-gray-700">Estimates</span>
-                                                    <div className="flex items-center">
-                                                        <span className="text-sm font-semibold text-orange-700 mr-2">{summaryData.stats.estimates}</span>
-                                                        <span className="text-xs text-gray-500">({summaryData.ratios.estimates})</span>
-                                                    </div>
-                                                </div>
-                                                <div className="w-full bg-gray-200 rounded-full h-3">
-                                                    <div className="bg-orange-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.estimates }}></div>
-                                                </div>
+                                                <p className="text-xs text-gray-500 uppercase">Sheet</p>
+                                                <p className="font-medium">{summaryData.sheet}</p>
                                             </div>
-
-                                            {/* No Matches - Red */}
                                             <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-sm font-medium text-gray-700">No Matches (Unfilled)</span>
-                                                    <div className="flex items-center">
-                                                        <span className="text-sm font-semibold text-red-700 mr-2">{summaryData.stats.noMatches}</span>
-                                                        <span className="text-xs text-gray-500">({summaryData.ratios.noMatch})</span>
-                                                    </div>
+                                                <p className="text-xs text-gray-500 uppercase">Processing Time</p>
+                                                <p className="font-medium">{summaryData.processingTime}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500 uppercase">Fill Rate</p>
+                                                <p className="text-xl font-bold text-green-600">{summaryData.stats.fillRate}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="mb-6">
+                                            <h4 className="text-sm font-medium text-gray-900 mb-3">Statistics</h4>
+                                            <div className="grid grid-cols-4 gap-4 bg-gray-50 p-4 rounded-lg">
+                                                <div>
+                                                    <p className="text-xs text-gray-500">Total</p>
+                                                    <p className="text-lg font-semibold">{summaryData.stats.totalItems}</p>
                                                 </div>
-                                                <div className="w-full bg-gray-200 rounded-full h-3">
-                                                    <div className="bg-red-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.noMatch }}></div>
+                                                <div>
+                                                    <p className="text-xs text-gray-500">Processed</p>
+                                                    <p className="text-lg font-semibold">{summaryData.stats.processed}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-gray-500">Errors</p>
+                                                    <p className="text-lg font-semibold text-red-600">{summaryData.stats.errors}</p>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    <div className="mt-6 flex justify-end">
-                                        <button
-                                            type="button"
-                                            className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
-                                            onClick={() => setIsModalOpen(false)}
-                                        >
-                                            Close
-                                        </button>
+                                        <div>
+                                            <h4 className="text-sm font-medium text-gray-900 mb-3">Matching Breakdown</h4>
+                                            <div className="space-y-3">
+                                                {/* Exact Matches - Green */}
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-sm font-medium text-gray-700">Exact Matches</span>
+                                                        <div className="flex items-center">
+                                                            <span className="text-sm font-semibold text-green-700 mr-2">{summaryData.stats.exactMatches}</span>
+                                                            <span className="text-xs text-gray-500">({summaryData.ratios.exact})</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-3">
+                                                        <div className="bg-green-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.exact }}></div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Expert Matches - Yellow */}
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-sm font-medium text-gray-700">Expert Matches</span>
+                                                        <div className="flex items-center">
+                                                            <span className="text-sm font-semibold text-yellow-700 mr-2">{summaryData.stats.expertMatches}</span>
+                                                            <span className="text-xs text-gray-500">({summaryData.ratios.expert})</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-3">
+                                                        <div className="bg-yellow-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.expert }}></div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Estimates - Orange */}
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-sm font-medium text-gray-700">Estimates</span>
+                                                        <div className="flex items-center">
+                                                            <span className="text-sm font-semibold text-orange-700 mr-2">{summaryData.stats.estimates}</span>
+                                                            <span className="text-xs text-gray-500">({summaryData.ratios.estimates})</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-3">
+                                                        <div className="bg-orange-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.estimates }}></div>
+                                                    </div>
+                                                </div>
+
+                                                {/* No Matches - Red */}
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-sm font-medium text-gray-700">No Matches (Unfilled)</span>
+                                                        <div className="flex items-center">
+                                                            <span className="text-sm font-semibold text-red-700 mr-2">{summaryData.stats.noMatches}</span>
+                                                            <span className="text-xs text-gray-500">({summaryData.ratios.noMatch})</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-3">
+                                                        <div className="bg-red-500 h-3 rounded-full transition-all" style={{ width: summaryData.ratios.noMatch }}></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-6 flex justify-end">
+                                            <button
+                                                type="button"
+                                                className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
+                                                onClick={() => setIsModalOpen(false)}
+                                            >
+                                                Close
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 

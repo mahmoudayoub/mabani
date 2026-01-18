@@ -653,18 +653,6 @@ const FileProcessing: React.FC = () => {
                                                                 <p className="font-medium text-gray-900 break-all">{sheetName}</p>
                                                             </div>
                                                         </div>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                handleSheetDelete(sheetName);
-                                                            }}
-                                                            className="text-gray-400 hover:text-red-600 p-1 transition-opacity"
-                                                            title="Delete Datasheet"
-                                                        >
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                            </svg>
-                                                        </button>
                                                     </label>
                                                 ))}
                                             </div>
@@ -833,7 +821,7 @@ const FileProcessing: React.FC = () => {
                             ) : (
                                 <ul className="divide-y divide-gray-200">
                                     {availableSheets.map((sheetName) => (
-                                        <li key={sheetName} className="px-6 py-4 flex items-center hover:bg-gray-50">
+                                        <li key={sheetName} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 group">
                                             <div className="flex items-center flex-1">
                                                 <div className="flex-shrink-0 h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
                                                     <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -845,6 +833,15 @@ const FileProcessing: React.FC = () => {
                                                     <p className="text-xs text-gray-500">Available for matching</p>
                                                 </div>
                                             </div>
+                                            <button
+                                                onClick={() => handleSheetDelete(sheetName)}
+                                                className="text-gray-400 hover:text-red-600 p-2 transition-colors rounded-full hover:bg-red-50"
+                                                title="Delete Datasheet"
+                                            >
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                            </button>
                                         </li>
                                     ))}
                                 </ul>

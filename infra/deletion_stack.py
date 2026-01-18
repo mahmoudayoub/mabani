@@ -70,7 +70,8 @@ class DeletionStack(Stack):
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
                 "PINECONE_API_KEY": os.getenv("PINECONE_API_KEY", ""),
-                "PINECONE_INDEX_NAME": os.getenv("PINECONE_INDEX_NAME", "almabani-1")
+                "PINECONE_INDEX_NAME": os.getenv("PINECONE_INDEX_NAME", "almabani-1"),
+                "PRICECODE_INDEX_NAME": os.getenv("PRICECODE_INDEX_NAME", "almabani-pricecode")
             },
             timeout=Duration.seconds(30)
         )

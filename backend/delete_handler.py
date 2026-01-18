@@ -64,7 +64,8 @@ def delete_datasheet(event, context):
             # I'll stick to the user provided code: `filter={"sheet": sheet_name}` but I suspect it might need to match `source_name`.
             # Let's implement exactly what is asked first.
             
-            index.delete(delete_all=False, filter={"sheet": sheet_name})
+            # Filter deletion by 'sheet_name' metadata (Standard Datasheets)
+            index.delete(delete_all=False, filter={"sheet_name": sheet_name})
             print(f"Deleted vectors for sheet: {sheet_name}")
         except Exception as e:
             print(f"Pinecone deletion failed: {e}")
@@ -125,16 +126,18 @@ def delete_price_code_set(event, context):
     print(f"Deleting Price Code Set: {set_name}")
 
     # 1. Delete from Pinecone
+    # 1. Delete from Pinecone
     api_key = os.environ.get("PINECONE_API_KEY")
-    index_name = os.environ.get("PINECONE_INDEX_NAME")
+    # Use the dedicated PRICECODE_INDEX_NAME if set, else fallback (though stack provides it now)
+    index_name = os.environ.get("PRICECODE_INDEX_NAME") or os.environ.get("PINECONE_INDEX_NAME")
     
     if api_key and index_name:
         try:
             pc = Pinecone(api_key=api_key)
             index = pc.Index(index_name)
-            # Filter deletion by 'price_code_set' metadata
-            index.delete(delete_all=False, filter={"price_code_set": set_name})
-            print(f"Deleted vectors for set: {set_name}")
+            # Filter deletion by 'source_file' metadata (Price Codes)
+            index.delete(delete_all=False, filter={"source_file": set_name})
+            print(f"Deleted vectors for set: {set_name} from index {index_name}")
         except Exception as e:
             print(f"Pinecone deletion failed: {e}")
             return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})

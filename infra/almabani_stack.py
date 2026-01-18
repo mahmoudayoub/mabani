@@ -46,7 +46,9 @@ class AlmabaniStack(Stack):
                     allowed_headers=["*"]
                 )
             ]
+
         )
+        self.bucket = bucket
 
         # 3. ECS Cluster
         cluster = ecs.Cluster(self, "AlmabaniCluster", vpc=vpc)

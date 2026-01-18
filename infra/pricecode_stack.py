@@ -73,6 +73,7 @@ class PriceCodeStack(Stack):
                     )
                 ]
             )
+        self.bucket = bucket
 
         # 3. ECS Cluster
         cluster = ecs.Cluster(self, "PriceCodeCluster", vpc=vpc)

@@ -40,6 +40,7 @@ interface SummaryData {
         noMatch: string;
         errors: string;
     };
+    filters?: string[];
 }
 
 const FileProcessing: React.FC = () => {
@@ -472,6 +473,7 @@ const FileProcessing: React.FC = () => {
         lines.forEach(line => {
             if (line.includes('FILE INFORMATION')) section = 'info';
             else if (line.includes('PROCESSING STATISTICS')) section = 'stats';
+            else if (line.includes('FILTERS USED')) section = 'filters';
             else if (line.includes('Ratios over total items')) section = 'ratios';
 
             const parts = line.split(':');
@@ -500,6 +502,9 @@ const FileProcessing: React.FC = () => {
                     if (key === 'Estimates') data.ratios.estimates = val;
                     if (key === 'No Match') data.ratios.noMatch = val;
                     if (key === 'Errors') data.ratios.errors = val;
+                } else if (section === 'filters') {
+                    if (!data.filters) data.filters = [];
+                    if (key && val) data.filters.push(`${key}: ${val}`);
                 }
             }
         });
@@ -887,6 +892,17 @@ const FileProcessing: React.FC = () => {
                                                 <p className="text-xl font-bold text-green-600">{summaryData.stats.fillRate}</p>
                                             </div>
                                         </div>
+
+                                        {summaryData.filters && summaryData.filters.length > 0 && (
+                                            <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+                                                <h4 className="text-xs text-gray-500 uppercase mb-2">Filters Used</h4>
+                                                <div className="space-y-1">
+                                                    {summaryData.filters.map((filter, i) => (
+                                                        <p key={i} className="text-sm font-medium text-gray-900 break-words">{filter}</p>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div className="mb-6">
                                             <h4 className="text-sm font-medium text-gray-900 mb-3">Statistics</h4>

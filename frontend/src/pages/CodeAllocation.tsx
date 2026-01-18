@@ -32,6 +32,7 @@ interface PriceCodeSummary {
         errors: number;
         matchRate: string;
     };
+    filters?: string[];
 }
 
 const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
@@ -43,9 +44,14 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
         lines.forEach(line => {
             if (line.includes('FILE INFORMATION')) currentSection = 'info';
             else if (line.includes('PROCESSING STATISTICS')) currentSection = 'stats';
+            else if (line.includes('FILTERS USED')) currentSection = 'filters';
             else if (line.includes(':')) {
-                const [key, ...values] = line.split(':');
-                const value = values.join(':').trim();
+                // Handle cases like " - Exact Match: 3 (Green)"
+                // Remove leading "- " if present
+                const cleanLine = line.replace(/^-\s+/, '');
+
+                const [key, ...values] = cleanLine.split(':');
+                const value = values.join(':').trim(); // "3 (Green)" or "5-remote aprone.xlsx"
                 const cleanKey = key.trim().toLowerCase();
 
                 if (currentSection === 'info') {
@@ -54,14 +60,20 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
                     else if (cleanKey === 'sheet') summary.fileInfo.sheet = value;
                     else if (cleanKey === 'generated') summary.fileInfo.generated = value;
                     else if (cleanKey === 'processing time') summary.fileInfo.processingTime = value;
+                } else if (currentSection === 'filters') {
+                    if (!summary.filters) summary.filters = [];
+                    summary.filters.push(`${key}: ${value}`);
                 } else if (currentSection === 'stats') {
                     if (cleanKey === 'total items') summary.stats.totalItems = parseInt(value) || 0;
                     else if (cleanKey === 'total matched' || cleanKey === 'matched') summary.stats.matched = parseInt(value) || 0;
-                    else if (cleanKey.includes('exact match')) summary.stats.exactMatch = parseInt(value) || 0;
-                    else if (cleanKey.includes('high conf')) summary.stats.highConf = parseInt(value) || 0;
                     else if (cleanKey === 'not matched') summary.stats.notMatched = parseInt(value) || 0;
                     else if (cleanKey === 'errors') summary.stats.errors = parseInt(value) || 0;
                     else if (cleanKey === 'match rate') summary.stats.matchRate = value;
+
+                    // Sub-items (Exact Match, High Conf)
+                    // Value might be "3 (Green)" -> parse "3"
+                    else if (cleanKey === 'exact match') summary.stats.exactMatch = parseInt(value) || 0;
+                    else if (cleanKey === 'high conf') summary.stats.highConf = parseInt(value) || 0;
                 }
             }
         });
@@ -784,6 +796,17 @@ const CodeAllocation: React.FC = () => {
                                                             <div className="col-span-2"><span className="text-gray-500">Time:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.processingTime}</span></div>
                                                         </div>
                                                     </div>
+
+                                                    {viewSummaryData.filters && viewSummaryData.filters.length > 0 && (
+                                                        <div className="bg-gray-50 rounded-lg p-4">
+                                                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Filters Used</h4>
+                                                            <div className="space-y-1">
+                                                                {viewSummaryData.filters.map((filter, i) => (
+                                                                    <p key={i} className="text-sm font-medium text-gray-900">{filter}</p>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
 
                                                     <div className="bg-gray-50 rounded-lg p-4">
                                                         <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Processing Statistics</h4>

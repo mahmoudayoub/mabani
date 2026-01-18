@@ -175,6 +175,16 @@ class PriceCodePipeline:
         lines.append(f"  Generated:     {timestamp}")
         lines.append(f"  Processing Time: {report['elapsed_seconds']:.1f}s")
         lines.append("")
+
+        # Filters Used
+        filters = report.get('filters_used')
+        if filters:
+            lines.append("FILTERS USED")
+            lines.append("-" * 40)
+            lines.append(f"  Source Files: {', '.join(filters)}")
+            lines.append("")
+        elif report.get('filters_used') is None: # Explicitly check for None vs Empty
+            pass # No filter logic invoked
         
         # Statistics
         lines.append("PROCESSING STATISTICS")
@@ -193,6 +203,18 @@ class PriceCodePipeline:
             lines.append(f"  Match Rate:      {report['match_rate']:.1%}")
         
         lines.append("")
+        
+        # Error Details
+        failed_items = report.get('failed_items')
+        if failed_items:
+            lines.append("ERROR DETAILS")
+            lines.append("-" * 40)
+            for item in failed_items[:50]: # Limit to 50 errors in summary
+                 lines.append(f"  Row {item['row']}: {item['reason']}")
+            if len(failed_items) > 50:
+                 lines.append(f"  ... and {len(failed_items) - 50} more errors.")
+            lines.append("")
+
         lines.append("=" * 70)
         lines.append("END OF SUMMARY")
         lines.append("=" * 70)
@@ -504,7 +526,16 @@ class PriceCodePipeline:
             "match_rate": len(matched_results) / len(items) if items else 0,
             "output_file": str(output_file),
             "elapsed_seconds": elapsed,
-            "items_per_second": len(items) / elapsed if elapsed > 0 else 0
+            "items_per_second": len(items) / elapsed if elapsed > 0 else 0,
+            "filters_used": source_files,
+            "failed_items": [
+                {
+                    "row": item['row_index'] + 1,
+                    "reason": res.get('reason', 'Unknown error')
+                }
+                for item, res in results
+                if not res.get('matched') and str(res.get('reason', '')).startswith('LLM error')
+            ]
         }
         
         # Save output using rich Excel writer, passing the report

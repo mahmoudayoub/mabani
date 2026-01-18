@@ -135,7 +135,8 @@ class RateFillerPipeline:
             output_file=output_file,
             sheet_name=selected_sheet,
             report=report,
-            processing_seconds=processing_seconds
+            processing_seconds=processing_seconds,
+            filter_dict=filter_dict
         )
         await asyncio.to_thread(self._write_summary_file, summary_file, summary_content)
         
@@ -306,7 +307,8 @@ class RateFillerPipeline:
         output_file: Path,
         sheet_name: str,
         report: ProcessingReport,
-        processing_seconds: Optional[float] = None
+        processing_seconds: Optional[float] = None,
+        filter_dict: Optional[Dict[str, Any]] = None
     ) -> str:
         """Generate a text summary of the processing results."""
         lines = []
@@ -337,6 +339,18 @@ class RateFillerPipeline:
         if duration_str:
             lines.append(f"  Processing Time: {duration_str}")
         lines.append("")
+
+        # Filters Used
+        if filter_dict:
+            lines.append("FILTERS USED")
+            lines.append("-" * 40)
+            # Check for sheet_name filter
+            if 'sheet_name' in filter_dict and '$in' in filter_dict['sheet_name']:
+                sheets = filter_dict['sheet_name']['$in']
+                lines.append(f"  Target Sheets: {', '.join(sheets)}")
+            else:
+                lines.append(f"  Filter: {filter_dict}")
+            lines.append("")
         
         # Statistics
         lines.append("PROCESSING STATISTICS")
@@ -364,6 +378,13 @@ class RateFillerPipeline:
             lines.append(f"    No Match:      {(report.no_matches/total)*100:.1f}%")
             lines.append(f"    Errors:        {(report.errors/total)*100:.1f}%")
         lines.append("")
+
+        # Error Details
+        if report.errors > 0 and report.error_items:
+            lines.append("ERROR DETAILS")
+            lines.append("-" * 40)
+            lines.append(f"  Rows with errors: {', '.join(report.error_items)}")
+            lines.append("")
         
         # Footer
         lines.append("=" * 70)

@@ -70,15 +70,37 @@ def _resolve_selection(user_input: str, options: List[str]) -> str:
             
     return None
 
-def handle_location(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> str:
+def handle_location(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> Dict[str, Any]:
     # Resolve Location Selection
     config = ConfigManager()
     locations = config.get_options("LOCATIONS")
     
-    selected_loc = _resolve_selection(user_input_text, locations)
-    location_val = selected_loc if selected_loc else user_input_text.strip()
+    selected_loc = None
+    text = user_input_text.strip()
     
-    # Save Location
+    # Handle Native Location Share
+    if text.startswith("Location:"):
+        selected_loc = text.replace("Location:", "").strip()
+    
+    # Handle Interactive ID
+    elif text.startswith("loc_"):
+        try:
+            idx = int(text.split("_")[1])
+            if 0 <= idx < len(locations):
+                selected_loc = locations[idx]
+        except:
+            pass
+            
+    if not selected_loc:
+        selected_loc = _resolve_selection(text, locations)
+        
+    location_val = selected_loc if selected_loc else text
+    
+    # Check if we need to ask for Observation Type (UA/UC)
+    # If start_handler set it (confident), we might skip.
+    # Currently assuming we skip if present, or we can force ask.
+    # Let's Skip to Breach Source to streamline, as per user request to "Replace with AI".
+    
     state_manager.update_state(
         phone_number=phone_number,
         new_state="WAITING_FOR_BREACH_SOURCE",
@@ -86,68 +108,68 @@ def handle_location(user_input_text: str, phone_number: str, state_manager: Conv
     )
     
     # Prepare Next Question (Breach Source)
-    # We skip WAITING_FOR_OBSERVATION_TYPE because classification/type is already confirmed in Step 1.
     config = ConfigManager()
     sources = config.get_options("BREACH_SOURCES")
     
-    return f"""Location saved: {location_val}
+    return {
+        "text": f"Location saved: {location_val}\n\nWho/What is the source?",
+        "interactive": {
+            "type": "list",
+            "button_text": "Select Source",
+            "items": [{"id": f"src_{i}", "title": src} for i, src in enumerate(sources)]
+        }
+    }
 
-Who/What is the source?
-{_format_options(sources)}
-(Or type a name)"""
-
-def handle_observation_type(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> str:
-    """Handle Observation Type Confirmation or Correction."""
-    text = user_input_text.strip()
+def handle_observation_type(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle Observation Type (UA/UC/NM) if we didn't skip it.
+    """
+    config = ConfigManager()
+    types = config.get_options("OBSERVATION_TYPES")
     
-    draft_data = current_state_data.get("draftData", {})
-    current_class = draft_data.get("classification")
+    selected_type = _resolve_selection(user_input_text, types)
+    start_val = selected_type if selected_type else user_input_text.strip()
     
-    taxonomy_map = _get_taxonomy_map()
-    
-    final_class = current_class
-    
-    if text.lower() in ["yes", "y", "correct", "confirm"]:
-        # Confirmed
-        pass
-    else:
-        # 1. Check strict Code match
-        # Handle "A1" or "A1."
-        code = text.upper().split(' ')[0].replace('.', '')
-        
-        if code in taxonomy_map:
-            final_class = taxonomy_map[code]
-        else:
-            # 2. Try Fuzzy/Smart Match
-            match = _find_best_match(text, taxonomy_map)
-            if match:
-                final_class = match
-            else:
-                return f"⚠️ I couldn't recognize \"{text}\".\n\nPlease reply with *Yes* to accept {current_class}, or try typing the category name again (e.g. 'Noise' or code 'A21')."
-
-    # Save finalized classification
     state_manager.update_state(
         phone_number=phone_number,
         new_state="WAITING_FOR_BREACH_SOURCE",
-        curr_data={"classification": final_class}
+        curr_data={"observationType": start_val}
     )
     
     # Prepare Next Question (Breach Source)
     config = ConfigManager()
     sources = config.get_options("BREACH_SOURCES")
-    return f"""Category saved: {final_class}
+    
+    return {
+        "text": f"Type saved: {start_val}\n\nWho/What is the source?",
+        "interactive": {
+            "type": "list",
+            "button_text": "Select Source",
+            "items": [{"id": f"src_{i}", "title": src} for i, src in enumerate(sources)]
+        }
+    }
 
-Who/What is the source?
-{_format_options(sources)}
-(Or type a name)"""
-
-def handle_breach_source(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> str:
+def handle_breach_source(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> Dict[str, Any]:
     """Handle Breach Source Input."""
     config = ConfigManager()
     sources = config.get_options("BREACH_SOURCES")
     
-    selected = _resolve_selection(user_input_text, sources)
-    source_val = selected if selected else user_input_text.strip()
+    selected_source = None
+    text = user_input_text.strip()
+    
+    # Handle Interactive ID
+    if text.startswith("src_"):
+        try:
+            idx = int(text.split("_")[1])
+            if 0 <= idx < len(sources):
+                selected_source = sources[idx]
+        except:
+            pass
+            
+    if not selected_source:
+        selected_source = _resolve_selection(text, sources)
+        
+    source_val = selected_source if selected_source else text
     
     state_manager.update_state(
         phone_number=phone_number,
@@ -157,5 +179,11 @@ def handle_breach_source(user_input_text: str, phone_number: str, state_manager:
     
     # Prepare Next Question (Severity)
     levels = ["High", "Medium", "Low"]
-    return f"""How would you rate the severity?
-{_format_options(levels)}"""
+    
+    return {
+        "text": "How would you rate the severity?",
+        "interactive": {
+            "type": "button",
+            "buttons": [{"id": lvl.lower(), "title": lvl} for lvl in levels]
+        }
+    }

@@ -72,10 +72,11 @@ fi
 # 5. Dependency Check
 echo -e "\n${BLUE}[4/5] Verifying Dependencies...${NC}"
 # Simple check to ensure critical deps are in requirements.txt
-if ! grep -q "pydantic" requirements.txt; then
-    echo -e "${RED}Error: pydantic is missing from requirements.txt!${NC}"
-    exit 1
-fi
+# pydantic was removed as it's not used in the codebase
+# if ! grep -q "pydantic" requirements.txt; then
+#     echo -e "${RED}Error: pydantic is missing from requirements.txt!${NC}"
+#     exit 1
+# fi
 echo -e "${GREEN}✓ requirements.txt looks valid${NC}"
 
 # 6. Deployment

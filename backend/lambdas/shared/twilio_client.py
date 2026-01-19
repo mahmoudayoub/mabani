@@ -87,8 +87,13 @@ class TwilioClient:
             import base64
 
             computed_signature_b64 = base64.b64encode(computed_signature).decode()
-
-            return hmac.compare_digest(computed_signature_b64, signature)
+            
+            is_valid = hmac.compare_digest(computed_signature_b64, signature)
+            if not is_valid:
+                print(f"Signature Mismatch: Expected {computed_signature_b64}, Got {signature}")
+                # print(f"Data used for sig: {data}") # CAUTION: Logs PII
+                
+            return is_valid
 
         except Exception as error:
             print(f"Error validating Twilio signature: {error}")
@@ -139,10 +144,152 @@ class TwilioClient:
             print(f"Error sending Twilio message: {error}")
             raise
 
+    def send_interactive_message(
+        self, to_number: str, body_text: str, interactive_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Send an interactive message (Buttons or List) using Twilio Content API.
+        Creates a session-based content object on the fly using direct HTTP requests.
+        """
+        try:
+            # Ensure "whatsapp:" prefix
+            if not to_number.startswith("whatsapp:"):
+                to_number = f"whatsapp:{to_number}"
+            
+            # Use the configured from_number
+            credentials = self._get_credentials()
+            from_number = credentials.get("whatsapp_number")
+            account_sid = credentials.get("account_sid")
+            auth_token = credentials.get("auth_token")
+
+            # 1. Construct Content Payload
+            content_type = ""
+            content_body = {}
+            
+            msg_type = interactive_data.get("type")
+            
+            if msg_type == "button":
+                # Quick Reply (Buttons)
+                # Twilio Content API Type: twilio/quick-reply
+                content_type = "twilio/quick-reply"
+                actions = []
+                for btn in interactive_data.get("buttons", []):
+                    # Title max 20 chars
+                    title = btn["title"]
+                    if len(title) > 20: 
+                         title = title[:19] + "…"
+                    actions.append({
+                        "title": title, 
+                        "id": btn["id"]
+                    })
+                    
+                content_body = {
+                    "body": body_text[:1000],
+                    "actions": actions
+                }
+                
+            elif msg_type == "list":
+                # List Picker
+                # Twilio Content API Type: twilio/list-picker
+                content_type = "twilio/list-picker"
+                items = []
+                for item in interactive_data.get("items", [])[:10]: # Enforce max 10 limit
+                    # Item title max 24 chars
+                    title = item["title"]
+                    if len(title) > 24:
+                        title = title[:23] + "…"
+                        
+                    itm = {
+                        "item": title, 
+                        "id": item["id"]
+                    }
+                    if item.get("description"):
+                        desc = item["description"]
+                        if len(desc) > 72:
+                            desc = desc[:71] + "…"
+                        itm["description"] = desc
+                    items.append(itm)
+                    
+                content_body = {
+                    "body": body_text[:1000],
+                    "button": interactive_data.get("button_text", "Select")[:20],
+                    "items": items
+                }
+                
+            else:
+                # Fallback to text if unknown type
+                print(f"Unknown interactive type {msg_type}, falling back to text.")
+                return self.send_message(to_number, body_text)
+
+            # 2. Create Content Resource (Dynamic) via Direct HTTP
+            import requests
+            from requests.auth import HTTPBasicAuth
+            
+            # URL for creating content
+            # API: https://content.twilio.com/v1/Content
+            content_url = "https://content.twilio.com/v1/Content"
+            
+            payload = {
+                "friendly_name": f"Session_Content_{msg_type}",
+                "variables": {},
+                "types": {
+                    content_type: content_body
+                },
+                "language": "en" 
+            }
+            
+            # Create content
+            content_resp = requests.post(
+                content_url,
+                json=payload,
+                auth=HTTPBasicAuth(account_sid, auth_token),
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if content_resp.status_code not in [200, 201]:
+                print(f"Failed to create content: {content_resp.status_code} - {content_resp.text}")
+                raise Exception(f"Content API Error: {content_resp.text}")
+                
+            content_data = content_resp.json()
+            content_sid = content_data["sid"]
+            print(f"Created ephemeral content {content_sid} for {to_number}")
+            
+            # 3. Send Message linked to Content SID
+            # Use Message resource
+            msg_url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+            
+            msg_data = {
+                "From": from_number,
+                "To": to_number,
+                "ContentSid": content_sid
+            }
+            
+            msg_resp = requests.post(
+                msg_url,
+                data=msg_data,
+                auth=HTTPBasicAuth(account_sid, auth_token)
+            )
+            
+            if msg_resp.status_code not in [200, 201]:
+                 print(f"Failed to send message linked to content: {msg_resp.status_code} - {msg_resp.text}")
+                 raise Exception(f"Message Send Error: {msg_resp.text}")
+                 
+            msg_json = msg_resp.json()
+            print(f"Interactive message sent: {msg_json['sid']}")
+            return msg_json
+            
+        except Exception as error:
+            print(f"Error sending interactive message: {error}")
+            import traceback
+            traceback.print_exc()
+            # Fallback to plain text with instructions
+            fallback_text = f"{body_text}\n\n[Display Error: Please reply with your choice]"
+            return self.send_message(to_number, fallback_text)
 
     def parse_webhook(self, body: str) -> Dict[str, Any]:
         """
         Parse Twilio webhook body from form-encoded format.
+        Does NOT modify the payload to ensure signature validation passes.
 
         Args:
             body: Request body string
@@ -158,6 +305,37 @@ class TwilioClient:
         parsed = parse_qs(body)
         # Convert single-item lists to values
         return {k: v[0] if len(v) == 1 else v for k, v in parsed.items()}
+
+    def process_interactive_response(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract the actual selected ID from InteractionData if present.
+        Returns a COPY of params with 'Body' updated to the selected ID.
+        """
+        data = params.copy()
+        
+        # Check for Interactive Message Payload
+        if 'InteractionData' in data:
+            try:
+                interaction = json.loads(data['InteractionData'])
+                interaction_type = interaction.get('type')
+                
+                selected_id = None
+                
+                if interaction_type == 'list_response':
+                    selected_id = interaction.get('list_reply', {}).get('id')
+                elif interaction_type == 'quick_reply':
+                    selected_id = interaction.get('button_reply', {}).get('id')
+                elif interaction_type == 'button_reply': # Standard button
+                     selected_id = interaction.get('button_reply', {}).get('id')
+
+                if selected_id:
+                    print(f"Interactive Reply Detected. Overriding Body '{data.get('Body')}' with ID '{selected_id}'")
+                    data['Body'] = selected_id
+                    
+            except Exception as e:
+                print(f"Error parsing InteractionData: {e}")
+                
+        return data
 
 
 def format_hs_response(report_data: Dict[str, Any]) -> str:

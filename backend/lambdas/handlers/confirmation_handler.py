@@ -37,9 +37,15 @@ def handle_confirmation(
         # Fetch Locations options for the prompt
         config = ConfigManager()
         locations = config.get_options("LOCATIONS")
-        options_str = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(locations)])
         
-        return f"Where did this happen? \nSelect from list or type new:\n{options_str}"
+        return {
+            "text": "Where did this happen?\n\n📍 Share your *Location* (Paperclip -> Location) or select from the list:",
+            "interactive": {
+                "type": "list",
+                "button_text": "Select Location",
+                "items": [{"id": f"loc_{i}", "title": loc} for i, loc in enumerate(locations)]
+            }
+        }
         
     # 2. Handle "No"
     elif text in ["no", "n", "nope", "incorrect"]:
@@ -49,26 +55,36 @@ def handle_confirmation(
             new_state="WAITING_FOR_CLASSIFICATION_SELECTION"
         )
         
-        # Get dynamic classifications if possible, else standard fallback
-        # Ideally we add CLASSIFICATIONS to ConfigManager too. 
-        # For now, let's assume they are stored in "CLASSIFICATIONS" (Task: Add if needed).
-        # We'll default to the static list if not found, but trying Config first is good.
-        
-        # NOTE: start_handler.py relies on Bedrock. 
-        # If we use a fixed list here, it's fine.
-        
+        # Fallback classifications
         CLASSIFICATIONS = [
-            "Falls from Height", "Falling Objects", "Electrical Hazards", 
-            "Fire Hazards", "Chemical Exposure", "Manual Handling", 
-            "Confined Spaces", "Vehicle Movement", "Slips, Trips, Falls", 
-            "Equipment Malfunction", "PPE Non-compliance", "Other"
+            "Falls from Height", "Electrical Hazards", "Fire Hazards", 
+            "Chemical Exposure", "Manual Handling", "Confined Spaces", 
+            "Vehicle Movement", "Slips, Trips, Falls", "Equipment Malfunction", 
+            "Other" 
         ]
         
-        options = "\n".join([f"{i+1}. {c}" for i, c in enumerate(CLASSIFICATIONS)])
-        return f"Please reply with the number of the correct category:\n\n{options}"
+        return {
+            "text": "Please select the correct category:",
+            "interactive": {
+                "type": "list",
+                "button_text": "Select Category",
+                "items": [{"id": f"{i+1}", "title": c} for i, c in enumerate(CLASSIFICATIONS)]
+            }
+        }
         
     else:
-        return f"I didn't understand. I identified *{current_state.get('draftData', {}).get('classification', 'Unknown')}*.\n\nIs this correct? (Reply *Yes* or *No*)"
+        # Re-ask with buttons
+        classification = current_state.get('draftData', {}).get('classification', 'Unknown')
+        return {
+            "text": f"I didn't understand. I identified *{classification}*.\n\nIs this correct?",
+            "interactive": {
+                "type": "button",
+                "buttons": [
+                    {"id": "yes", "title": "Yes"},
+                    {"id": "no", "title": "No"}
+                ]
+            }
+        }
 
 def handle_classification_selection(
     user_input_text: str,
@@ -81,30 +97,47 @@ def handle_classification_selection(
     text = user_input_text.strip()
     
     CLASSIFICATIONS = [
-        "Falls from Height", "Falling Objects", "Electrical Hazards", 
-        "Fire Hazards", "Chemical Exposure", "Manual Handling", 
-        "Confined Spaces", "Vehicle Movement", "Slips, Trips, Falls", 
-        "Equipment Malfunction", "PPE Non-compliance", "Other"
+        "Falls from Height", "Electrical Hazards", "Fire Hazards", 
+        "Chemical Exposure", "Manual Handling", "Confined Spaces", 
+        "Vehicle Movement", "Slips, Trips, Falls", "Equipment Malfunction", 
+        "Other" 
     ]
     
-    # Check if user sent a number
+    # Check if user sent a number (from List or Text)
+    # Interactive List might send ID or Title depending on client used, 
+    # but our fallback instructions say "Reply with number".
+    # User might also click valid list item.
+    
+    selected_class = None
+    
     if text.isdigit():
         idx = int(text) - 1
         if 0 <= idx < len(CLASSIFICATIONS):
             selected_class = CLASSIFICATIONS[idx]
             
-            # Update data with manual selection
-            state_manager.update_state(
-                phone_number=phone_number,
-                new_state="WAITING_FOR_LOCATION",
-                curr_data={"classification": selected_class}
-            )
-            
-            # Fetch Locations options for the next prompt
-            config = ConfigManager()
-            locations = config.get_options("LOCATIONS")
-            options_str = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(locations)])
-            
-            return f"Got it: *{selected_class}*.\n\nWhere did this happen? \nSelect or type:\n{options_str}"
+    # Also define logic if they type the name exactly
+    elif text in CLASSIFICATIONS:
+        selected_class = text
+        
+    if selected_class:
+        # Update data with manual selection
+        state_manager.update_state(
+            phone_number=phone_number,
+            new_state="WAITING_FOR_LOCATION",
+            curr_data={"classification": selected_class}
+        )
+        
+        # Fetch Locations options for the next prompt
+        config = ConfigManager()
+        locations = config.get_options("LOCATIONS")
+        
+        return {
+            "text": f"Got it: *{selected_class}*.\n\nWhere did this happen?\n\n📍 Share your *Location* or select below:",
+            "interactive": {
+                "type": "list",
+                "button_text": "Select Location",
+                "items": [{"id": f"loc_{i}", "title": loc} for i, loc in enumerate(locations)]
+            }
+        }
             
     return "Please reply with the *number* corresponding to the correct category."

@@ -9,9 +9,11 @@ from typing import Dict, Any
 try:
     from shared.conversation_state import ConversationState
     from shared.twilio_client import TwilioClient
+    from shared.config_manager import ConfigManager
 except ImportError:
     from lambdas.shared.conversation_state import ConversationState
     from lambdas.shared.twilio_client import TwilioClient
+    from lambdas.shared.config_manager import ConfigManager
 
 import boto3
 import os
@@ -20,12 +22,12 @@ def handle_stop_work(
     user_input_text: str, 
     phone_number: str, 
     state_manager: ConversationState
-) -> str:
+) -> Dict[str, Any]:
     """Handle Stop Work Input."""
     text = user_input_text.strip().lower()
     stop_work = False
     
-    if text in ["yes", "y", "true"]:
+    if text in ["yes", "y", "true", "confirm"]:
         stop_work = True
     
     state_manager.update_state(
@@ -34,7 +36,18 @@ def handle_stop_work(
         curr_data={"stopWork": stop_work}
     )
     
-    return "Who is the responsible person for this area? (Name or Phone Number)"
+    # Prepare Responsible Person Prompt
+    config = ConfigManager()
+    persons = config.get_options("RESPONSIBLE_PERSONS")
+    
+    return {
+        "text": "Who is the responsible person for this area?",
+        "interactive": {
+            "type": "list",
+            "button_text": "Select Person",
+            "items": [{"id": f"p_{i}", "title": p} for i, p in enumerate(persons)]
+        }
+    }
 
 def handle_responsible_person(
     user_input_text: str, 
@@ -45,7 +58,28 @@ def handle_responsible_person(
     """
     Handle Responsible Person Input and Finalize Report.
     """
-    responsible_person = user_input_text.strip()
+    text = user_input_text.strip()
+    
+    # Resolve List Selection
+    responsible_person = text
+    
+    config = ConfigManager()
+    persons = config.get_options("RESPONSIBLE_PERSONS")
+    
+    if text.startswith("p_"):
+        try:
+            idx = int(text.split("_")[1])
+            if 0 <= idx < len(persons):
+                responsible_person = persons[idx]
+        except:
+            pass
+            
+    # Try name match
+    if responsible_person == text: # If not resolved by ID
+        for p in persons:
+            if p.lower() == text.lower():
+                responsible_person = p
+                break
     
     # 1. Finalize Data
     draft_data = current_state_data.get("draftData", {})
@@ -65,29 +99,23 @@ def handle_responsible_person(
     # 4. Construct Final Message
     report_num = draft_data.get("reportNumber", "N/A")
     severity = draft_data.get("severity", "Medium").capitalize()
-    hazard_type = draft_data.get("observationType", draft_data.get("classification", "General")).title()
+    # hazard_type = Type (UA/UC)
+    obs_type = draft_data.get("observationType", "Observation")
+    # classification = Category (Working at Height)
+    category = draft_data.get("classification", "General")
+    
     description = draft_data.get("originalDescription", "")
-    s3_https_url = draft_data.get("s3Url", "").replace("s3://", "https://").replace(".s3.eu-central-1.amazonaws.com", ".s3.eu-central-1.wasabisys.com/in-files") # Placeholder logic for URL, using s3Url from metadata
-    # Actually, we should use the proper HTTPS URL if stored, or construct it.
-    # The s3Url stored in draftData is usually s3://bucket/key
-    # Ideally we should have stored 'httpsUrl' in start_handler. Let's try to infer or use what we have.
-    # For now, let's assume we can link to the image if public or via portal. Unauthenticated S3 links might fail if bucket is private.
-    # But for the requested format, we try our best.
+    s3_https_url = draft_data.get("s3Url", "").replace("s3://", "https://").replace(".s3.eu-central-1.amazonaws.com", ".s3.eu-central-1.wasabisys.com/in-files") 
     
     image_link = draft_data.get("imageUrl")
     if not image_link:
-        # Fallback to s3Url if imageUrl is missing (legacy data) and try to convert
         s3_url = draft_data.get("s3Url", "")
         if s3_url.startswith("s3://"):
-             # Convert s3://bucket/key to https://bucket.s3.region.amazonaws.com/key
-             # However, we don't have region handy here easily unless we import env. 
-             # Simpler to just say Not Available or let it remain s3:// for legacy.
              image_link = s3_url
         else:
              image_link = "Image Link Not Available"
     
     # Advice / Control Measure
-    # We stored this in severity_handler as 'controlMeasure' (formerly safetyAdvice)
     advice = draft_data.get("controlMeasure", draft_data.get("safetyAdvice", "Conduct immediate safety assessment."))
     source_ref = draft_data.get("reference", draft_data.get("safetySource", ""))
     
@@ -95,11 +123,19 @@ def handle_responsible_person(
     
     location = draft_data.get("location", "Unknown")
     source = draft_data.get("breachSource", "Unknown")
+    stop_work_status = "YES" if draft_data.get("stopWork") else "NO"
 
-    message = f"""🔍 Hazard Type: {hazard_type}
+    # Truncate advice if too long (Twilio limit 1600 chars total)
+    if len(advice) > 800:
+        advice = advice[:800] + "... (truncated)"
+        
+    message = f"""🔍 Hazard Type: {obs_type}
+📂 Category: {category}
 📍 Location: {location}
 👤 Source: {source}
 ⚠️ Severity: {severity}
+🛑 Stop Work: {stop_work_status}
+👤 Responsible: {responsible_person}
 🔒 Control measures: {advice}
 Date: {date_str}
 🖼️ - {image_link}
@@ -110,6 +146,10 @@ Log ID {report_num}
     if source_ref and source_ref != "Standard Safety Protocols":
         message += f"\n\n📚 Source: {source_ref}\n(Reference from Safety Knowledge Base)"
 
+    # Final Safety Truncation
+    if len(message) > 1590:
+        message = message[:1590] + "..."
+        
     return message
 
 def _save_final_report(data: Dict[str, Any]) -> None:

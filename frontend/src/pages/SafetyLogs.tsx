@@ -8,6 +8,8 @@ const SafetyLogs: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
+    const [exporting, setExporting] = useState(false);
+
     useEffect(() => {
         fetchReports();
     }, []);
@@ -26,15 +28,165 @@ const SafetyLogs: React.FC = () => {
         }
     };
 
+    const handleExcelExport = async () => {
+        if (!reports || reports.length === 0) {
+            alert("No reports to export.");
+            return;
+        }
+
+        setExporting(true);
+        try {
+            // Dynamically import libraries to avoid SSR issues or large initial bundle
+            const ExcelJS = (await import('exceljs')).default;
+            const { saveAs } = (await import('file-saver'));
+
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Safety Logs');
+
+            // 1. Define Columns
+            worksheet.columns = [
+                { header: 'Name', key: 'name', width: 20 },
+                { header: 'Observation', key: 'observation', width: 25 },
+                { header: 'Hazard Type', key: 'hazardType', width: 25 },
+                { header: 'Date and Time', key: 'date', width: 20 },
+                { header: 'Project', key: 'project', width: 30 },
+                { header: 'AI Proposed Mitigation (HSG150)', key: 'mitigation', width: 40 },
+                { header: 'Positive/Negative', key: 'posNeg', width: 15 },
+                { header: 'Image', key: 'image', width: 30 } // Width for image column
+            ];
+
+            // 2. Add Data & Images
+            for (const report of reports) {
+                // Prepare Data Fields
+                const name = report.responsiblePerson || report.reporter || report.sender || "N/A";
+
+                let observation = "General";
+                const val = report.classification || report.observationType;
+                if (typeof val === 'object' && val !== null) {
+                    const v = val as any;
+                    observation = v.name ? `${v.code ? v.code + ' ' : ''}${v.name}` : JSON.stringify(v);
+                } else if (val) {
+                    observation = val;
+                }
+
+                let hazardType = "Unsafe Condition (UC)";
+                if (report.observationType && typeof report.observationType === 'string') {
+                    hazardType = report.observationType;
+                } else if (observation.toLowerCase().includes("good")) {
+                    hazardType = "Good Practice (GP)";
+                }
+
+                const dateStr = report.timestamp || report.completedAt || report.updatedAt;
+                const date = dateStr ? new Date(dateStr).toISOString().replace("T", " ").split(".")[0] : "N/A";
+
+                let project = "Unknown";
+                const loc = report.location;
+                if (typeof loc === "object" && loc !== null) {
+                    // @ts-ignore
+                    project = loc.label || loc.extracted_name || loc.text || `Lat:${loc.latitude}, Long:${loc.longitude}`;
+                } else if (loc) {
+                    project = loc;
+                }
+
+                const mitigation = report.controlMeasure || "N/A";
+                const isPositive = hazardType.toLowerCase().includes("good") || observation.toLowerCase().includes("good");
+                const posNeg = isPositive ? "Positive" : "Negative";
+
+                const imageUrl = report.imageUrl || (report.s3Url ? report.s3Url.replace("s3://", "https://").replace("taskflow-backend-dev-reports", "taskflow-backend-dev-reports.s3.eu-west-1.amazonaws.com") : null);
+
+                // Add Row
+                const row = worksheet.addRow({
+                    name,
+                    observation,
+                    hazardType,
+                    date,
+                    project,
+                    mitigation,
+                    posNeg,
+                    image: imageUrl ? "Loading..." : "No Image"
+                });
+
+                // Embed Image if exists
+                if (imageUrl) {
+                    try {
+                        const response = await fetch(imageUrl);
+                        const blob = await response.blob();
+                        const buffer = await blob.arrayBuffer();
+
+                        const imageId = workbook.addImage({
+                            buffer: buffer,
+                            extension: 'jpeg', // Assuming jpeg/png, ExcelJS handles mostly automatically however
+                        });
+
+                        worksheet.addImage(imageId, {
+                            tl: { col: 7, row: row.number - 1 }, // col 7 is 'H' (0-indexed)
+                            ext: { width: 200, height: 150 },
+                            editAs: 'oneCell'
+                        });
+
+                        // Clear text content in image cell
+                        row.getCell('image').value = '';
+
+                        // Set row height to accommodate image
+                        row.height = 120;
+
+                    } catch (imageError) {
+                        console.warn("Failed to embed image, falling back to IMAGE formula", imageError);
+                        // Fallback to IMAGE function (available in Microsoft 365)
+                        row.getCell('image').value = { formula: `IMAGE("${imageUrl}")` };
+                    }
+                }
+            }
+
+            // 3. Styling Headers
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.getRow(1).height = 20;
+
+            // 4. Write & Save
+            const buffer = await workbook.xlsx.writeBuffer();
+            saveAs(new Blob([buffer]), `safety_logs_export_${new Date().toISOString().split("T")[0]}.xlsx`);
+
+        } catch (err) {
+            console.error("Export failed", err);
+            alert("Failed to export Excel file. See console for details.");
+        } finally {
+            setExporting(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
-            <div className="border-b border-gray-200 pb-5">
-                <h3 className="text-2xl font-bold leading-6 text-gray-900">
-                    Safety Logs
-                </h3>
-                <p className="mt-2 text-sm text-gray-500">
-                    View recent safety observations and reports.
-                </p>
+            <div className="border-b border-gray-200 pb-5 flex justify-between items-center">
+                <div>
+                    <h3 className="text-2xl font-bold leading-6 text-gray-900">
+                        Safety Logs
+                    </h3>
+                    <p className="mt-2 text-sm text-gray-500">
+                        View recent safety observations and reports.
+                    </p>
+                </div>
+                <button
+                    onClick={handleExcelExport}
+                    disabled={exporting}
+                    className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${exporting ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+                >
+                    {exporting ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Exporting...
+                        </>
+                    ) : (
+                        <>
+                            <svg className="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                            </svg>
+                            Export to Excel
+                        </>
+                    )}
+                </button>
             </div>
 
             <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -184,7 +336,40 @@ const SafetyLogs: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <p className="text-gray-500">Location</p>
-                                                        <p className="font-medium text-gray-900">{selectedReport.location || "Default Project"}</p>
+                                                        {(() => {
+                                                            const loc = selectedReport.location || "Default Project";
+                                                            // Regex to find "lat,long" pattern (handling optional whitespace)
+                                                            const coordMatch = loc.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+
+                                                            if (coordMatch) {
+                                                                const [_, lat, lng] = coordMatch;
+                                                                return (
+                                                                    <div className="mt-1">
+                                                                        <div className="font-medium text-gray-900 mb-2">{loc}</div>
+                                                                        <div className="rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                                                                            <iframe
+                                                                                width="100%"
+                                                                                height="200"
+                                                                                frameBorder="0"
+                                                                                loading="lazy"
+                                                                                src={`https://maps.google.com/maps?q=${lat},${lng}&z=15&output=embed`}
+                                                                                title="Location Map"
+                                                                            ></iframe>
+                                                                        </div>
+                                                                        <a
+                                                                            href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="block mt-1 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                                                        >
+                                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                                            Open in Google Maps
+                                                                        </a>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return <p className="font-medium text-gray-900">{loc}</p>;
+                                                        })()}
                                                     </div>
                                                     <div>
                                                         <p className="text-gray-500">Date & Time</p>

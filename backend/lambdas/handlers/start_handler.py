@@ -95,7 +95,12 @@ def handle_start(
         # 2. Detailed Hazard Category
         config = ConfigManager()
         taxonomy_list = config.get_options("HAZARD_TAXONOMY")
-        taxonomy_str = "\n".join(taxonomy_list)
+        
+        # Format taxonomy for AI (handle dicts)
+        if taxonomy_list and isinstance(taxonomy_list[0], dict):
+            taxonomy_str = "\n".join([f"- {item['name']} ({item['category']})" for item in taxonomy_list])
+        else:
+            taxonomy_str = "\n".join(taxonomy_list)
         
         hazards = bedrock_client.classify_hazard_type(
             description=description or caption,
@@ -105,21 +110,18 @@ def handle_start(
             taxonomy=taxonomy_str
         )
         
-        raw_hazard = hazards[0] if hazards else "A41 Others"
+        # Clean up response
+        raw_hazard = hazards[0] if hazards else "Others"
         
-        # Clean up if it's a dict or complex structure
+        # If dict, extract name. If string, just use it.
         if isinstance(raw_hazard, dict):
-            # Prefer 'code' or 'name' or combined
-            code = raw_hazard.get('code', '')
-            name = raw_hazard.get('name', '')
-            if code and name and code in name:
-                hazard_category = name # Avoid "A2 Electrical Safety Electrical Safety"
-            elif code and name:
-                hazard_category = f"{code} {name}"
-            else:
-                hazard_category = code or name or str(raw_hazard)
+            hazard_category = raw_hazard.get('name', raw_hazard.get('code', str(raw_hazard)))
         else:
             hazard_category = str(raw_hazard)
+            
+        # Remove any lingering " (Safety)" suffix if AI included it
+        if " (" in hazard_category and ")" in hazard_category:
+            hazard_category = hazard_category.split(" (")[0]
         
         # 4. Save Draft State
         draft_data = {
@@ -140,7 +142,16 @@ def handle_start(
         )
         
         # 5. Return Response
-        return f"I've analyzed the photo and identified a *{observation_type}* related to *{hazard_category}*.\n\nIs this correct?\n(Reply *Yes* or *No*)"
+        return {
+            "text": f"I've analyzed the photo and identified a *{observation_type}* related to *{hazard_category}*.\n\nIs this correct?",
+            "interactive": {
+                "type": "button",
+                "buttons": [
+                    {"id": "yes", "title": "Yes"},
+                    {"id": "no", "title": "No"}
+                ]
+            }
+        }
 
     except Exception as e:
         print(f"Error in handle_start: {e}")

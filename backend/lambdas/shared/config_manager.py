@@ -55,39 +55,91 @@ class ConfigManager:
                 "Roof Level"
             ],
             "HAZARD_TAXONOMY": [
-                "A1 Confined Spaces", "A2 Electrical Safety", "A3 Excavation & Trenching", "A4 Fire Prevention",
-                "A5 Hazardous Materials", "A6 Hot Works", "A7 Housekeeping", "A8 Lifting Operations",
-                "A9 Lighting", "A10 Manual Handling", "A11 Material Storage", "A12 Mobile Plant & Equipment",
-                "A13 Site Welfare Facilities", "A14 Tunnelling", "A15 Working at Height / Fall Protection",
-                "A16 Working on or Near Live Roads", "A17 Working on or near Water", "A18 Man & Machine Interface",
-                "A19 Traffic Management", "A20 Formwork & Falsework", "A21 Scaffolding", "A22 Emergency Response",
-                "A23 Security", "A24 Signage & Communication", "A25 Hand & Power Tools", "A26 Site Establishment",
-                "A27 Airside Safety", "A28 Lock-Out / Tag-Out", "A29 Permit to Work", "A30 Radiation Safety",
-                "A31 Site Logistics", "A32 Subcontractor Management", "A33 Training & Awareness", "A34 Underground Utilities",
-                "A35 Access / Egress", "A36 Barrication", "A37 Public Safety & Protection", "A38 Safety Devices / Equipment",
-                "A39 PPE", "A40 Documentation", "A41 Others",
-                "B1 Noise", "B2 Environmental Protection", "B3 Waste Management", "B4 Dust Suppression & Emissions",
-                "B5 Air Emissions & Quality", "B6 Flora & Fauna", "B7 Soil Erosion", "B8 Water Discharge / Contamination",
-                "B9 Groundwater Protection", "B10 Flood Mitigation", "B11 Sustainability",
-                "C1 Working in the Heat", "C2 Ergonomics", "C3 Occupational Health", "C4 Pest Control"
+                # Safety (41 categories)
+                {"id": 1, "name": "Confined Spaces", "category": "Safety"},
+                {"id": 2, "name": "Electrical Safety", "category": "Safety"},
+                {"id": 3, "name": "Excavation & Trenching", "category": "Safety"},
+                {"id": 4, "name": "Fire Prevention", "category": "Safety"},
+                {"id": 5, "name": "Hazardous Materials", "category": "Safety"},
+                {"id": 6, "name": "Hot Works", "category": "Safety"},
+                {"id": 7, "name": "Housekeeping", "category": "Safety"},
+                {"id": 8, "name": "Lifting Operations", "category": "Safety"},
+                {"id": 9, "name": "Lighting", "category": "Safety"},
+                {"id": 10, "name": "Manual Handling", "category": "Safety"},
+                {"id": 11, "name": "Material Storage", "category": "Safety"},
+                {"id": 12, "name": "Mobile Plant & Equipment", "category": "Safety"},
+                {"id": 13, "name": "Site Welfare Facilities", "category": "Safety"},
+                {"id": 14, "name": "Tunnelling", "category": "Safety"},
+                {"id": 15, "name": "Working at Height / Fall Protection", "category": "Safety"},
+                {"id": 16, "name": "Working on or Near Live Roads", "category": "Safety"},
+                {"id": 17, "name": "Working on or near Water", "category": "Safety"},
+                {"id": 18, "name": "Man & Machine Interface", "category": "Safety"},
+                {"id": 19, "name": "Traffic Management", "category": "Safety"},
+                {"id": 20, "name": "Formwork & Falsework", "category": "Safety"},
+                {"id": 21, "name": "Scaffolding", "category": "Safety"},
+                {"id": 22, "name": "Emergency Response", "category": "Safety"},
+                {"id": 23, "name": "Security", "category": "Safety"},
+                {"id": 24, "name": "Signage & Communication", "category": "Safety"},
+                {"id": 25, "name": "Hand & Power Tools", "category": "Safety"},
+                {"id": 26, "name": "Site Establishment", "category": "Safety"},
+                {"id": 27, "name": "Airside Safety", "category": "Safety"},
+                {"id": 28, "name": "Lock-Out / Tag-Out", "category": "Safety"},
+                {"id": 29, "name": "Permit to Work", "category": "Safety"},
+                {"id": 30, "name": "Radiation Safety", "category": "Safety"},
+                {"id": 31, "name": "Site Logistics", "category": "Safety"},
+                {"id": 32, "name": "Subcontractor Management", "category": "Safety"},
+                {"id": 33, "name": "Training & Awareness", "category": "Safety"},
+                {"id": 34, "name": "Underground Utilities", "category": "Safety"},
+                {"id": 35, "name": "Access / Egress", "category": "Safety"},
+                {"id": 36, "name": "Barrication", "category": "Safety"},
+                {"id": 37, "name": "Public Safety & Protection", "category": "Safety"},
+                {"id": 38, "name": "Safety Devices / Equipment", "category": "Safety"},
+                {"id": 39, "name": "PPE", "category": "Safety"},
+                {"id": 40, "name": "Documentation", "category": "Safety"},
+                {"id": 41, "name": "Others", "category": "Safety"},
+                # Environmental (11 categories)
+                {"id": 42, "name": "Noise", "category": "Environmental"},
+                {"id": 43, "name": "Environmental Protection", "category": "Environmental"},
+                {"id": 44, "name": "Waste Management", "category": "Environmental"},
+                {"id": 45, "name": "Dust Suppression & Emissions", "category": "Environmental"},
+                {"id": 46, "name": "Air Emissions & Quality", "category": "Environmental"},
+                {"id": 47, "name": "Flora & Fauna", "category": "Environmental"},
+                {"id": 48, "name": "Soil Erosion", "category": "Environmental"},
+                {"id": 49, "name": "Water Discharge / Contamination", "category": "Environmental"},
+                {"id": 50, "name": "Groundwater Protection", "category": "Environmental"},
+                {"id": 51, "name": "Flood Mitigation", "category": "Environmental"},
+                {"id": 52, "name": "Sustainability", "category": "Environmental"},
+                # Health (4 categories)
+                {"id": 53, "name": "Working in the Heat", "category": "Health"},
+                {"id": 54, "name": "Ergonomics", "category": "Health"},
+                {"id": 55, "name": "Occupational Health", "category": "Health"},
+                {"id": 56, "name": "Pest Control", "category": "Health"}
             ],
             "OBSERVATION_TYPES": [
-                "Unsafe Act",
-                "Unsafe Condition",
-                "Near Miss",
-                "Positive Observation"
+                "Unsafe Condition (UC)",
+                "Unsafe Act (UA)",
+                "Near Miss (NM)",
+                "Good Practice (GP)",
+                "Environmental Protection (EP/ENV)"
             ],
             "BREACH_SOURCES": [
-                "Subcontractor A",
-                "Subcontractor B",
-                "Internal Staff",
-                "Visitor",
-                "Equipment Failure"
+                "Almabani",
+                "Subcontractor"
             ],
             "SEVERITY_LEVELS": [
                 "High",
                 "Medium",
                 "Low"
+            ],
+            "STOPPAGE_OPTIONS": [
+                "Yes",
+                "No"
+            ],
+            "RESPONSIBLE_PERSONS": [
+                "Site Engineer A",
+                "Site Engineer B",
+                "Safety Officer X",
+                "Project Manager Y"
             ]
         }
         return defaults.get(config_type.upper(), [])

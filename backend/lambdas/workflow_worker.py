@@ -107,8 +107,18 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             
         # 4. Send Response via Twilio API
         if response_message:
-            print(f"Sending response to {from_number}: {response_message}")
-            twilio_client.send_message(to_number=from_number, message=response_message)
+            if isinstance(response_message, dict) and "interactive" in response_message:
+                print(f"Sending interactive response to {from_number}")
+                twilio_client.send_interactive_message(
+                    to_number=from_number,
+                    body_text=response_message.get("text", ""),
+                    interactive_data=response_message["interactive"]
+                )
+            else:
+                text_msg = response_message.get("text", "") if isinstance(response_message, dict) else str(response_message)
+                if text_msg:
+                    print(f"Sending response to {from_number}: {text_msg}")
+                    twilio_client.send_message(to_number=from_number, message=text_msg)
             
     except Exception as e:
         print(f"Error in Workflow Worker: {e}")

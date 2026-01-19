@@ -13,3 +13,5 @@ langchain-text-splitters==0.2.0
 tiktoken==0.8.0
 twilio==8.10.0
 
+
+

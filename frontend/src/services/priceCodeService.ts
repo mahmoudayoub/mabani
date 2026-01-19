@@ -228,3 +228,27 @@ export const fetchTextContent = async (url: string): Promise<string> => {
     }
     return await response.text();
 };
+
+/**
+ * Delete a price code set (External API)
+ */
+export const deletePriceCodeSet = async (setName: string): Promise<void> => {
+    // HARDCODED External API URL
+    const deletionApiUrl = "https://auwdkyf4ka.execute-api.eu-west-1.amazonaws.com/prod/";
+
+    // Note: External endpoint might not need headers if public, but sending them is safe
+    const headers = await getAuthHeaders();
+    const encodedName = encodeURIComponent(setName);
+
+    const baseUrl = deletionApiUrl.endsWith('/') ? deletionApiUrl.slice(0, -1) : deletionApiUrl;
+
+    const response = await fetch(`${baseUrl}/pricecode/sets/${encodedName}`, {
+        method: 'DELETE',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Failed to delete price code set: ${response.statusText}`);
+    }
+};

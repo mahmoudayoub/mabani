@@ -8,6 +8,7 @@ import {
     listActivePriceCodeJobs,
     deletePriceCodeEstimate,
     fetchTextContent,
+    deletePriceCodeSet,
     PriceCodeEstimate,
     PriceCodeOutputFile
 } from '../services/priceCodeService';
@@ -25,10 +26,13 @@ interface PriceCodeSummary {
     stats: {
         totalItems: number;
         matched: number;
+        exactMatch?: number;
+        highConf?: number;
         notMatched: number;
         errors: number;
         matchRate: string;
     };
+    filters?: string[];
 }
 
 const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
@@ -40,9 +44,14 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
         lines.forEach(line => {
             if (line.includes('FILE INFORMATION')) currentSection = 'info';
             else if (line.includes('PROCESSING STATISTICS')) currentSection = 'stats';
+            else if (line.includes('FILTERS USED')) currentSection = 'filters';
             else if (line.includes(':')) {
-                const [key, ...values] = line.split(':');
-                const value = values.join(':').trim();
+                // Handle cases like " - Exact Match: 3 (Green)"
+                // Remove leading "- " if present
+                const cleanLine = line.replace(/^-\s+/, '');
+
+                const [key, ...values] = cleanLine.split(':');
+                const value = values.join(':').trim(); // "3 (Green)" or "5-remote aprone.xlsx"
                 const cleanKey = key.trim().toLowerCase();
 
                 if (currentSection === 'info') {
@@ -51,12 +60,20 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
                     else if (cleanKey === 'sheet') summary.fileInfo.sheet = value;
                     else if (cleanKey === 'generated') summary.fileInfo.generated = value;
                     else if (cleanKey === 'processing time') summary.fileInfo.processingTime = value;
+                } else if (currentSection === 'filters') {
+                    if (!summary.filters) summary.filters = [];
+                    summary.filters.push(`${key}: ${value}`);
                 } else if (currentSection === 'stats') {
                     if (cleanKey === 'total items') summary.stats.totalItems = parseInt(value) || 0;
-                    else if (cleanKey === 'matched') summary.stats.matched = parseInt(value) || 0;
+                    else if (cleanKey === 'total matched' || cleanKey === 'matched') summary.stats.matched = parseInt(value) || 0;
                     else if (cleanKey === 'not matched') summary.stats.notMatched = parseInt(value) || 0;
                     else if (cleanKey === 'errors') summary.stats.errors = parseInt(value) || 0;
                     else if (cleanKey === 'match rate') summary.stats.matchRate = value;
+
+                    // Sub-items (Exact Match, High Conf)
+                    // Value might be "3 (Green)" -> parse "3"
+                    else if (cleanKey === 'exact match') summary.stats.exactMatch = parseInt(value) || 0;
+                    else if (cleanKey === 'high conf') summary.stats.highConf = parseInt(value) || 0;
                 }
             }
         });
@@ -134,12 +151,15 @@ const CodeAllocation: React.FC = () => {
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // Load available price codes on mount
+    // Load available price codes on mount
     useEffect(() => {
         const fetchCodes = async () => {
             setLoadingCodes(true);
             try {
                 const codes = await listAvailablePriceCodes();
                 setAvailableCodes(codes);
+                // Select all codes by default
+                setSelectedCodes(codes);
             } catch (error) {
                 console.error('Failed to fetch price codes:', error);
             } finally {
@@ -353,6 +373,28 @@ const CodeAllocation: React.FC = () => {
         }
     };
 
+    const handleViewCompleteSummary = () => {
+        if (!completedFilePath) {
+            setShowSummary(true);
+            return;
+        }
+
+        // Try to find the matching text file in the output list
+        const filename = completedFilePath.split('/').pop() || '';
+        const baseName = filename.replace('.xlsx', '');
+
+        const summaryFile = outputFiles.find(f =>
+            f.filename.endsWith('.txt') && f.filename.includes(baseName)
+        );
+
+        if (summaryFile) {
+            handleViewSummary(summaryFile);
+        } else {
+            console.warn('Summary text file not found directly. Falling back to simple view.');
+            setShowSummary(true);
+        }
+    };
+
     const handleDownload = async () => {
         if (!completedFilePath) return;
 
@@ -370,6 +412,23 @@ const CodeAllocation: React.FC = () => {
             setSelectedCodes(prev => [...prev, code]);
         } else {
             setSelectedCodes(prev => prev.filter(c => c !== code));
+        }
+    };
+
+    const handleDeleteCode = async (code: string) => {
+        if (!confirm(`Are you sure you want to delete "${code}"? This will remove it from the available list and delete its associated vectors.`)) {
+            return;
+        }
+
+        try {
+            await deletePriceCodeSet(code);
+            // Remove from available codes
+            setAvailableCodes(prev => prev.filter(c => c !== code));
+            // Remove from selected codes if present
+            setSelectedCodes(prev => prev.filter(c => c !== code));
+        } catch (error) {
+            console.error('Failed to delete price code:', error);
+            alert(`Failed to delete price code: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     };
 
@@ -575,9 +634,12 @@ const CodeAllocation: React.FC = () => {
                             </div>
                             <div className="flex items-center space-x-3">
                                 <button
-                                    onClick={() => setShowSummary(true)}
-                                    className="text-blue-600 hover:text-blue-800 font-medium px-4 py-2"
+                                    onClick={handleViewCompleteSummary}
+                                    className="bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 font-medium px-4 py-2 rounded-lg transition-colors flex items-center"
                                 >
+                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
                                     View Summary
                                 </button>
                                 <button
@@ -623,9 +685,20 @@ const CodeAllocation: React.FC = () => {
                         ) : (
                             <ul className="divide-y divide-gray-100">
                                 {availableCodes.map(code => (
-                                    <li key={code} className="py-3 flex items-center">
-                                        <span className="text-2xl mr-3">📋</span>
-                                        <span className="font-medium text-gray-900">{code}</span>
+                                    <li key={code} className="py-3 flex items-center justify-between group">
+                                        <div className="flex items-center">
+                                            <span className="text-2xl mr-3">📋</span>
+                                            <span className="font-medium text-gray-900">{code}</span>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteCode(code)}
+                                            className="text-gray-400 hover:text-red-600 p-1 transition-colors"
+                                            title="Delete Price Code Set"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
                                     </li>
                                 ))}
                             </ul>
@@ -724,6 +797,17 @@ const CodeAllocation: React.FC = () => {
                                                         </div>
                                                     </div>
 
+                                                    {viewSummaryData.filters && viewSummaryData.filters.length > 0 && (
+                                                        <div className="bg-gray-50 rounded-lg p-4">
+                                                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Filters Used</h4>
+                                                            <div className="space-y-1">
+                                                                {viewSummaryData.filters.map((filter, i) => (
+                                                                    <p key={i} className="text-sm font-medium text-gray-900">{filter}</p>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     <div className="bg-gray-50 rounded-lg p-4">
                                                         <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Processing Statistics</h4>
                                                         <div className="grid grid-cols-2 gap-4">
@@ -740,6 +824,18 @@ const CodeAllocation: React.FC = () => {
                                                             <div>
                                                                 <p className="text-sm font-medium text-gray-500">Matched</p>
                                                                 <p className="mt-1 text-lg font-medium text-green-600">{viewSummaryData.stats.matched}</p>
+                                                                {(viewSummaryData.stats.exactMatch !== undefined || viewSummaryData.stats.highConf !== undefined) && (
+                                                                    <div className="mt-1 text-xs space-y-1">
+                                                                        <div className="flex justify-between items-center text-gray-600">
+                                                                            <span>Exact:</span>
+                                                                            <span className="font-semibold text-green-700">{viewSummaryData.stats.exactMatch || 0}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between items-center text-gray-600">
+                                                                            <span>High Conf:</span>
+                                                                            <span className="font-semibold text-yellow-700">{viewSummaryData.stats.highConf || 0}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                             <div>
                                                                 <p className="text-sm font-medium text-gray-500">Not Matched</p>

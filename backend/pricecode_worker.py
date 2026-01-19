@@ -207,8 +207,8 @@ async def process_allocate(input_path: Path, storage):
             input_file=input_path,
             output_file=output_path,
             namespace="",
-            source_files=source_files,
-            max_concurrent=20
+            source_files=source_files
+            # max_concurrent loaded from settings (pricecode_max_concurrent=200)
         )
         
         # Upload result to fills folder

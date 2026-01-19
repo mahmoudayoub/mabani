@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     pricecode_index_name: str = 'almabani-pricecode'
     pricecode_top_k: int = 20  # Price code uses more candidates
     pricecode_batch_size: int = 100
-    pricecode_max_concurrent: int = 20
+    pricecode_max_concurrent: int = 200
     
     # ==================== Logging Settings ====================
     log_level: str = 'INFO'

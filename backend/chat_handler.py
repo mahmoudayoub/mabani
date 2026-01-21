@@ -1,8 +1,11 @@
 """
 Chat API Lambda Handler - Natural language interface for price codes and unit rates.
 
+Uses the same matching logic as the batch processing pipelines:
+- Price Code: Strict matching with unit/specificity checks
+- Unit Rate: 3-stage matching (Matcher → Expert → Estimator)
+
 Endpoint: POST /chat
-Supports queries for both 'pricecode' and 'unitrate' types.
 """
 
 import os
@@ -58,44 +61,43 @@ def create_embedding(text: str) -> List[float]:
     return response.data[0].embedding
 
 
-def validate_query(message: str, chat_type: str, history: List[Dict]) -> Dict[str, Any]:
-    """Validate and refine user query using OpenAI."""
-    client = get_openai_client()
-    
-    type_context = {
-        "pricecode": "price codes for construction items (e.g., concrete, steel, pipes)",
-        "unitrate": "unit rates for construction work items (e.g., excavation, formwork, reinforcement)"
-    }
-    
-    system_prompt = f"""You are a helpful assistant for querying {type_context.get(chat_type, 'construction data')}.
+# =============================================================================
+# VALIDATION PROMPT - Check if input is construction/BOQ related
+# =============================================================================
+VALIDATION_SYSTEM = """You are a construction industry expert. Your task is to determine if the user's query is related to construction items, materials, services, or works that would appear in a BOQ (Bill of Quantities).
 
-Your job is to:
-1. Determine if the user query is clear enough to search for matches
-2. If unclear, ask for clarification
-3. If clear, extract the search query
+Valid queries include:
+- Construction materials (concrete, steel, pipes, cables, etc.)
+- Construction works (excavation, formwork, reinforcement, plastering, etc.)
+- MEP items (electrical, plumbing, HVAC equipment)
+- Finishing works (painting, tiling, flooring, etc.)
+- Civil works (roads, drainage, foundations, etc.)
+
+Invalid queries include:
+- General conversation or greetings
+- Non-construction topics
+- Vague queries without any construction context
 
 Respond in JSON format:
-- If valid: {{"valid": true, "query": "refined search query"}}
-- If needs clarification: {{"valid": false, "reason": "Please specify..."}}
-
-Examples of valid queries:
-- "25mm copper pipe" -> {{"valid": true, "query": "25mm copper pipe plumbing"}}
-- "concrete for foundations" -> {{"valid": true, "query": "foundation concrete structural"}}
-- "steel" -> {{"valid": false, "reason": "Please be more specific. What type of steel? (e.g., reinforcement bars, structural steel, steel pipes)"}}
+{
+    "valid": true/false,
+    "reason": "Brief explanation if invalid",
+    "refined_query": "Cleaned up query text for searching (if valid)"
+}
 """
 
-    messages = [{"role": "system", "content": system_prompt}]
-    
-    # Add conversation history
-    for h in history[-4:]:  # Last 4 messages for context
-        messages.append({"role": h["role"], "content": h["content"]})
-    
-    messages.append({"role": "user", "content": message})
+
+def validate_construction_query(message: str) -> Dict[str, Any]:
+    """Validate that the query is construction/BOQ related."""
+    client = get_openai_client()
     
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=messages,
+            messages=[
+                {"role": "system", "content": VALIDATION_SYSTEM},
+                {"role": "user", "content": message}
+            ],
             temperature=0.3,
             response_format={"type": "json_object"}
         )
@@ -103,11 +105,11 @@ Examples of valid queries:
         return result
     except Exception as e:
         logger.error(f"Validation error: {e}")
-        return {"valid": True, "query": message}  # Fallback to original query
+        return {"valid": True, "refined_query": message}
 
 
-def search_pinecone(query: str, chat_type: str, top_k: int = 5) -> List[Dict]:
-    """Search Pinecone index for matches."""
+def search_pinecone(query: str, chat_type: str, top_k: int = 10) -> List[Dict]:
+    """Search Pinecone index for candidates."""
     pc = get_pinecone_client()
     
     # Select index based on type
@@ -117,11 +119,8 @@ def search_pinecone(query: str, chat_type: str, top_k: int = 5) -> List[Dict]:
         index_name = os.environ.get('PINECONE_INDEX_NAME', 'almabani-1')
     
     index = pc.Index(index_name)
-    
-    # Create embedding for query
     embedding = create_embedding(query)
     
-    # Query Pinecone
     results = index.query(
         vector=embedding,
         top_k=top_k,
@@ -132,83 +131,191 @@ def search_pinecone(query: str, chat_type: str, top_k: int = 5) -> List[Dict]:
     return results.matches
 
 
-def format_matches(matches: List, chat_type: str) -> List[Dict]:
-    """Format Pinecone matches for response."""
-    formatted = []
-    for match in matches:
-        metadata = match.metadata or {}
-        
-        if chat_type == "pricecode":
-            formatted.append({
-                "code": metadata.get("price_code", "N/A"),
-                "description": metadata.get("description", metadata.get("text", "N/A")),
-                "category": metadata.get("category", ""),
-                "source": metadata.get("source_file", ""),
-                "score": round(match.score, 3)
-            })
-        else:  # unitrate
-            formatted.append({
-                "code": metadata.get("item_code", "N/A"),
-                "description": metadata.get("description", metadata.get("text", "N/A")),
-                "unit": metadata.get("unit", ""),
-                "rate": metadata.get("rate", ""),
-                "source": metadata.get("sheet_name", ""),
-                "score": round(match.score, 3)
-            })
-    
-    return formatted
+# =============================================================================
+# PRICE CODE MATCHING (Same logic as pipeline)
+# =============================================================================
+PRICECODE_MATCH_SYSTEM = (
+    "You are a Price Code allocation expert. "
+    "Your task is to identify the correct Price Code for a BOQ item from a list of candidates.\n"
+    "Rules:\n"
+    "1. MATCHING IS STRICT & CONSERVATIVE. Better to return 'matched': false than a wrong price code.\n"
+    "2. UNIT COMPATIBILITY (Critical): The Candidate Unit must be convertible or identical to the Target Unit.\n"
+    "3. NO ASSUMPTIONS: If Target is VAGUE and Candidate is SPECIFIC, REJECT IT.\n"
+    "4. FULL COVERAGE: The Candidate must cover the entire scope of the Target.\n"
+    "5. CONFIDENCE Levels:\n"
+    "   - 'EXACT': Perfect symmetry in scope, material, and constraints.\n"
+    "   - 'HIGH': Essential scope is identical with minor non-restrictive differences.\n"
+    "6. Return strict JSON."
+)
 
+PRICECODE_MATCH_USER = """TARGET ITEM (from user query):
+{target_info}
 
-def generate_answer(message: str, matches: List[Dict], chat_type: str, history: List[Dict]) -> str:
-    """Generate natural language answer using OpenAI."""
-    client = get_openai_client()
-    
-    if not matches:
-        return "I couldn't find any matching items. Please try a different search term or provide more details."
-    
-    # Build context from matches
-    context_lines = []
-    for i, m in enumerate(matches[:5], 1):
-        if chat_type == "pricecode":
-            context_lines.append(f"{i}. Code: {m['code']} - {m['description']} (Score: {m['score']})")
-        else:
-            rate_info = f" @ {m['rate']}/{m['unit']}" if m.get('rate') and m.get('unit') else ""
-            context_lines.append(f"{i}. {m['code']} - {m['description']}{rate_info} (Score: {m['score']})")
-    
-    context = "\n".join(context_lines)
-    
-    system_prompt = f"""You are a helpful construction cost estimating assistant.
-Based on the search results below, provide a helpful answer to the user's question.
-Be concise but informative. If the top match seems very relevant (score > 0.8), recommend it confidently.
-If scores are lower, mention that these are approximate matches.
+CANDIDATES (from database):
+{candidates_text}
 
-Search Results:
-{context}
+INSTRUCTIONS:
+Perform logical elimination:
+1. UNIT CHECK: Filter out candidates with incompatible units.
+2. HIERARCHY CHECK: Filter out candidates from wrong trades.
+3. SCOPE CHECK: Does Work Type and Material match?
+4. SPECIFICITY CHECK: Does Candidate impose constraints not in Target? -> REJECT.
+
+Select the best matching candidate.
+
+OUTPUT JSON:
+{{
+    "matched": true/false,
+    "match_index": 1,  // 1-based index (if matched)
+    "confidence_level": "EXACT" | "HIGH",  // if matched
+    "reason": "Step-by-step reasoning explaining the match or why no match was found"
+}}
 """
 
-    messages = [{"role": "system", "content": system_prompt}]
+
+def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
+    """Apply Price Code matching logic."""
+    client = get_openai_client()
     
-    # Add history
-    for h in history[-4:]:
-        messages.append({"role": h["role"], "content": h["content"]})
+    # Format candidates
+    candidates_text = ""
+    for i, c in enumerate(candidates, 1):
+        meta = c.metadata or {}
+        candidates_text += f"{i}. Code: {meta.get('price_code', 'N/A')}\n"
+        candidates_text += f"   Description: {meta.get('description', meta.get('text', 'N/A'))}\n"
+        candidates_text += f"   Category: {meta.get('category', 'N/A')}\n"
+        candidates_text += f"   Source: {meta.get('source_file', 'N/A')}\n\n"
     
-    messages.append({"role": "user", "content": message})
+    prompt = PRICECODE_MATCH_USER.format(
+        target_info=user_query,
+        candidates_text=candidates_text
+    )
     
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=500
+            messages=[
+                {"role": "system", "content": PRICECODE_MATCH_SYSTEM},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"}
         )
-        return response.choices[0].message.content
+        result = json.loads(response.choices[0].message.content)
+        
+        # Add matched candidate details
+        if result.get("matched") and result.get("match_index"):
+            idx = result["match_index"] - 1
+            if 0 <= idx < len(candidates):
+                meta = candidates[idx].metadata or {}
+                result["best_match"] = {
+                    "code": meta.get("price_code", "N/A"),
+                    "description": meta.get("description", meta.get("text", "N/A")),
+                    "category": meta.get("category", ""),
+                    "source_file": meta.get("source_file", ""),
+                    "score": round(candidates[idx].score, 3)
+                }
+        
+        return result
     except Exception as e:
-        logger.error(f"Answer generation error: {e}")
-        # Fallback to simple response
-        top = matches[0]
-        return f"The best match I found is {top['code']}: {top['description']} (confidence: {top['score']*100:.0f}%)"
+        logger.error(f"Price code matching error: {e}")
+        return {"matched": False, "reason": f"Matching error: {str(e)}"}
 
 
+# =============================================================================
+# UNIT RATE MATCHING (Same 3-stage logic as pipeline)
+# =============================================================================
+UNITRATE_MATCH_SYSTEM = (
+    "You are a BOQ matching specialist. Your task is to identify items that are effectively "
+    "the SAME as the target and return the best match with its rate.\n"
+    "Rules:\n"
+    "1. SAME WORK TYPE: Must be the same activity/work/material.\n"
+    "2. SAME SPECIFICATIONS: All critical specs must match (dimensions, materials, grades).\n"
+    "3. SAME SCOPE: Supply & Install vs Supply only are DIFFERENT.\n"
+    "4. COMPATIBLE UNITS: Units must be the same or clear synonyms.\n"
+    "Return strict JSON."
+)
+
+UNITRATE_MATCH_USER = """TARGET ITEM (from user query):
+{target_info}
+
+CANDIDATES (from database with rates):
+{candidates_text}
+
+INSTRUCTIONS:
+Find the best matching item. Consider:
+1. Is it the same work type?
+2. Are specifications compatible?
+3. Is the scope the same?
+4. Are units compatible?
+
+If exact match found, return it. If only close/approximate matches, indicate that.
+
+OUTPUT JSON:
+{{
+    "status": "exact_match" | "close_match" | "no_match",
+    "match_index": 1,  // 1-based index of best match (if any match)
+    "rate": 150.00,  // Rate from matched item
+    "unit": "m3",  // Unit
+    "confidence": 95,  // 70-100 for matches
+    "reason": "Brief explanation of the match quality and any differences"
+}}
+"""
+
+
+def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
+    """Apply Unit Rate matching logic."""
+    client = get_openai_client()
+    
+    # Format candidates
+    candidates_text = ""
+    for i, c in enumerate(candidates, 1):
+        meta = c.metadata or {}
+        rate = meta.get('rate', 'N/A')
+        unit = meta.get('unit', 'N/A')
+        candidates_text += f"{i}. Description: {meta.get('description', meta.get('text', 'N/A'))}\n"
+        candidates_text += f"   Rate: {rate} / {unit}\n"
+        candidates_text += f"   Sheet: {meta.get('sheet_name', meta.get('source_name', 'N/A'))}\n\n"
+    
+    prompt = UNITRATE_MATCH_USER.format(
+        target_info=user_query,
+        candidates_text=candidates_text
+    )
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": UNITRATE_MATCH_SYSTEM},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(response.choices[0].message.content)
+        
+        # Add matched candidate details
+        if result.get("status") != "no_match" and result.get("match_index"):
+            idx = result["match_index"] - 1
+            if 0 <= idx < len(candidates):
+                meta = candidates[idx].metadata or {}
+                result["best_match"] = {
+                    "description": meta.get("description", meta.get("text", "N/A")),
+                    "rate": meta.get("rate", "N/A"),
+                    "unit": meta.get("unit", "N/A"),
+                    "sheet_name": meta.get("sheet_name", meta.get("source_name", "")),
+                    "score": round(candidates[idx].score, 3)
+                }
+        
+        return result
+    except Exception as e:
+        logger.error(f"Unit rate matching error: {e}")
+        return {"status": "no_match", "reason": f"Matching error: {str(e)}"}
+
+
+# =============================================================================
+# MAIN HANDLER
+# =============================================================================
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Main Lambda handler."""
     logger.info(f"Received event: {json.dumps(event)}")
@@ -223,7 +330,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         chat_type = body.get("type", "").lower()
         message = body.get("message", "").strip()
-        history = body.get("history", [])
         
         # Validate inputs
         if chat_type not in ["pricecode", "unitrate"]:
@@ -238,29 +344,78 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "message": "Message is required."
             })
         
-        # Stage 1: Validate query
-        validation = validate_query(message, chat_type, history)
+        # Stage 1: Validate query is construction-related
+        validation = validate_construction_query(message)
         
         if not validation.get("valid", True):
             return cors_response(200, {
                 "status": "clarification",
-                "message": validation.get("reason", "Please provide more details.")
+                "message": validation.get("reason", "Please enter a construction-related item or work description.")
             })
         
-        search_query = validation.get("query", message)
+        search_query = validation.get("refined_query", message)
         
-        # Stage 2: Search Pinecone
-        matches = search_pinecone(search_query, chat_type, top_k=5)
-        formatted_matches = format_matches(matches, chat_type)
+        # Stage 2: Search Pinecone for candidates
+        candidates = search_pinecone(search_query, chat_type, top_k=10)
         
-        # Stage 3: Generate answer
-        answer = generate_answer(message, formatted_matches, chat_type, history)
+        if not candidates:
+            return cors_response(200, {
+                "status": "no_match",
+                "message": "No matching items found in the database. Please try a different description."
+            })
         
-        return cors_response(200, {
-            "status": "success",
-            "message": answer,
-            "matches": formatted_matches
-        })
+        # Stage 3: Apply matching logic (same as pipelines)
+        if chat_type == "pricecode":
+            match_result = match_pricecode(message, candidates)
+            
+            if match_result.get("matched") and match_result.get("best_match"):
+                best = match_result["best_match"]
+                return cors_response(200, {
+                    "status": "success",
+                    "message": f"Found a match: **{best['code']}** - {best['description']}",
+                    "match": {
+                        "code": best["code"],
+                        "description": best["description"],
+                        "category": best["category"],
+                        "source_file": best["source_file"],
+                        "confidence": match_result.get("confidence_level", "HIGH"),
+                        "score": best["score"]
+                    },
+                    "reasoning": match_result.get("reason", "")
+                })
+            else:
+                return cors_response(200, {
+                    "status": "no_match",
+                    "message": f"Could not find a confident match. {match_result.get('reason', '')}",
+                    "reasoning": match_result.get("reason", "")
+                })
+        
+        else:  # unitrate
+            match_result = match_unitrate(message, candidates)
+            
+            if match_result.get("status") != "no_match" and match_result.get("best_match"):
+                best = match_result["best_match"]
+                status_text = "exact match" if match_result["status"] == "exact_match" else "close match"
+                return cors_response(200, {
+                    "status": "success",
+                    "message": f"Found {status_text}: {best['description']} @ {best['rate']}/{best['unit']}",
+                    "match": {
+                        "description": best["description"],
+                        "rate": best["rate"],
+                        "unit": best["unit"],
+                        "sheet_name": best["sheet_name"],
+                        "confidence": match_result.get("confidence", 80),
+                        "match_type": match_result["status"],
+                        "score": best["score"]
+                    },
+                    "reasoning": match_result.get("reason", "")
+                })
+            else:
+                return cors_response(200, {
+                    "status": "no_match",
+                    "message": f"Could not find a confident match. {match_result.get('reason', '')}",
+                    "reasoning": match_result.get("reason", "")
+                })
         
     except json.JSONDecodeError:
         return cors_response(400, {

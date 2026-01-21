@@ -3,6 +3,7 @@ import aws_cdk as cdk
 from almabani_stack import AlmabaniStack
 from pricecode_stack import PriceCodeStack
 from deletion_stack import DeletionStack
+from chat_stack import ChatStack
 from dotenv import load_dotenv
 
 # Load env vars from project root
@@ -40,5 +41,8 @@ pc_stack = PriceCodeStack(app, "PriceCodeStack", env=env)
 DeletionStack(app, "DeletionStack", env=env, 
               shared_bucket=main_stack.bucket,
               pricecode_bucket=pc_stack.bucket)
+
+# Chat API Stack (natural language interface)
+ChatStack(app, "ChatStack", env=env)
 
 app.synth()

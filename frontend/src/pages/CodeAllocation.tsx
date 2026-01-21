@@ -12,6 +12,7 @@ import {
     PriceCodeEstimate,
     PriceCodeOutputFile
 } from '../services/priceCodeService';
+import ChatInterface from '../components/chat/ChatInterface';
 
 type Mode = 'index' | 'allocate';
 
@@ -90,7 +91,7 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
 
 const CodeAllocation: React.FC = () => {
     // View State
-    const [currentView, setCurrentView] = useState<'landing' | 'allocate' | 'index'>('landing');
+    const [currentView, setCurrentView] = useState<'landing' | 'allocate' | 'index' | 'chat'>('landing');
     // Mode Toggle
     const [currentMode, setCurrentMode] = useState<Mode>('allocate');
 
@@ -443,7 +444,7 @@ const CodeAllocation: React.FC = () => {
     if (currentView === 'landing') {
         return (
             <div className="min-h-screen bg-gray-100 py-8">
-                <div className="max-w-4xl mx-auto px-4">
+                <div className="max-w-5xl mx-auto px-4">
                     {/* Header */}
                     <div className="mb-8">
                         <h1 className="text-3xl font-bold text-gray-900">Code Allocation</h1>
@@ -453,7 +454,19 @@ const CodeAllocation: React.FC = () => {
                     </div>
 
                     {/* Mode Selection Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* AI Assistant Option */}
+                        <button
+                            onClick={() => setCurrentView('chat')}
+                            className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-purple-500 group"
+                        >
+                            <div className="text-5xl mb-4">🤖</div>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">AI Assistant</h2>
+                            <p className="text-gray-600">
+                                Ask questions to find the right price code for any item.
+                            </p>
+                        </button>
+
                         {/* Allocate BOQ Option */}
                         <button
                             onClick={() => {
@@ -484,6 +497,40 @@ const CodeAllocation: React.FC = () => {
                             </p>
                         </button>
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Chat View
+    if (currentView === 'chat') {
+        return (
+            <div className="min-h-screen bg-gray-100 py-8">
+                <div className="max-w-4xl mx-auto px-4">
+                    <div className="mb-6 flex items-center justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">Price Code Assistant</h1>
+                            <p className="text-sm text-gray-600">
+                                Ask questions to find the right price code for any item
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setCurrentView('landing')}
+                            className="text-sm text-gray-600 hover:text-gray-900 flex items-center"
+                        >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                            Back
+                        </button>
+                    </div>
+
+                    <ChatInterface
+                        type="pricecode"
+                        title="Price Code Lookup"
+                        placeholder="e.g., What is the price code for 25mm copper pipe?"
+                        welcomeMessage="Hello! I can help you find price codes for construction materials. Describe the item you're looking for, including details like material, dimensions, and specifications."
+                    />
                 </div>
             </div>
         );

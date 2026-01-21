@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { sendChatMessage, ChatMessage, ChatMatch } from '../../services/chatService';
+import { sendChatMessage, ChatMessage, ChatMatch, ChatResponse } from '../../services/chatService';
 
 interface ChatInterfaceProps {
     type: 'pricecode' | 'unitrate';
@@ -48,27 +48,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         try {
             const response = await sendChatMessage(type, userMessage.content, messages);
 
+            // Handle response based on status
+            const assistantContent = formatResponse(response);
+
             const assistantMessage: ChatMessage = {
                 role: 'assistant',
-                content: response.message,
+                content: assistantContent,
                 timestamp: Date.now()
             };
 
             setMessages(prev => [...prev, assistantMessage]);
-
-            // If there are matches, display them
-            if (response.matches && response.matches.length > 0) {
-                const matchesContent = formatMatches(response.matches);
-                const matchesMessage: ChatMessage = {
-                    role: 'assistant',
-                    content: matchesContent,
-                    timestamp: Date.now()
-                };
-                setMessages(prev => [...prev, matchesMessage]);
-            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to send message');
-            // Add error message to chat
             setMessages(prev => [...prev, {
                 role: 'assistant',
                 content: '⚠️ Sorry, I encountered an error. Please try again.',
@@ -79,27 +70,53 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
     };
 
-    const formatMatches = (matches: ChatMatch[]): string => {
-        return matches.map((match, index) => {
-            let details = `**Match ${index + 1}**: ${match.code}\n`;
-            details += `📝 ${match.description}\n`;
+    const formatResponse = (response: ChatResponse): string => {
+        let content = response.message;
 
-            // Type-specific fields
-            if ('unit' in match && match.unit) {
-                details += `📏 Unit: ${match.unit}\n`;
-            }
-            if ('rate' in match && match.rate) {
-                details += `💰 Rate: ${match.rate}\n`;
-            }
-            if ('category' in match && match.category) {
-                details += `📁 Category: ${match.category}\n`;
-            }
+        switch (response.status) {
+            case 'success':
+                if (response.match) {
+                    content += '\n\n' + formatMatch(response.match);
+                }
+                if (response.reasoning) {
+                    content += `\n\n💡 *Reasoning: ${response.reasoning}*`;
+                }
+                break;
+            case 'no_match':
+                content = `❌ ${response.message}`;
+                if (response.reasoning) {
+                    content += `\n\n💡 *${response.reasoning}*`;
+                }
+                break;
+            case 'clarification':
+                content = `❓ ${response.message}`;
+                break;
+            case 'error':
+                content = `⚠️ ${response.message}`;
+                break;
+        }
 
-            details += `📚 Source: ${match.source}\n`;
-            details += `✅ Confidence: ${(match.score * 100).toFixed(1)}%`;
+        return content;
+    };
 
-            return details;
-        }).join('\n\n---\n\n');
+    const formatMatch = (match: ChatMatch): string => {
+        let details = `✅ **${match.code}**\n`;
+        details += `📝 ${match.description}\n`;
+
+        if (match.category) {
+            details += `📁 Category: ${match.category}\n`;
+        }
+        if (match.unit) {
+            details += `📏 Unit: ${match.unit}\n`;
+        }
+        if (match.rate) {
+            details += `💰 Rate: ${match.rate}\n`;
+        }
+
+        details += `📚 Source: ${match.source_file}\n`;
+        details += `🎯 Confidence: ${match.confidence} (${(match.score * 100).toFixed(0)}%)`;
+
+        return details;
     };
 
     return (

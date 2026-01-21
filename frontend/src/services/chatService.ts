@@ -9,31 +9,23 @@ export interface ChatMessage {
     timestamp?: number;
 }
 
-// Price Code match
-export interface PriceCodeMatch {
+// Match object from API
+export interface ChatMatch {
     code: string;
     description: string;
     category?: string;
-    source: string;
+    source_file: string;
+    confidence: string;  // "EXACT", "HIGH", etc.
     score: number;
-}
-
-// Unit Rate match
-export interface UnitRateMatch {
-    code: string;
-    description: string;
     unit?: string;
     rate?: string;
-    source: string;
-    score: number;
 }
 
-export type ChatMatch = PriceCodeMatch | UnitRateMatch;
-
 export interface ChatResponse {
-    status: 'success' | 'clarification' | 'error';
+    status: 'success' | 'no_match' | 'clarification' | 'error';
     message: string;
-    matches?: ChatMatch[];
+    match?: ChatMatch;        // Single match (for success)
+    reasoning?: string;       // Explanation of the decision
 }
 
 /**

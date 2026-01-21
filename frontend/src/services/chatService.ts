@@ -1,7 +1,7 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 // External allocation chatbot API URL
-const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || '';
+const CHAT_API_URL = 'https://zyt0q89ozg.execute-api.eu-west-1.amazonaws.com/prod';
 
 export interface ChatMessage {
     role: 'user' | 'assistant';
@@ -9,11 +9,26 @@ export interface ChatMessage {
     timestamp?: number;
 }
 
-export interface ChatMatch {
+// Price Code match
+export interface PriceCodeMatch {
     code: string;
     description: string;
+    category?: string;
+    source: string;
     score: number;
 }
+
+// Unit Rate match
+export interface UnitRateMatch {
+    code: string;
+    description: string;
+    unit?: string;
+    rate?: string;
+    source: string;
+    score: number;
+}
+
+export type ChatMatch = PriceCodeMatch | UnitRateMatch;
 
 export interface ChatResponse {
     status: 'success' | 'clarification' | 'error';
@@ -22,7 +37,7 @@ export interface ChatResponse {
 }
 
 /**
- * Get auth headers for API calls
+ * Get auth headers for API calls (optional - backend may not require auth)
  */
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
     try {
@@ -51,10 +66,6 @@ export const sendChatMessage = async (
     message: string,
     history: ChatMessage[] = []
 ): Promise<ChatResponse> => {
-    if (!CHAT_API_URL) {
-        throw new Error('VITE_CHAT_API_URL is not configured');
-    }
-
     const headers = await getAuthHeaders();
 
     const response = await fetch(`${CHAT_API_URL}/chat`, {
@@ -82,10 +93,6 @@ export const sendChatMessage = async (
  * Health check for the chat API
  */
 export const checkChatApiHealth = async (): Promise<boolean> => {
-    if (!CHAT_API_URL) {
-        return false;
-    }
-
     try {
         const response = await fetch(`${CHAT_API_URL}/health`, {
             method: 'GET',

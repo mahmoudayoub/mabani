@@ -80,11 +80,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
 
     const formatMatches = (matches: ChatMatch[]): string => {
-        return matches.map((match, index) =>
-            `**Match ${index + 1}**: ${match.code}\n` +
-            `Description: ${match.description}\n` +
-            `Confidence: ${(match.score * 100).toFixed(1)}%`
-        ).join('\n\n');
+        return matches.map((match, index) => {
+            let details = `**Match ${index + 1}**: ${match.code}\n`;
+            details += `📝 ${match.description}\n`;
+
+            // Type-specific fields
+            if ('unit' in match && match.unit) {
+                details += `📏 Unit: ${match.unit}\n`;
+            }
+            if ('rate' in match && match.rate) {
+                details += `💰 Rate: ${match.rate}\n`;
+            }
+            if ('category' in match && match.category) {
+                details += `📁 Category: ${match.category}\n`;
+            }
+
+            details += `📚 Source: ${match.source}\n`;
+            details += `✅ Confidence: ${(match.score * 100).toFixed(1)}%`;
+
+            return details;
+        }).join('\n\n---\n\n');
     };
 
     return (
@@ -103,8 +118,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     >
                         <div
                             className={`max-w-[80%] rounded-lg px-4 py-3 ${message.role === 'user'
-                                    ? 'bg-primary-500 text-white'
-                                    : 'bg-gray-100 text-gray-800'
+                                ? 'bg-primary-500 text-white'
+                                : 'bg-gray-100 text-gray-800'
                                 }`}
                         >
                             <p className="whitespace-pre-wrap text-sm">{message.content}</p>

@@ -132,7 +132,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             details += `📝 ${priceMatch.description}\n`;
             details += `🎯 Match Type: ${priceMatch.match_type.toUpperCase()}\n`;
             details += `📁 Category: ${priceRef.category}\n`;
-            details += `📚 Source: ${priceRef.source_file} / ${priceRef.sheet_name}`;
+            details += `📚 Source: ${priceRef.source_file} / ${priceRef.sheet_name}\n`;
+            details += `📍 Row: ${priceRef.row_number}`;
 
             return details;
         }
@@ -146,7 +147,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             details += `💰 Rate: ${unitMatch.rate} / ${unitMatch.unit}\n`;
             details += `🎯 Match Type: ${unitMatch.match_type.toUpperCase()}\n`;
             details += `📁 Category: ${unitRef.category_path}\n`;
-            details += `📚 Source: ${unitRef.sheet_name}`;
+            details += `📚 Source: ${unitRef.sheet_name}\n`;
+            details += `📍 Row: ${unitRef.row_number}`;
 
             return details;
         }

@@ -22,6 +22,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const [error, setError] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // Warm up the Lambda when component mounts to reduce cold start latency
+    useEffect(() => {
+        const warmUpLambda = async () => {
+            try {
+                // Send a lightweight "ping" request to wake up the Lambda
+                await fetch('https://zyt0q89ozg.execute-api.eu-west-1.amazonaws.com/prod/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, message: '__warmup__', warmup: true })
+                });
+                console.log(`[Warmup] Lambda warmed up for ${type}`);
+            } catch (e) {
+                // Silently ignore warmup errors
+                console.log(`[Warmup] Failed to warm up Lambda`);
+            }
+        };
+        warmUpLambda();
+    }, [type]);
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };

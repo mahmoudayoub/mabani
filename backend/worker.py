@@ -203,19 +203,21 @@ async def process_fill(input_path: Path, storage):
         logger.info(f"📊 Total items to fill: {total_items}")
         
         # Calculate estimate accounting for async parallel processing
-        # Calibrated from actual performance: 2000 items in 6 minutes
-        SECONDS_PER_BATCH = 35  # Time to process one batch of 200 items in parallel
-        BASE_OVERHEAD_SECONDS = 10   # File download, setup, upload
+        # Calibrated from actual performance data (59K items, 594 min total)
+        # Formula: cold_start + (batches * seconds_per_batch) + overhead
+        COLD_START_SECONDS = 15        # ECS/Fargate cold start time
+        SECONDS_PER_BATCH = 35         # Time to process one batch of 200 items in parallel
+        BASE_OVERHEAD_SECONDS = 10     # File download, setup, upload
         CONCURRENT_WORKERS = settings.max_workers  # Number of parallel workers (200)
         
-        # With parallel processing, time = (batches * time_per_batch) + overhead
+        # With parallel processing, time = cold_start + (batches * time_per_batch) + overhead
         if total_items <= CONCURRENT_WORKERS:
             # All items processed in parallel - just one "batch"
-            estimated_seconds = int(SECONDS_PER_BATCH + BASE_OVERHEAD_SECONDS)
+            estimated_seconds = int(COLD_START_SECONDS + SECONDS_PER_BATCH + BASE_OVERHEAD_SECONDS)
         else:
             # Multiple batches needed
             batches = (total_items + CONCURRENT_WORKERS - 1) // CONCURRENT_WORKERS  # Ceiling division
-            estimated_seconds = int((batches * SECONDS_PER_BATCH) + BASE_OVERHEAD_SECONDS)
+            estimated_seconds = int(COLD_START_SECONDS + (batches * SECONDS_PER_BATCH) + BASE_OVERHEAD_SECONDS)
         
         estimated_minutes = estimated_seconds / 60
         

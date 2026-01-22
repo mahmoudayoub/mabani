@@ -139,11 +139,15 @@ async def process_allocate(input_path: Path, storage):
         df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
         total_items = len(df)
         
-        # Estimate: ~1 second per item with concurrency
-        SECONDS_PER_BATCH = 10
-        CONCURRENT = 20
-        batches = (total_items + CONCURRENT - 1) // CONCURRENT
-        estimated_seconds = max(30, batches * SECONDS_PER_BATCH + 10)
+        # Estimate processing time - calibrated from actual data (56K items, 326 min total)
+        # Formula: cold_start + (batches * seconds_per_batch) + overhead
+        COLD_START_SECONDS = 15    # ECS/Fargate cold start time
+        SECONDS_PER_BATCH = 8      # Time to process one batch of 200 items in parallel (~0.35s per item)
+        BASE_OVERHEAD_SECONDS = 10 # File download, setup, upload
+        CONCURRENT = settings.pricecode_max_concurrent  # 200 concurrent workers
+        
+        batches = (total_items + CONCURRENT - 1) // CONCURRENT  # Ceiling division
+        estimated_seconds = max(30, COLD_START_SECONDS + (batches * SECONDS_PER_BATCH) + BASE_OVERHEAD_SECONDS)
         
         # Get task ARN
         task_arn = None

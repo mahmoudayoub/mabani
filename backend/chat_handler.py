@@ -108,9 +108,13 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
         return {"valid": True, "refined_query": message}
 
 
-def search_pinecone(query: str, chat_type: str, top_k: int = 10) -> List[Dict]:
+def search_pinecone(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
     """Search Pinecone index for candidates."""
     pc = get_pinecone_client()
+    
+    # Set top_k based on type (price code needs more candidates)
+    if top_k is None:
+        top_k = 150 if chat_type == "pricecode" else 10
     
     # Select index based on type
     if chat_type == "pricecode":
@@ -203,17 +207,20 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
         )
         result = json.loads(response.choices[0].message.content)
         
-        # Add matched candidate details
+        # Add matched candidate details with full reference info
         if result.get("matched") and result.get("match_index"):
             idx = result["match_index"] - 1
             if 0 <= idx < len(candidates):
                 meta = candidates[idx].metadata or {}
                 result["best_match"] = {
+                    # Core info
                     "code": meta.get("price_code", "N/A"),
                     "description": meta.get("description", meta.get("text", "N/A")),
-                    "category": meta.get("category", ""),
+                    # Reference info
+                    "sheet_name": meta.get("reference_sheet", meta.get("category", "")),
                     "source_file": meta.get("source_file", ""),
-                    "score": round(candidates[idx].score, 3)
+                    "row_number": meta.get("reference_row", ""),
+                    "category": meta.get("category", meta.get("reference_category", ""))
                 }
         
         return result
@@ -294,17 +301,23 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
         )
         result = json.loads(response.choices[0].message.content)
         
-        # Add matched candidate details
+        # Add matched candidate details with full reference info
         if result.get("status") != "no_match" and result.get("match_index"):
             idx = result["match_index"] - 1
             if 0 <= idx < len(candidates):
                 meta = candidates[idx].metadata or {}
                 result["best_match"] = {
+                    # Core info
+                    "item_code": meta.get("item_code", ""),
                     "description": meta.get("description", meta.get("text", "N/A")),
                     "rate": meta.get("rate", "N/A"),
                     "unit": meta.get("unit", "N/A"),
+                    # Reference info
                     "sheet_name": meta.get("sheet_name", meta.get("source_name", "")),
-                    "score": round(candidates[idx].score, 3)
+                    "row_number": meta.get("row_number", ""),
+                    "category_path": meta.get("category_path", ""),
+                    "parent": meta.get("parent", ""),
+                    "grandparent": meta.get("grandparent", "")
                 }
         
         return result
@@ -356,7 +369,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         search_query = validation.get("refined_query", message)
         
         # Stage 2: Search Pinecone for candidates
-        candidates = search_pinecone(search_query, chat_type, top_k=10)
+        candidates = search_pinecone(search_query, chat_type)
         
         if not candidates:
             return cors_response(200, {
@@ -370,24 +383,27 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             if match_result.get("matched") and match_result.get("best_match"):
                 best = match_result["best_match"]
+                confidence = match_result.get("confidence_level", "HIGH").lower()
                 return cors_response(200, {
                     "status": "success",
-                    "message": f"Found a match: **{best['code']}** - {best['description']}",
+                    "message": f"Found {confidence} match: **{best['code']}** - {best['description']}",
                     "match": {
                         "code": best["code"],
                         "description": best["description"],
-                        "category": best["category"],
+                        "match_type": confidence
+                    },
+                    "reference": {
                         "source_file": best["source_file"],
-                        "confidence": match_result.get("confidence_level", "HIGH"),
-                        "score": best["score"]
+                        "sheet_name": best["sheet_name"],
+                        "category": best["category"],
+                        "row_number": best["row_number"]
                     },
                     "reasoning": match_result.get("reason", "")
                 })
             else:
                 return cors_response(200, {
                     "status": "no_match",
-                    "message": f"Could not find a confident match. {match_result.get('reason', '')}",
-                    "reasoning": match_result.get("reason", "")
+                    "message": "Could not find a confident match for your query."
                 })
         
         else:  # unitrate
@@ -395,26 +411,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             if match_result.get("status") != "no_match" and match_result.get("best_match"):
                 best = match_result["best_match"]
-                status_text = "exact match" if match_result["status"] == "exact_match" else "close match"
+                match_type = "exact" if match_result["status"] == "exact_match" else "close"
                 return cors_response(200, {
                     "status": "success",
-                    "message": f"Found {status_text}: {best['description']} @ {best['rate']}/{best['unit']}",
+                    "message": f"Found {match_type} match: {best['description']} @ {best['rate']}/{best['unit']}",
                     "match": {
+                        "item_code": best["item_code"],
                         "description": best["description"],
                         "rate": best["rate"],
                         "unit": best["unit"],
+                        "match_type": match_type
+                    },
+                    "reference": {
                         "sheet_name": best["sheet_name"],
-                        "confidence": match_result.get("confidence", 80),
-                        "match_type": match_result["status"],
-                        "score": best["score"]
+                        "row_number": best["row_number"],
+                        "category_path": best["category_path"],
+                        "parent": best["parent"],
+                        "grandparent": best["grandparent"]
                     },
                     "reasoning": match_result.get("reason", "")
                 })
             else:
                 return cors_response(200, {
                     "status": "no_match",
-                    "message": f"Could not find a confident match. {match_result.get('reason', '')}",
-                    "reasoning": match_result.get("reason", "")
+                    "message": "Could not find a confident match for your query."
                 })
         
     except json.JSONDecodeError:

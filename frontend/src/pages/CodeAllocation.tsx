@@ -447,9 +447,9 @@ const CodeAllocation: React.FC = () => {
                 <div className="max-w-5xl mx-auto px-4">
                     {/* Header */}
                     <div className="mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900">Code Allocation</h1>
+                        <h1 className="text-3xl font-bold text-gray-900">Price Code Allocation</h1>
                         <p className="text-gray-600 mt-2">
-                            Index price codes or allocate them to BOQ files
+                            Fill BOQ with price codes or add codes to Smart Library
                         </p>
                     </div>
 
@@ -476,9 +476,9 @@ const CodeAllocation: React.FC = () => {
                             className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-blue-500 group"
                         >
                             <div className="text-5xl mb-4">📊</div>
-                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Allocate BOQ</h2>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Fill BOQ</h2>
                             <p className="text-gray-600">
-                                Allocate price codes to Bill of Quantities using AI-powered matching.
+                                Fill Bill of Quantities with price codes using AI-powered matching.
                             </p>
                         </button>
 
@@ -491,7 +491,7 @@ const CodeAllocation: React.FC = () => {
                             className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-green-500 group"
                         >
                             <div className="text-5xl mb-4">📁</div>
-                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Smart Library</h2>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Apply to Smart Library</h2>
                             <p className="text-gray-600">
                                 Upload and add price code files to your library.
                             </p>

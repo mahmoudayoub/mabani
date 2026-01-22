@@ -536,9 +536,9 @@ const FileProcessing: React.FC = () => {
                 <div className="max-w-5xl mx-auto px-4">
                     {/* Header */}
                     <div className="mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900">Price Allocation</h1>
+                        <h1 className="text-3xl font-bold text-gray-900">Unit Rate Allocation</h1>
                         <p className="text-gray-600 mt-2">
-                            Fill Bill of Quantities or upload data to Smart Library
+                            Fill Bill of Quantities or add data to Smart Library
                         </p>
                     </div>
 
@@ -580,7 +580,7 @@ const FileProcessing: React.FC = () => {
                             className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-green-500 group"
                         >
                             <div className="text-5xl mb-4">📁</div>
-                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload to Smart Library</h2>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Apply to Smart Library</h2>
                             <p className="text-gray-600">
                                 Parse and index Excel files to expand your searchable knowledge base.
                             </p>

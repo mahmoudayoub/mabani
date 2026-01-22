@@ -51,12 +51,12 @@ const Layout: React.FC<LayoutProps> = ({ children, user, signOut }) => {
         location.pathname.startsWith("/safety-logs"),
     },
     {
-      name: "Price Allocation",
+      name: "Unit Rate Allocation",
       href: "/file-processing",
       current: location.pathname === "/file-processing",
     },
     {
-      name: "Code Allocation",
+      name: "Price Code Allocation",
       href: "/code-allocation",
       current: location.pathname === "/code-allocation",
     },

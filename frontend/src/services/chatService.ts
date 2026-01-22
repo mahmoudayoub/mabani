@@ -9,23 +9,49 @@ export interface ChatMessage {
     timestamp?: number;
 }
 
-// Match object from API
-export interface ChatMatch {
+// Price Code match object
+export interface PriceCodeMatch {
     code: string;
     description: string;
-    category?: string;
-    source_file: string;
-    confidence: string;  // "EXACT", "HIGH", etc.
-    score: number;
-    unit?: string;
-    rate?: string;
+    match_type: 'exact' | 'high';
 }
+
+// Price Code reference object
+export interface PriceCodeReference {
+    source_file: string;
+    sheet_name: string;
+    category: string;
+    row_number: number;
+}
+
+// Unit Rate match object
+export interface UnitRateMatch {
+    item_code: string;
+    description: string;
+    rate: number | string;
+    unit: string;
+    match_type: 'exact' | 'close';
+}
+
+// Unit Rate reference object
+export interface UnitRateReference {
+    sheet_name: string;
+    row_number: number;
+    category_path: string;
+    parent: string;
+    grandparent: string;
+}
+
+// Union types for match and reference
+export type ChatMatch = PriceCodeMatch | UnitRateMatch;
+export type ChatReference = PriceCodeReference | UnitRateReference;
 
 export interface ChatResponse {
     status: 'success' | 'no_match' | 'clarification' | 'error';
     message: string;
-    match?: ChatMatch;        // Single match (for success)
-    reasoning?: string;       // Explanation of the decision
+    match?: ChatMatch;
+    reference?: ChatReference;
+    reasoning?: string;
 }
 
 /**

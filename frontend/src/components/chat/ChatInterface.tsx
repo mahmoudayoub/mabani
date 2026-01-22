@@ -1,5 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { sendChatMessage, ChatMessage, ChatMatch, ChatResponse } from '../../services/chatService';
+import {
+    sendChatMessage,
+    ChatMessage,
+    ChatResponse,
+    PriceCodeMatch,
+    UnitRateMatch,
+    PriceCodeReference,
+    UnitRateReference
+} from '../../services/chatService';
 
 interface ChatInterfaceProps {
     type: 'pricecode' | 'unitrate';
@@ -26,7 +34,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     useEffect(() => {
         const warmUpLambda = async () => {
             try {
-                // Send a lightweight "ping" request to wake up the Lambda
                 await fetch('https://zyt0q89ozg.execute-api.eu-west-1.amazonaws.com/prod/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -34,7 +41,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 });
                 console.log(`[Warmup] Lambda warmed up for ${type}`);
             } catch (e) {
-                // Silently ignore warmup errors
                 console.log(`[Warmup] Failed to warm up Lambda`);
             }
         };
@@ -66,8 +72,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         try {
             const response = await sendChatMessage(type, userMessage.content, messages);
-
-            // Handle response based on status
             const assistantContent = formatResponse(response);
 
             const assistantMessage: ChatMessage = {
@@ -94,18 +98,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         switch (response.status) {
             case 'success':
-                if (response.match) {
-                    content += '\n\n' + formatMatch(response.match);
+                if (response.match && response.reference) {
+                    content += '\n\n' + formatMatchWithReference(response.match, response.reference);
                 }
                 if (response.reasoning) {
-                    content += `\n\n💡 *Reasoning: ${response.reasoning}*`;
+                    content += `\n\n💡 ${response.reasoning}`;
                 }
                 break;
             case 'no_match':
                 content = `❌ ${response.message}`;
-                if (response.reasoning) {
-                    content += `\n\n💡 *${response.reasoning}*`;
-                }
                 break;
             case 'clarification':
                 content = `❓ ${response.message}`;
@@ -118,24 +119,37 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return content;
     };
 
-    const formatMatch = (match: ChatMatch): string => {
-        let details = `✅ **${match.code}**\n`;
-        details += `📝 ${match.description}\n`;
+    const formatMatchWithReference = (
+        match: PriceCodeMatch | UnitRateMatch,
+        reference: PriceCodeReference | UnitRateReference
+    ): string => {
+        // Check if it's a Price Code match (has 'code' property)
+        if ('code' in match) {
+            const priceMatch = match as PriceCodeMatch;
+            const priceRef = reference as PriceCodeReference;
 
-        if (match.category) {
-            details += `📁 Category: ${match.category}\n`;
-        }
-        if (match.unit) {
-            details += `📏 Unit: ${match.unit}\n`;
-        }
-        if (match.rate) {
-            details += `💰 Rate: ${match.rate}\n`;
-        }
+            let details = `✅ **${priceMatch.code}**\n`;
+            details += `📝 ${priceMatch.description}\n`;
+            details += `🎯 Match Type: ${priceMatch.match_type.toUpperCase()}\n`;
+            details += `📁 Category: ${priceRef.category}\n`;
+            details += `📚 Source: ${priceRef.source_file} / ${priceRef.sheet_name}`;
 
-        details += `📚 Source: ${match.source_file}\n`;
-        details += `🎯 Confidence: ${match.confidence} (${(match.score * 100).toFixed(0)}%)`;
+            return details;
+        }
+        // It's a Unit Rate match (has 'item_code' property)
+        else {
+            const unitMatch = match as UnitRateMatch;
+            const unitRef = reference as UnitRateReference;
 
-        return details;
+            let details = `✅ **${unitMatch.item_code}**\n`;
+            details += `📝 ${unitMatch.description}\n`;
+            details += `💰 Rate: ${unitMatch.rate} / ${unitMatch.unit}\n`;
+            details += `🎯 Match Type: ${unitMatch.match_type.toUpperCase()}\n`;
+            details += `📁 Category: ${unitRef.category_path}\n`;
+            details += `📚 Source: ${unitRef.sheet_name}`;
+
+            return details;
+        }
     };
 
     return (

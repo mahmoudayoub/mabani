@@ -54,6 +54,7 @@ class ChatStack(Stack):
                 "PINECONE_API_KEY": pinecone_api_key,
                 "PINECONE_INDEX_NAME": os.environ.get('PINECONE_INDEX_NAME', 'almabani-1'),
                 "PRICECODE_INDEX_NAME": os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode'),
+                "OPENAI_CHAT_MODEL": os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
             }
         )
         

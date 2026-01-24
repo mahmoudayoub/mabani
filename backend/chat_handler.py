@@ -16,6 +16,9 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Get model from environment (same as pipelines)
+OPENAI_CHAT_MODEL = os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini')
+
 # Initialize clients lazily
 _openai_client = None
 _pinecone_client = None
@@ -93,7 +96,7 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_CHAT_MODEL,
             messages=[
                 {"role": "system", "content": VALIDATION_SYSTEM},
                 {"role": "user", "content": message}
@@ -197,7 +200,7 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_CHAT_MODEL,
             messages=[
                 {"role": "system", "content": PRICECODE_MATCH_SYSTEM},
                 {"role": "user", "content": prompt}
@@ -291,7 +294,7 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_CHAT_MODEL,
             messages=[
                 {"role": "system", "content": UNITRATE_MATCH_SYSTEM},
                 {"role": "user", "content": prompt}

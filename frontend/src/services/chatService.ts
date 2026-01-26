@@ -42,16 +42,29 @@ export interface UnitRateReference {
     grandparent: string;
 }
 
+// Extended types for the matches array (self-contained items)
+export interface ExtendedPriceCodeMatch extends PriceCodeMatch {
+    reference: PriceCodeReference;
+    reasoning: string;
+}
+
+export interface ExtendedUnitRateMatch extends UnitRateMatch {
+    reference: UnitRateReference;
+    reasoning: string;
+}
+
 // Union types for match and reference
 export type ChatMatch = PriceCodeMatch | UnitRateMatch;
 export type ChatReference = PriceCodeReference | UnitRateReference;
+export type ExtendedChatMatch = ExtendedPriceCodeMatch | ExtendedUnitRateMatch;
 
 export interface ChatResponse {
     status: 'success' | 'no_match' | 'clarification' | 'error';
     message: string;
-    match?: ChatMatch;
-    reference?: ChatReference;
-    reasoning?: string;
+    match?: ChatMatch;        // Backward compatibility
+    reference?: ChatReference;// Backward compatibility
+    reasoning?: string;       // Backward compatibility
+    matches?: ExtendedChatMatch[]; // New field for multiple matches
 }
 
 /**

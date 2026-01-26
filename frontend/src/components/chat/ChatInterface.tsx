@@ -3,6 +3,7 @@ import {
     sendChatMessage,
     ChatMessage,
     ChatResponse,
+    ExtendedChatMatch,
     PriceCodeMatch,
     UnitRateMatch,
     PriceCodeReference,
@@ -98,15 +99,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         switch (response.status) {
             case 'success':
-                if (response.match && response.reference) {
+                // Handle new multiple matches array
+                if (response.matches && response.matches.length > 0) {
+                    response.matches.forEach((match, index) => {
+                        content += `\n\n--- Option ${index + 1} ---\n` + formatExtendedMatch(match);
+                    });
+                }
+                // Handle backward compatibility (single match)
+                else if (response.match && response.reference) {
                     content += '\n\n' + formatMatchWithReference(response.match, response.reference);
                 }
-                if (response.reasoning) {
+
+                // Add reasoning if it's top-level (backward compatibility)
+                if (response.reasoning && !response.matches) {
                     content += `\n\n💡 ${response.reasoning}`;
                 }
                 break;
             case 'no_match':
-                content = `❌ ${response.message}`;
+                // Check if there are close matches offered even in no_match state (rare but possible)
+                if (response.matches && response.matches.length > 0) {
+                    response.matches.forEach((match, index) => {
+                        content += `\n\n--- Suggestion ${index + 1} ---\n` + formatExtendedMatch(match);
+                    });
+                } else if (response.reasoning) {
+                    // Sometimes no_match has reasoning
+                    content += `\n\n💡 ${response.reasoning}`;
+                }
                 break;
             case 'clarification':
                 content = `❓ ${response.message}`;
@@ -117,6 +135,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
 
         return content;
+    };
+
+    const formatExtendedMatch = (match: ExtendedChatMatch): string => {
+        return formatMatchWithReference(match, match.reference) + `\n💡 ${match.reasoning}`;
     };
 
     const formatMatchWithReference = (

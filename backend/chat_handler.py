@@ -11,6 +11,7 @@ Endpoint: POST /chat
 import os
 import json
 import logging
+import re
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger()
@@ -63,28 +64,46 @@ def create_embedding(text: str) -> List[float]:
     )
     return response.data[0].embedding
 
-
+def parse_llm_json(response_text: str) -> Dict[str, Any]:
+    """Cleanly parse JSON from LLM output, handling markdown blocks."""
+    # 1. Strip markdown code blocks if present (e.g. ```json ... ```)
+    clean_text = re.sub(r'^\s*```json\s*', '', response_text, flags=re.MULTILINE)
+    clean_text = re.sub(r'\s*```\s*$', '', clean_text, flags=re.MULTILINE)
+    
+    # 2. Parse JSON
+    try:
+        data = json.loads(clean_text)
+    except json.JSONDecodeError:
+        logger.error(f"FAILED TO PARSE JSON: {response_text}")
+        # Return fallback structure
+        return {"status": "error", "message": "Failed to parse AI response", "matches": []}
+        
+    return data
 # =============================================================================
 # VALIDATION PROMPT - Check if input is construction/BOQ related
 # =============================================================================
-VALIDATION_SYSTEM = """You are a construction industry expert. Your task is to determine if the user's query is related to construction items, materials, services, or works that would appear in a BOQ (Bill of Quantities).
+VALIDATION_SYSTEM = """You are a construction industry expert / BOQ Assistant. Your task is to determine if the user's query is related to construction items, materials, services, or works.
 
-Valid queries include:
-- Construction materials (concrete, steel, pipes, cables, etc.)
-- Construction works (excavation, formwork, reinforcement, plastering, etc.)
-- MEP items (electrical, plumbing, HVAC equipment)
-- Finishing works (painting, tiling, flooring, etc.)
-- Civil works (roads, drainage, foundations, etc.)
+1. GREETINGS ("hello", "hi", "good morning"):
+   - Set "valid": false
+   - Set "reason": "Hello! I am your Almabani BOQ Assistant. Please enter a construction item or work description you would like to find."
 
-Invalid queries include:
-- General conversation or greetings
-- Non-construction topics
-- Vague queries without any construction context
+2. VALID CONSTRUCTION QUERIES:
+   - Materials (concrete, steel, pipes)
+   - Works (excavation, tiling, painting)
+   - MEP items, Civil works, etc.
+   - Set "valid": true
+
+3. INVALID / OFF-TOPIC:
+   - General questions like "how are you", "what is the weather"
+   - Vague inputs without context
+   - Set "valid": false
+   - Set "reason": "I can only help with construction and BOQ items. Please ask about a price code or unit rate."
 
 Respond in JSON format:
 {
     "valid": true/false,
-    "reason": "Brief explanation if invalid",
+    "reason": "Message to show the user if invalid",
     "refined_query": "Cleaned up query text for searching (if valid)"
 }
 """
@@ -104,7 +123,8 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
             temperature=0.3,
             response_format={"type": "json_object"}
         )
-        result = json.loads(response.choices[0].message.content)
+        )
+        result = parse_llm_json(response.choices[0].message.content)
         return result
     except Exception as e:
         logger.error(f"Validation error: {e}")
@@ -152,7 +172,7 @@ PRICECODE_MATCH_SYSTEM = (
     "5. CONFIDENCE Levels:\n"
     "   - 'EXACT': Perfect symmetry in scope, material, and constraints.\n"
     "   - 'HIGH': Essential scope is identical with minor non-restrictive differences.\n"
-    "6. Return strict JSON."
+    "6. Return strict JSON. Do NOT use markdown code blocks."
 )
 
 PRICECODE_MATCH_USER = """TARGET ITEM (from user query):
@@ -208,7 +228,8 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
             temperature=0.3,
             response_format={"type": "json_object"}
         )
-        result = json.loads(response.choices[0].message.content)
+        )
+        result = parse_llm_json(response.choices[0].message.content)
         
         # Add matched candidate details with full reference info
         if result.get("matched") and result.get("match_index"):
@@ -243,7 +264,7 @@ UNITRATE_MATCH_SYSTEM = (
     "2. SAME SPECIFICATIONS: All critical specs must match (dimensions, materials, grades).\n"
     "3. SAME SCOPE: Supply & Install vs Supply only are DIFFERENT.\n"
     "4. COMPATIBLE UNITS: Units must be the same or clear synonyms.\n"
-    "Return strict JSON."
+    "Return strict JSON. Do NOT use markdown code blocks."
 )
 
 UNITRATE_MATCH_USER = """TARGET ITEM (from user query):
@@ -305,7 +326,8 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
             temperature=0.3,
             response_format={"type": "json_object"}
         )
-        result = json.loads(response.choices[0].message.content)
+        )
+        result = parse_llm_json(response.choices[0].message.content)
         
         # Parse matches
         parsed_matches = []

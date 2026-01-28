@@ -237,7 +237,7 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
 # =============================================================================
 UNITRATE_MATCH_SYSTEM = (
     "You are a BOQ matching specialist. Your task is to identify items that are effectively "
-    "the SAME as the target and return the best match with its rate.\n"
+    "the SAME as the target.\n"
     "Rules:\n"
     "1. SAME WORK TYPE: Must be the same activity/work/material.\n"
     "2. SAME SPECIFICATIONS: All critical specs must match (dimensions, materials, grades).\n"
@@ -253,23 +253,26 @@ CANDIDATES (from database with rates):
 {candidates_text}
 
 INSTRUCTIONS:
-Find the best matching item. Consider:
-1. Is it the same work type?
-2. Are specifications compatible?
-3. Is the scope the same?
-4. Are units compatible?
-
-If exact match found, return it. If only close/approximate matches, indicate that.
+Find ALL items that match the target.
+- "exact": Meets all rules perfectly.
+- "close": Minor differences (e.g. brand, minor spec) but usable.
 
 OUTPUT JSON:
-{{
-    "status": "exact_match" | "close_match" | "no_match",
-    "match_index": 1,  // 1-based index of best match (if any match)
-    "rate": 150.00,  // Rate from matched item
-    "unit": "m3",  // Unit
-    "confidence": 95,  // 70-100 for matches
-    "reason": "Brief explanation of the match quality and any differences"
-}}
+{
+    "matches": [
+        {
+            "match_index": 1,  // 1-based index
+            "status": "exact_match" | "close_match",
+            "rate": 150.00,
+            "unit": "m3",
+            "confidence": 95,
+            "reason": "Why it matches"
+        },
+        ...
+    ],
+    "best_match_index": 1, // The single best one
+    "summary_reason": "Explanation of the findings"
+}
 """
 
 
@@ -304,29 +307,57 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
         )
         result = json.loads(response.choices[0].message.content)
         
-        # Add matched candidate details with full reference info
-        if result.get("status") != "no_match" and result.get("match_index"):
-            idx = result["match_index"] - 1
-            if 0 <= idx < len(candidates):
-                meta = candidates[idx].metadata or {}
-                result["best_match"] = {
-                    # Core info
-                    "item_code": meta.get("item_code", ""),
-                    "description": meta.get("description", meta.get("text", "N/A")),
-                    "rate": meta.get("rate", "N/A"),
-                    "unit": meta.get("unit", "N/A"),
-                    # Reference info
-                    "sheet_name": meta.get("sheet_name", meta.get("source_name", "")),
-                    "row_number": meta.get("row_number", ""),
-                    "category_path": meta.get("category_path", ""),
-                    "parent": meta.get("parent", ""),
-                    "grandparent": meta.get("grandparent", "")
-                }
+        # Parse matches
+        parsed_matches = []
+        raw_matches = result.get("matches", [])
         
-        return result
+        # If the LLM returns the old format (single object), handle it
+        if not raw_matches and result.get("match_index"):
+            raw_matches = [result]
+            
+        for m in raw_matches:
+            idx = m.get("match_index")
+            if idx and 0 <= (idx - 1) < len(candidates):
+                cand = candidates[idx - 1]
+                meta = cand.metadata or {}
+                parsed_matches.append({
+                    "data": {
+                        "item_code": meta.get("item_code", ""),
+                        "description": meta.get("description", meta.get("text", "N/A")),
+                        "rate": meta.get("rate", "N/A"),
+                        "unit": meta.get("unit", "N/A"),
+                        "match_type": "exact" if m.get("status") == "exact_match" else "close"
+                    },
+                    "reference": {
+                        "sheet_name": meta.get("sheet_name", meta.get("source_name", "")),
+                        "row_number": meta.get("row_number", ""),
+                        "category_path": meta.get("category_path", ""),
+                        "parent": meta.get("parent", ""),
+                        "grandparent": meta.get("grandparent", "")
+                    },
+                    "reason": m.get("reason", "")
+                })
+
+        # Sort: Exact first, then by confidence (if available) or order
+        exact_matches = [m for m in parsed_matches if m["data"]["match_type"] == "exact"]
+        close_matches = [m for m in parsed_matches if m["data"]["match_type"] == "close"]
+        
+        # Policy: Return all exact matches (limit 5). If none, return top close matches (limit 3).
+        final_matches = []
+        if exact_matches:
+            final_matches = exact_matches[:5]
+        else:
+            final_matches = close_matches[:3]
+
+        return {
+            "matches": final_matches,
+            "count": len(final_matches),
+            "summary_reason": result.get("summary_reason", "")
+        }
+
     except Exception as e:
         logger.error(f"Unit rate matching error: {e}")
-        return {"status": "no_match", "reason": f"Matching error: {str(e)}"}
+        return {"matches": [], "error": str(e)}
 
 
 # =============================================================================
@@ -411,28 +442,37 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         else:  # unitrate
             match_result = match_unitrate(message, candidates)
+            matches = match_result.get("matches", [])
             
-            if match_result.get("status") != "no_match" and match_result.get("best_match"):
-                best = match_result["best_match"]
-                match_type = "exact" if match_result["status"] == "exact_match" else "close"
+            if matches:
+                # Use the first match as "primary" for backward compat / simple display
+                best = matches[0]
+                count = len(matches)
+                match_type = best["data"]["match_type"]
+                
+                msg = f"Found {count} {match_type} match{'es' if count > 1 else ''}."
+                if match_type == "exact":
+                    msg += f" Top match: {best['data']['description']} @ {best['data']['rate']}"
+                else:
+                    msg += " Displaying best available options."
+
+                # Construct response
+                # Flatten matches for API: combine data + match_type + reference + reason
+                api_matches = []
+                for m in matches:
+                    item = m["data"].copy()
+                    item["reference"] = m["reference"]
+                    item["reasoning"] = m["reason"]
+                    api_matches.append(item)
+
                 return cors_response(200, {
                     "status": "success",
-                    "message": f"Found {match_type} match: {best['description']} @ {best['rate']}/{best['unit']}",
-                    "match": {
-                        "item_code": best["item_code"],
-                        "description": best["description"],
-                        "rate": best["rate"],
-                        "unit": best["unit"],
-                        "match_type": match_type
-                    },
-                    "reference": {
-                        "sheet_name": best["sheet_name"],
-                        "row_number": best["row_number"],
-                        "category_path": best["category_path"],
-                        "parent": best["parent"],
-                        "grandparent": best["grandparent"]
-                    },
-                    "reasoning": match_result.get("reason", "")
+                    "message": msg,
+                    "matches": api_matches,
+                    # Backward compat: populate 'match' with the first one
+                    "match": api_matches[0], 
+                    "reference": api_matches[0]["reference"],
+                    "reasoning": api_matches[0]["reasoning"]
                 })
             else:
                 return cors_response(200, {

@@ -12,6 +12,8 @@ import SafetyLogs from "./pages/SafetyLogs";
 import HealthAndSafety from "./pages/HealthAndSafety";
 import FileProcessing from "./pages/FileProcessing";
 import CodeAllocation from "./pages/CodeAllocation";
+import PriceCodeChat from "./pages/PriceCodeChat";
+import UnitRateChat from "./pages/UnitRateChat";
 import Layout from "./components/Layout";
 
 // Configure Amplify
@@ -112,6 +114,8 @@ function App() {
               <Route path="/safety-logs" element={<SafetyLogs />} />
               <Route path="/file-processing" element={<FileProcessing />} />
               <Route path="/code-allocation" element={<CodeAllocation />} />
+              <Route path="/pricecode-chat" element={<PriceCodeChat />} />
+              <Route path="/unitrate-chat" element={<UnitRateChat />} />
             </Routes>
 
           </Layout>

@@ -65,32 +65,51 @@ def create_embedding(text: str) -> List[float]:
     return response.data[0].embedding
 
 def parse_llm_json(response_text: str) -> Dict[str, Any]:
-    """Strip markdown and parse JSON from LLM response."""
+    """Strip markdown and parse JSON from LLM response with multiple fallback strategies."""
     logger.info(f"[DEBUG] Raw LLM response (first 500 chars): {repr(response_text[:500])}")
     
-    # Remove markdown code blocks - handle various formats
-    # Format 1: ```json\n...\n```
-    # Format 2: ```\n...\n```
-    # Format 3: Already clean JSON
-    cleaned = response_text.strip()
+    # Strategy 1: Try parsing as-is (already clean JSON)
+    try:
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        pass  # Try other strategies
     
-    # Remove opening markdown fence
-    cleaned = re.sub(r'^```(?:json)?\s*\n?', '', cleaned)
-    # Remove closing markdown fence
-    cleaned = re.sub(r'\n?```\s*$', '', cleaned)
+    # Strategy 2: Strip markdown code fences
+    cleaned = response_text.strip()
+    # Remove ```json or ``` at the start
+    cleaned = re.sub(r'^```(?:json)?[\s\n]*', '', cleaned, flags=re.IGNORECASE)
+    # Remove ``` at the end
+    cleaned = re.sub(r'[\s\n]*```$', '', cleaned)
     cleaned = cleaned.strip()
     
-    logger.info(f"[DEBUG] Cleaned (first 500 chars): {repr(cleaned[:500])}")
-    
     try:
-        data = json.loads(cleaned)
-        return data
-    except json.JSONDecodeError as e:
-        logger.error(f"FAILED TO PARSE JSON: {e}")
-        logger.error(f"Original text: {response_text}")
-        logger.error(f"Cleaned text: {cleaned}")
-        # Return fallback structure with matches array
-        return {"status": "error", "message": "Failed to parse AI response", "matches": [], "matched": False}
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass  # Try other strategies
+    
+    # Strategy 3: Find JSON object in the text (between first { and last })
+    match = re.search(r'\{.*\}', response_text, re.DOTALL)
+    if match:
+        json_str = match.group(0)
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+    
+    # Strategy 4: Find JSON array in the text (between first [ and last ])
+    match = re.search(r'\[.*\]', response_text, re.DOTALL)
+    if match:
+        json_str = match.group(0)
+        try:
+            return {"matches": json.loads(json_str)}
+        except json.JSONDecodeError:
+            pass
+    
+    # All strategies failed
+    logger.error(f"FAILED TO PARSE JSON after all strategies")
+    logger.error(f"Original text: {response_text}")
+    logger.error(f"Cleaned text: {cleaned}")
+    return {"status": "error", "message": "Failed to parse AI response", "matches": [], "matched": False}
 
 # =============================================================================
 # VALIDATION PROMPT - Check if input is construction/BOQ related

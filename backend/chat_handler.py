@@ -194,19 +194,20 @@ def search_pinecone(query: str, chat_type: str, top_k: int = None) -> List[Dict]
 # =============================================================================
 # PRICE CODE MATCHING (Same logic as pipeline)
 # =============================================================================
-PRICECODE_MATCH_SYSTEM = (
-    "You are a Price Code allocation expert. "
-    "Your task is to identify the correct Price Code for a BOQ item from a list of candidates.\n"
-    "Rules:\n"
-    "1. MATCHING IS STRICT & CONSERVATIVE. Better to return 'matched': false than a wrong price code.\n"
-    "2. UNIT COMPATIBILITY (Critical): The Candidate Unit must be convertible or identical to the Target Unit.\n"
-    "3. NO ASSUMPTIONS: If Target is VAGUE and Candidate is SPECIFIC, REJECT IT.\n"
-    "4. FULL COVERAGE: The Candidate must cover the entire scope of the Target.\n"
-    "5. CONFIDENCE Levels:\n"
-    "   - 'EXACT': Perfect symmetry in scope, material, and constraints.\n"
-    "   - 'HIGH': Essential scope is identical with minor non-restrictive differences.\n"
-    "6. Return strict JSON. Do NOT use markdown code blocks."
-)
+PRICECODE_MATCH_SYSTEM = """You are a Price Code allocation expert. Your task is to find the BEST matching Price Code for a BOQ item.
+
+BE PRACTICAL - find usable matches:
+- If a candidate covers the target's scope, it's a potential match
+- Vague targets (e.g., "copper pipe") can match specific candidates (e.g., "25mm copper pipe Type L")
+- Units must be compatible (same or convertible)
+- When multiple candidates match, pick the most appropriate one
+
+CONFIDENCE Levels:
+- 'EXACT': Same scope, material, and specifications
+- 'HIGH': Target is covered by candidate with minor differences
+
+Return strict JSON. Do NOT use markdown code blocks.
+"""
 
 PRICECODE_MATCH_USER = """TARGET ITEM (from user query):
 {target_info}
@@ -214,22 +215,23 @@ PRICECODE_MATCH_USER = """TARGET ITEM (from user query):
 CANDIDATES (from database):
 {candidates_text}
 
-INSTRUCTIONS:
-Perform logical elimination:
-1. UNIT CHECK: Filter out candidates with incompatible units.
-2. HIERARCHY CHECK: Filter out candidates from wrong trades.
-3. SCOPE CHECK: Does Work Type and Material match?
-4. SPECIFICITY CHECK: Does Candidate impose constraints not in Target? -> REJECT.
+Find the BEST matching price code. Be practical - pick the most appropriate candidate.
 
-Select the best matching candidate.
+Steps:
+1. Identify candidates that could apply to the target
+2. If target is vague, prefer the most common/general candidate
+3. If target is specific, pick the closest match
+4. Pick ONE best match
 
 OUTPUT JSON (raw JSON only, NO markdown):
 {{
-    "matched": true/false,
-    "match_index": 1,  // 1-based index (if matched)
-    "confidence_level": "EXACT" | "HIGH",  // if matched
-    "reason": "Step-by-step reasoning explaining the match or why no match was found"
+    "matched": true,
+    "match_index": 1,
+    "confidence_level": "EXACT",
+    "reason": "Brief explanation of why this is the best match"
 }}
+
+If truly NO candidate applies (completely different work type), return matched: false.
 """
 
 

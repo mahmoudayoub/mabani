@@ -286,16 +286,35 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
 
 
 # =============================================================================
-# UNIT RATE MATCHING (Same 3-stage logic as pipeline)
 # =============================================================================
 UNITRATE_MATCH_SYSTEM = (
-    "You are a BOQ matching specialist. Your task is to identify items that are effectively "
-    "the SAME as the target.\n"
-    "Rules:\n"
-    "1. SAME WORK TYPE: Must be the same activity/work/material.\n"
-    "2. SAME SPECIFICATIONS: All critical specs must match (dimensions, materials, grades).\n"
-    "3. SAME SCOPE: Supply & Install vs Supply only are DIFFERENT.\n"
-    "4. COMPATIBLE UNITS: Units must be the same or clear synonyms.\n"
+    "You are a BOQ matching specialist using a 3-STAGE evaluation system.\n\n"
+    
+    "STAGE 1 - MATCHER (Exact Match, Confidence: 100%):\n"
+    "- Item is EFFECTIVELY IDENTICAL to target\n"
+    "- Same work type, same specifications, same scope\n"
+    "- Units must be identical or exact synonyms (m2=sqm, m3=cum)\n"
+    "- Minor wording differences allowed, but cost-driving specs must match\n\n"
+    
+    "STAGE 2 - EXPERT (Close Match, Confidence: 70-95%):\n"
+    "- Only evaluate if NO exact match found\n"
+    "- Same work type with MINOR acceptable differences\n"
+    "- Small size/spec variations that don't significantly affect cost\n"
+    "- Missing minor details that can be reasonably inferred\n"
+    "- Set confidence based on how close the match is\n\n"
+    
+    "STAGE 3 - ESTIMATOR (Approximation, Confidence: 50-70%):\n"
+    "- Only evaluate if NO close match found\n"
+    "- Similar work type where rate can be DERIVED/SCALED\n"
+    "- Must explain the scaling logic (e.g., 'similar work at larger scale')\n"
+    "- Calculate an approximated rate based on reference items\n\n"
+    
+    "RULES:\n"
+    "1. Evaluate stages IN ORDER. Stop at first successful stage.\n"
+    "2. Supply & Install vs Supply only are DIFFERENT scopes.\n"
+    "3. Different units that cannot be converted = NO MATCH.\n"
+    "4. If no match at ANY stage, return empty matches array.\n\n"
+    
     "Return strict JSON. Do NOT use markdown code blocks."
 )
 
@@ -306,25 +325,32 @@ CANDIDATES (from database with rates):
 {candidates_text}
 
 INSTRUCTIONS:
-Find ALL items that match the target.
-- "exact": Meets all rules perfectly.
-- "close": Minor differences (e.g. brand, minor spec) but usable.
+Apply the 3-stage evaluation system sequentially:
+
+1. First, check ALL candidates for EXACT matches (Stage 1)
+   → If found, return with stage="matcher", confidence=100
+
+2. If no exact match, check for CLOSE matches (Stage 2)
+   → If found, return with stage="expert", confidence=70-95
+
+3. If no close match, try to APPROXIMATE (Stage 3)
+   → If possible, return with stage="estimator", confidence=50-70, include approximated_rate
 
 OUTPUT JSON (raw JSON only, NO markdown):
 {{
     "matches": [
         {{
-            "match_index": 1,  // 1-based index
-            "status": "exact_match" | "close_match",
+            "match_index": 1,
+            "stage": "matcher" | "expert" | "estimator",
+            "status": "exact_match" | "close_match" | "approximation",
             "rate": 150.00,
             "unit": "m3",
-            "confidence": 95,
-            "reason": "Why it matches"
-        }},
-        ...
+            "confidence": 100,
+            "reason": "Step-by-step explanation of why this matches"
+        }}
     ],
-    "best_match_index": 1, // The single best one
-    "summary_reason": "Explanation of the findings"
+    "best_match_index": 1,
+    "summary_reason": "Which stage succeeded and why"
 }}
 """
 
@@ -367,19 +393,31 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
         # If the LLM returns the old format (single object), handle it
         if not raw_matches and result.get("match_index"):
             raw_matches = [result]
-            
+        
+        # Map status to match_type for display
+        status_to_type = {
+            "exact_match": "exact",
+            "close_match": "close", 
+            "approximation": "approximation"
+        }
+        
         for m in raw_matches:
             idx = m.get("match_index")
             if idx and 0 <= (idx - 1) < len(candidates):
                 cand = candidates[idx - 1]
                 meta = cand.metadata or {}
+                status = m.get("status", "")
+                match_type = status_to_type.get(status, "close")
+                
                 parsed_matches.append({
                     "data": {
                         "item_code": meta.get("item_code", ""),
                         "description": meta.get("description", meta.get("text", "N/A")),
-                        "rate": meta.get("rate", "N/A"),
-                        "unit": meta.get("unit", "N/A"),
-                        "match_type": "exact" if m.get("status") == "exact_match" else "close"
+                        "rate": m.get("rate") or meta.get("rate", "N/A"),  # Use LLM rate if approximated
+                        "unit": m.get("unit") or meta.get("unit", "N/A"),
+                        "match_type": match_type,
+                        "stage": m.get("stage", "matcher"),
+                        "confidence": m.get("confidence", 100 if match_type == "exact" else 80)
                     },
                     "reference": {
                         "sheet_name": meta.get("sheet_name", meta.get("source_name", "")),
@@ -391,16 +429,25 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
                     "reason": m.get("reason", "")
                 })
 
-        # Sort: Exact first, then by confidence (if available) or order
+        # Sort by stage priority: exact (matcher) > close (expert) > approximation (estimator)
+        stage_priority = {"matcher": 0, "expert": 1, "estimator": 2}
+        parsed_matches.sort(key=lambda x: (stage_priority.get(x["data"]["stage"], 3), -x["data"]["confidence"]))
+        
+        # Policy: Return matches from the best stage found
+        # - If exact matches exist, return up to 5
+        # - If only close matches, return up to 3
+        # - If only approximations, return up to 2
         exact_matches = [m for m in parsed_matches if m["data"]["match_type"] == "exact"]
         close_matches = [m for m in parsed_matches if m["data"]["match_type"] == "close"]
+        approx_matches = [m for m in parsed_matches if m["data"]["match_type"] == "approximation"]
         
-        # Policy: Return all exact matches (limit 5). If none, return top close matches (limit 3).
         final_matches = []
         if exact_matches:
             final_matches = exact_matches[:5]
-        else:
+        elif close_matches:
             final_matches = close_matches[:3]
+        elif approx_matches:
+            final_matches = approx_matches[:2]
 
         return {
             "matches": final_matches,

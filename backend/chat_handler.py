@@ -65,20 +65,33 @@ def create_embedding(text: str) -> List[float]:
     return response.data[0].embedding
 
 def parse_llm_json(response_text: str) -> Dict[str, Any]:
-    """Cleanly parse JSON from LLM output, handling markdown blocks."""
-    # 1. Strip markdown code blocks if present (e.g. ```json ... ```)
-    clean_text = re.sub(r'^\s*```json\s*', '', response_text, flags=re.MULTILINE)
-    clean_text = re.sub(r'\s*```\s*$', '', clean_text, flags=re.MULTILINE)
+    """Strip markdown and parse JSON from LLM response."""
+    logger.info(f"[DEBUG] Raw LLM response (first 500 chars): {repr(response_text[:500])}")
     
-    # 2. Parse JSON
+    # Remove markdown code blocks - handle various formats
+    # Format 1: ```json\n...\n```
+    # Format 2: ```\n...\n```
+    # Format 3: Already clean JSON
+    cleaned = response_text.strip()
+    
+    # Remove opening markdown fence
+    cleaned = re.sub(r'^```(?:json)?\s*\n?', '', cleaned)
+    # Remove closing markdown fence
+    cleaned = re.sub(r'\n?```\s*$', '', cleaned)
+    cleaned = cleaned.strip()
+    
+    logger.info(f"[DEBUG] Cleaned (first 500 chars): {repr(cleaned[:500])}")
+    
     try:
-        data = json.loads(clean_text)
-    except json.JSONDecodeError:
-        logger.error(f"FAILED TO PARSE JSON: {response_text}")
-        # Return fallback structure
-        return {"status": "error", "message": "Failed to parse AI response", "matches": []}
-        
-    return data
+        data = json.loads(cleaned)
+        return data
+    except json.JSONDecodeError as e:
+        logger.error(f"FAILED TO PARSE JSON: {e}")
+        logger.error(f"Original text: {response_text}")
+        logger.error(f"Cleaned text: {cleaned}")
+        # Return fallback structure with matches array
+        return {"status": "error", "message": "Failed to parse AI response", "matches": [], "matched": False}
+
 # =============================================================================
 # VALIDATION PROMPT - Check if input is construction/BOQ related
 # =============================================================================
@@ -106,6 +119,8 @@ Respond in JSON format:
     "reason": "Message to show the user if invalid",
     "refined_query": "Cleaned up query text for searching (if valid)"
 }
+
+CRITICAL: Return ONLY raw JSON. Do NOT use markdown code blocks or triple backticks.
 """
 
 
@@ -189,7 +204,7 @@ Perform logical elimination:
 
 Select the best matching candidate.
 
-OUTPUT JSON:
+OUTPUT JSON (raw JSON only, NO markdown):
 {{
     "matched": true/false,
     "match_index": 1,  // 1-based index (if matched)
@@ -276,7 +291,7 @@ Find ALL items that match the target.
 - "exact": Meets all rules perfectly.
 - "close": Minor differences (e.g. brand, minor spec) but usable.
 
-OUTPUT JSON:
+OUTPUT JSON (raw JSON only, NO markdown):
 {
     "matches": [
         {

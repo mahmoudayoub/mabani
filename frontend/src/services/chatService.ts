@@ -21,7 +21,7 @@ export interface PriceCodeReference {
     source_file: string;
     sheet_name: string;
     category: string;
-    row_number: number;
+    row_number: number | string;
 }
 
 // Unit Rate match object
@@ -36,7 +36,7 @@ export interface UnitRateMatch {
 // Unit Rate reference object
 export interface UnitRateReference {
     sheet_name: string;
-    row_number: number;
+    row_number: number | string;
     category_path: string;
     parent: string;
     grandparent: string;

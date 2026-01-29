@@ -172,9 +172,9 @@ def search_pinecone(query: str, chat_type: str, top_k: int = None) -> List[Dict]
     """Search Pinecone index for candidates."""
     pc = get_pinecone_client()
     
-    # Set top_k based on type (reduced to avoid timeout)
+    # Set top_k based on type (price code needs more candidates)
     if top_k is None:
-        top_k = 30 if chat_type == "pricecode" else 10
+        top_k = 150 if chat_type == "pricecode" else 10
     
     # Select index based on type
     if chat_type == "pricecode":

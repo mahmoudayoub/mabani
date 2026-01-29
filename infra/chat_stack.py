@@ -46,7 +46,7 @@ class ChatStack(Stack):
                 "*.pyc", "__pycache__", ".venv", "venv", "tests",
                 "data", "layers", "*.xlsx", "*.json"
             ]),
-            timeout=Duration.seconds(60),
+            timeout=Duration.seconds(120),  # 2 minutes for long LLM calls
             memory_size=512,
             layers=[deps_layer],
             environment={
@@ -58,7 +58,17 @@ class ChatStack(Stack):
             }
         )
         
-        # API Gateway with CORS
+        # Lambda Function URL (bypasses API Gateway 29-second limit)
+        fn_url = chat_lambda.add_function_url(
+            auth_type=_lambda.FunctionUrlAuthType.NONE,
+            cors=_lambda.FunctionUrlCorsOptions(
+                allowed_origins=["*"],
+                allowed_methods=[_lambda.HttpMethod.ALL],
+                allowed_headers=["Content-Type", "Authorization"],
+            )
+        )
+        
+        # API Gateway with CORS (kept for backward compatibility, has 29s limit)
         api = apigw.RestApi(
             self, "ChatApi",
             rest_api_name="Almabani Chat API",
@@ -97,11 +107,18 @@ class ChatStack(Stack):
         CfnOutput(
             self, "ChatApiUrl",
             value=f"{api.url}chat",
-            description="Chat API endpoint URL"
+            description="Chat API endpoint URL (29s limit)"
         )
         
         CfnOutput(
             self, "ChatApiEndpoint",
             value=api.url,
             description="Chat API base URL"
+        )
+        
+        # Lambda Function URL (NO timeout limit - use this for long requests)
+        CfnOutput(
+            self, "ChatFunctionUrl",
+            value=fn_url.url,
+            description="Chat Lambda Function URL (NO 29s limit - recommended)"
         )

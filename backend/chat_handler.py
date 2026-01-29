@@ -29,10 +29,10 @@ def get_openai_client():
     global _openai_client
     if _openai_client is None:
         from openai import OpenAI
-        # Set timeout to 25 seconds to avoid API Gateway 29-second hard limit
+        # Set timeout to 55 seconds (Lambda is 60s, leave 5s buffer)
         _openai_client = OpenAI(
             api_key=os.environ['OPENAI_API_KEY'],
-            timeout=25.0  # seconds
+            timeout=55.0  # seconds
         )
     return _openai_client
 

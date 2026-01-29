@@ -164,8 +164,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             const unitMatch = match as UnitRateMatch;
             const unitRef = reference as UnitRateReference;
 
-            let details = `✅ **${unitMatch.item_code}**\n`;
-            details += `📝 ${unitMatch.description}\n`;
+            let details = `✅ ${unitMatch.description}\n`;
             details += `💰 Rate: ${unitMatch.rate} / ${unitMatch.unit}\n`;
             details += `🎯 Match Type: ${unitMatch.match_type.toUpperCase()}\n`;
             details += `📁 Category: ${unitRef.category_path}\n`;

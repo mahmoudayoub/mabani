@@ -311,21 +311,21 @@ Find ALL items that match the target.
 - "close": Minor differences (e.g. brand, minor spec) but usable.
 
 OUTPUT JSON (raw JSON only, NO markdown):
-{
+{{
     "matches": [
-        {
+        {{
             "match_index": 1,  // 1-based index
             "status": "exact_match" | "close_match",
             "rate": 150.00,
             "unit": "m3",
             "confidence": 95,
             "reason": "Why it matches"
-        },
+        }},
         ...
     ],
     "best_match_index": 1, // The single best one
     "summary_reason": "Explanation of the findings"
-}
+}}
 """
 
 

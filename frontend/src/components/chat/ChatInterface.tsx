@@ -35,7 +35,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     useEffect(() => {
         const warmUpLambda = async () => {
             try {
-                await fetch('https://zyt0q89ozg.execute-api.eu-west-1.amazonaws.com/prod/chat', {
+                await fetch('https://wio42z6ftqwg6dblphsfnpmz6e0petwm.lambda-url.eu-west-1.on.aws/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type, message: '__warmup__', warmup: true })

@@ -1,7 +1,7 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 // External allocation chatbot API URL
-const CHAT_API_URL = 'https://zyt0q89ozg.execute-api.eu-west-1.amazonaws.com/prod';
+const CHAT_API_URL = 'https://wio42z6ftqwg6dblphsfnpmz6e0petwm.lambda-url.eu-west-1.on.aws/';
 
 export interface ChatMessage {
     role: 'user' | 'assistant';
@@ -99,7 +99,7 @@ export const sendChatMessage = async (
 ): Promise<ChatResponse> => {
     const headers = await getAuthHeaders();
 
-    const response = await fetch(`${CHAT_API_URL}/chat`, {
+    const response = await fetch(CHAT_API_URL, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -125,7 +125,7 @@ export const sendChatMessage = async (
  */
 export const checkChatApiHealth = async (): Promise<boolean> => {
     try {
-        const response = await fetch(`${CHAT_API_URL}/health`, {
+        const response = await fetch(CHAT_API_URL, {
             method: 'GET',
         });
         return response.ok;

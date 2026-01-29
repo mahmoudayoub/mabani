@@ -29,7 +29,11 @@ def get_openai_client():
     global _openai_client
     if _openai_client is None:
         from openai import OpenAI
-        _openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+        # Set timeout to 25 seconds to avoid API Gateway 29-second hard limit
+        _openai_client = OpenAI(
+            api_key=os.environ['OPENAI_API_KEY'],
+            timeout=25.0  # seconds
+        )
     return _openai_client
 
 
@@ -168,9 +172,9 @@ def search_pinecone(query: str, chat_type: str, top_k: int = None) -> List[Dict]
     """Search Pinecone index for candidates."""
     pc = get_pinecone_client()
     
-    # Set top_k based on type (price code needs more candidates)
+    # Set top_k based on type (reduced to avoid timeout)
     if top_k is None:
-        top_k = 150 if chat_type == "pricecode" else 10
+        top_k = 30 if chat_type == "pricecode" else 10
     
     # Select index based on type
     if chat_type == "pricecode":

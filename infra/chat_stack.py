@@ -71,6 +71,18 @@ class ChatStack(Stack):
             deploy_options=apigw.StageOptions(stage_name="prod")
         )
         
+        # Add Gateway Response for 5xx errors with CORS headers
+        # This ensures timeout (504) and other server errors include CORS headers
+        api.add_gateway_response(
+            "GatewayResponse5XX",
+            type=apigw.ResponseType.DEFAULT_5_XX,
+            response_headers={
+                "Access-Control-Allow-Origin": "'*'",
+                "Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+                "Access-Control-Allow-Methods": "'POST,OPTIONS'"
+            }
+        )
+        
         # POST /chat endpoint
         chat_resource = api.root.add_resource("chat")
         chat_resource.add_method(

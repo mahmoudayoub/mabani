@@ -196,47 +196,56 @@ def search_pinecone(query: str, chat_type: str, top_k: int = None) -> List[Dict]
 
 
 # =============================================================================
-# PRICE CODE MATCHING (Same logic as pipeline)
+# PRICE CODE MATCHING (Aligned with pipeline logic)
 # =============================================================================
-PRICECODE_MATCH_SYSTEM = """You are a Price Code allocation expert. Your task is to find the BEST matching Price Code for a BOQ item.
+PRICECODE_MATCH_SYSTEM = (
+    "You are a Price Code allocation expert. "
+    "Your task is to identify the correct Price Code for a BOQ item from a list of candidates.\n"
+    "Rules:\n"
+    "1. MATCHING IS STRICT & CONSERVATIVE. Better to return 'matched': false than a wrong price code.\n"
+    "2. UNIT COMPATIBILITY (Critical): The Candidate Unit must be convertible or identical to the Target Unit. (e.g. m2 cannot match m3).\n"
+    "3. NO ASSUMPTIONS (Specificity Check): \n"
+    "   - If Target is VAGUE (e.g. 'Excavation') and Candidate is SPECIFIC (e.g. 'Excavation depth > 2m'), REJECT IT.\n"
+    "   - You cannot assume the Target implies the specific constraints of the Candidate.\n"
+    "4. FULL COVERAGE:\n"
+    "   - The Candidate must cover the *entire scope* of the Target.\n"
+    "   - The Target must not contain requirements missing from the Candidate.\n"
+    "5. CONFIDENCE Levels:\n"
+    "   - 'EXACT' (Green): PERFECT SYMMETRY. Target and Candidate describe exactly the same scope, material, and constraints. No extra info on either side.\n"
+    "   - 'HIGH' (Yellow): SAFE MATCH. Essential scope is identical, but one side contains minor non-restrictive info (e.g. brand name, trivial spec detail) that does not alter the cost basis significantly.\n"
+    "6. Return strict JSON. Do NOT use markdown code blocks."
+)
 
-BE PRACTICAL - find usable matches:
-- If a candidate covers the target's scope, it's a potential match
-- Vague targets (e.g., "copper pipe") can match specific candidates (e.g., "25mm copper pipe Type L")
-- Units must be compatible (same or convertible)
-- When multiple candidates match, pick the most appropriate one
-
-CONFIDENCE Levels:
-- 'EXACT': Same scope, material, and specifications
-- 'HIGH': Target is covered by candidate with minor differences
-
-Return strict JSON. Do NOT use markdown code blocks.
-"""
-
-PRICECODE_MATCH_USER = """TARGET ITEM (from user query):
+PRICECODE_MATCH_USER = """TARGET ITEM:
 {target_info}
 
-CANDIDATES (from database):
+CANDIDATES:
 {candidates_text}
 
-Find the BEST matching price code. Be practical - pick the most appropriate candidate.
+INSTRUCTIONS:
+Perform a logical elimination process:
+1. UNIT CHECK: Filter out candidates with incompatible units.
+2. HIERARCHY CHECK: Filter out candidates from wrong trades (e.g. Electrical vs Civil).
+3. SCOPE CHECK: 
+   - Does the Work Type match? (Excavation != Disposal)
+   - Does the Material match? (C25/30 != C40/50)
+4. SPECIFICITY CHECK (The "No Assumptions" Rule):
+   - Does the Candidate impose a constraint (depth, width, type) NOT mentioned in the Target? -> REJECT.
+   - Does the Target require a spec NOT in the Candidate? -> REJECT.
 
-Steps:
-1. Identify candidates that could apply to the target
-2. If target is vague, prefer the most common/general candidate
-3. If target is specific, pick the closest match
-4. Pick ONE best match
+Select the best surviving candidate index (1-based).
 
 OUTPUT JSON (raw JSON only, NO markdown):
 {{
     "matched": true,
     "match_index": 1,
     "confidence_level": "EXACT",
-    "reason": "Brief explanation of why this is the best match"
+    "reason": "Step-by-step reasoning: 1. Unit Check... 2. Scope... 3. Specificity..."
 }}
 
-If truly NO candidate applies (completely different work type), return matched: false.
+If no candidate survives all checks, return: {{"matched": false, "reason": "..."}}
 """
+
 
 
 def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:

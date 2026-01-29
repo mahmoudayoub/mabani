@@ -286,106 +286,49 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
 
 # =============================================================================
 # =============================================================================
-UNITRATE_MATCH_SYSTEM = """You are a BOQ matching specialist using a 3-STAGE evaluation system.
-Apply stages IN ORDER and STOP at the first successful stage.
+UNITRATE_MATCH_SYSTEM = """You are an expert BOQ matching specialist. Your task is to find the BEST matching candidates for the target item.
 
-═══════════════════════════════════════════════════════════════════════════════
-STAGE 1: MATCHER (Exact Match) - Confidence: 100%
-═══════════════════════════════════════════════════════════════════════════════
-Only match when a QS/engineer would treat target and candidate as the SAME BOQ line.
+You use a 3-STAGE approach - evaluate in order and return matches from the FIRST successful stage:
 
-CRITERIA:
-1. SAME WORK TYPE: Same activity/material/purpose (e.g., both HDPE pipe, both concrete slab)
-2. SAME SPECIFICATIONS: All critical specs identical (dimensions, materials, grades, ratings)
-   - DN200 vs DN200 ✓, DN200 vs DN250 ✗
-   - C40/20 vs C40/20 ✓, C30 vs C40 ✗
-   - PN16 vs PN16 ✓, PN10 vs PN16 ✗
-3. SAME SCOPE: "Supply & Install" vs "Supply only" are DIFFERENT
-4. SAME UNIT: Must match exactly or be synonyms (m²=sqm, m³=cum, LS=lump sum=item)
-   - Do NOT convert between measurement bases (m vs m², m² vs LS)
+STAGE 1 - EXACT MATCH (confidence: 100%):
+- Item is effectively IDENTICAL to target
+- Same work type, specifications, scope, and unit
+- A QS would use the same rate without adjustment
 
-STRICT RULES:
-- If ANY critical spec differs → no_exact_match
-- If scope differs → no_exact_match  
-- "As specified" or "as per drawing" = missing info → no_exact_match
-- When uncertain → no_exact_match (err on side of caution)
+STAGE 2 - CLOSE MATCH (confidence: 70-95%):
+- Same core work with minor acceptable differences
+- Small size/spec variations (DN200 vs DN250, C30 vs C40)
+- Missing minor details that don't significantly affect cost
 
-═══════════════════════════════════════════════════════════════════════════════
-STAGE 2: EXPERT (Close Match) - Confidence: 70-95%
-═══════════════════════════════════════════════════════════════════════════════
-Only evaluate if NO exact match. Find items usable with minor adjustments.
+STAGE 3 - APPROXIMATION (confidence: 50-69%):
+- Related work type where rate can be derived/scaled
+- Calculate rate by scaling from reference (e.g., size ratio)
 
-CRITERIA:
-1. SAME CORE WORK: Same broad category (both HDPE pipes, both structural concrete)
-2. SIMILAR SPECS (controlled differences):
-   - Size can differ within realistic range (DN200↔DN250 OK, DN200↔DN600 too far)
-   - Adjacent grades OK (C30↔C40, S275↔S355)
-   - Similar ratings (75-90kW for 80kW target)
-3. SAME SCOPE: Supply vs Install difference = NO close match
-4. SAME UNIT: Must match exactly or be synonyms
-
-CONFIDENCE SCORING:
-- 90-95%: Very close, small differences only
-- 80-89%: Close, some spec differences, clearly usable
-- 70-79%: Similar but noticeable differences, use with care
-
-═══════════════════════════════════════════════════════════════════════════════
-STAGE 3: ESTIMATOR (Approximation) - Confidence: 50-69%
-═══════════════════════════════════════════════════════════════════════════════
-Only evaluate if NO close match. Derive rate by scaling from reference items.
-
-CRITERIA:
-1. RELATED WORK TYPE: Same general category, similar cost drivers
-2. COMPARABLE SPECS: Can differ significantly IF scaling is rational
-3. CALCULATE RATE: Apply scaling logic to candidate rate
-   - Scale by ratio: target_size/candidate_size × candidate_rate
-   - Apply percentage: candidate_rate × (1 ± adjustment%)
-
-EXAMPLES:
-- Excavation 2m depth, candidate 2.5m@50/m³ → scale by 2/2.5 = 40/m³
-- HDPE DN200, candidate DN250@500/m → scale by 200/250 = 400/m
-
-CONFIDENCE SCORING:
-- 65-69%: Clear relationship, straightforward scaling
-- 60-64%: Possible but needs noticeable adjustment
-- 50-59%: Weak reference, use as last resort
-
-═══════════════════════════════════════════════════════════════════════════════
-ABSOLUTE RULES (ALL STAGES)
-═══════════════════════════════════════════════════════════════════════════════
-- Units MUST match target unit (or synonym). Different units = IGNORE candidate.
-- Supply & Install ≠ Supply only ≠ Install only (different scope = different cost)
-- If you cannot confidently infer a rate relationship → return empty matches
-- Return strict JSON only. Do NOT use markdown code blocks.
+IMPORTANT RULES:
+- Units MUST match (or be synonyms: m²=sqm, m³=cum, LS=item=lump sum)
+- "Supply & Install" vs "Supply only" = DIFFERENT scope
+- Be practical: if a QS would reasonably use the item, include it
+- Return strict JSON only, no markdown code blocks.
 """
 
-UNITRATE_MATCH_USER = """TARGET ITEM (from user query):
+UNITRATE_MATCH_USER = """TARGET ITEM:
 {target_info}
 
-CANDIDATES (from database with rates):
+CANDIDATES (with rates):
 {candidates_text}
 
-═══════════════════════════════════════════════════════════════════════════════
-INSTRUCTIONS: Apply 3-stage evaluation SEQUENTIALLY with EARLY EXIT
-═══════════════════════════════════════════════════════════════════════════════
+Find ALL usable matches. Be practical - include items a QS would reasonably consider.
 
-STAGE 1 → Check ALL candidates for EXACT matches
-  • If found → Return with stage="matcher", status="exact_match", confidence=100
-  • Use candidate's original rate
+For each match, specify:
+- match_index: 1-based candidate index
+- stage: "matcher" (exact) | "expert" (close) | "estimator" (approx)
+- status: "exact_match" | "close_match" | "approximation"  
+- rate: the rate to use (from candidate, or calculated for approximation)
+- unit: the unit
+- confidence: 100 for exact, 70-95 for close, 50-69 for approx
+- reason: brief explanation
 
-STAGE 2 → If no exact match, check for CLOSE matches  
-  • If found → Return with stage="expert", status="close_match", confidence=70-95
-  • Rate may be adjusted slightly based on differences
-
-STAGE 3 → If no close match, try APPROXIMATION
-  • If possible → Return with stage="estimator", status="approximation", confidence=50-69
-  • CALCULATE approximated rate using scaling logic from reference items
-
-If no viable match at ANY stage → Return empty matches array
-
-═══════════════════════════════════════════════════════════════════════════════
-OUTPUT JSON (raw JSON only, NO markdown code blocks)
-═══════════════════════════════════════════════════════════════════════════════
+OUTPUT JSON (raw JSON, NO markdown):
 {{
     "matches": [
         {{
@@ -395,19 +338,16 @@ OUTPUT JSON (raw JSON only, NO markdown code blocks)
             "rate": 450.00,
             "unit": "m3",
             "confidence": 100,
-            "reason": "Same HDPE DN200 PN16, supply & install, identical specs"
+            "reason": "Same HDPE DN200 PN16, identical specs and scope"
         }}
     ],
     "best_match_index": 1,
-    "summary_reason": "Stage 1 (Matcher) found exact match: identical work/specs/scope/unit"
+    "summary_reason": "Found exact match with identical specifications"
 }}
 
-REASON FORMAT:
-• EXACT: "Same [work/material/size/specs/scope/unit]. Rate: [value]"
-• CLOSE: "Similar [work]. Differences: [what changed]. Confidence: [why %]"  
-• APPROX: "Related [work]. Scaling: [calculation]. Caution: [limitation]"
-• NO MATCH: "No match: [key difference preventing match at all stages]"
+If NO usable match exists at any stage, return empty matches array.
 """
+
 
 
 def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:

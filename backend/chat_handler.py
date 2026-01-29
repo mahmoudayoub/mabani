@@ -154,7 +154,7 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
                 {"role": "system", "content": VALIDATION_SYSTEM},
                 {"role": "user", "content": message}
             ],
-            temperature=0.3,
+
             response_format={"type": "json_object"}
         )
         result = parse_llm_json(response.choices[0].message.content)
@@ -258,7 +258,7 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
                 {"role": "system", "content": PRICECODE_MATCH_SYSTEM},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
+
             response_format={"type": "json_object"}
         )
         result = parse_llm_json(response.choices[0].message.content)
@@ -376,14 +376,20 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
                 {"role": "system", "content": UNITRATE_MATCH_SYSTEM},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
+
             response_format={"type": "json_object"}
         )
         result = parse_llm_json(response.choices[0].message.content)
         
+        # DEBUG: Log what LLM returned
+        logger.info(f"[UNITRATE DEBUG] LLM result: {json.dumps(result, default=str)[:1000]}")
+        logger.info(f"[UNITRATE DEBUG] Number of candidates provided: {len(candidates)}")
+        
         # Parse matches
         parsed_matches = []
         raw_matches = result.get("matches", [])
+        
+        logger.info(f"[UNITRATE DEBUG] Raw matches count: {len(raw_matches)}")
         
         # If the LLM returns the old format (single object), handle it
         if not raw_matches and result.get("match_index"):

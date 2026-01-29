@@ -59,12 +59,15 @@ class ChatStack(Stack):
         )
         
         # Lambda Function URL (bypasses API Gateway 29-second limit)
+        # Enable CORS here so AWS handles OPTIONS preflight automatically.
+        # We will REMOVE CORS headers from the Lambda code to avoid duplicates.
         fn_url = chat_lambda.add_function_url(
             auth_type=_lambda.FunctionUrlAuthType.NONE,
             cors=_lambda.FunctionUrlCorsOptions(
                 allowed_origins=["*"],
                 allowed_methods=[_lambda.HttpMethod.ALL],
                 allowed_headers=["Content-Type", "Authorization"],
+                max_age=Duration.days(1),
             )
         )
         

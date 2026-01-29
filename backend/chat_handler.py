@@ -46,13 +46,13 @@ def get_pinecone_client():
 
 
 def cors_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
-    """Return response with CORS headers."""
+    """
+    Return response WITHOUT explicit CORS headers (handled by Function URL).
+    We kept the function name to minimize code changes.
+    """
     return {
         "statusCode": status_code,
         "headers": {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "POST,OPTIONS",
             "Content-Type": "application/json"
         },
         "body": json.dumps(body)
@@ -483,17 +483,15 @@ import traceback
 # =============================================================================
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Main Lambda handler."""
-    # 1. Define Standard Headers (WITH CORS)
+    # 1. Define Standard Headers (No CORS - handled by Function URL)
     headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type,Authorization",
-        "Access-Control-Allow-Methods": "OPTIONS,POST",
         "Content-Type": "application/json"
     }
 
     try:
-        # 2. Handle OPTIONS (Pre-flight)
-        if event.get("httpMethod") == "OPTIONS":
+        # 2. Handle OPTIONS (Pre-flight) - OPTIONAL now as AWS handles it, 
+        # but kept empty just in case request reaches here.
+        if event.get("httpMethod") == "OPTIONS" or event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
             return { "statusCode": 200, "headers": headers, "body": "" }
             
         logger.info(f"Received event: {json.dumps(event)}")

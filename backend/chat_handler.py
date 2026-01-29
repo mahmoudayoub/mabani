@@ -382,45 +382,89 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
         return {"matches": [], "error": str(e)}
 
 
+import traceback
+
 # =============================================================================
 # MAIN HANDLER
 # =============================================================================
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Main Lambda handler."""
-    logger.info(f"Received event: {json.dumps(event)}")
-    
-    # Handle CORS preflight
-    if event.get("httpMethod") == "OPTIONS":
-        return cors_response(200, {"message": "OK"})
-    
+    # 1. Define Standard Headers (WITH CORS)
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+        "Access-Control-Allow-Methods": "OPTIONS,POST",
+        "Content-Type": "application/json"
+    }
+
     try:
-        # Parse request body
-        body = json.loads(event.get("body", "{}"))
+        # 2. Handle OPTIONS (Pre-flight)
+        if event.get("httpMethod") == "OPTIONS":
+            return { "statusCode": 200, "headers": headers, "body": "" }
+            
+        logger.info(f"Received event: {json.dumps(event)}")
         
-        chat_type = body.get("type", "").lower()
+        # 3. Parse Body Safely
+        body_str = event.get("body", "{}")
+        if not body_str:
+            body_str = "{}"
+        
+        try:
+            body = json.loads(body_str)
+        except json.JSONDecodeError:
+            return {
+                "statusCode": 400,
+                "headers": headers,
+                "body": json.dumps({"status": "error", "message": "Invalid JSON body"})
+            }
+            
+        # 4. HANDLE WARMUP (Critical Fix)
+        if body.get("warmup") is True or body.get("message") == "__warmup__":
+            logger.info("Warmup request received.")
+            return {
+                "statusCode": 200,
+                "headers": headers,
+                "body": json.dumps({"status": "success", "message": "Warmed up"})
+            }
+
+        # 5. Extract Inputs Safely (Use .get to avoid crashes)
+        chat_type = body.get("type", "pricecode").lower()
         message = body.get("message", "").strip()
+        history = body.get("history", [])  # <--- Fixes missing history crash!
         
         # Validate inputs
         if chat_type not in ["pricecode", "unitrate"]:
-            return cors_response(400, {
-                "status": "error",
-                "message": "Invalid type. Must be 'pricecode' or 'unitrate'."
-            })
+            return {
+                "statusCode": 400,
+                "headers": headers,
+                "body": json.dumps({
+                    "status": "error",
+                    "message": "Invalid type. Must be 'pricecode' or 'unitrate'."
+                })
+            }
         
         if not message:
-            return cors_response(400, {
-                "status": "error",
-                "message": "Message is required."
-            })
+             return {
+                "statusCode": 400,
+                "headers": headers,
+                "body": json.dumps({
+                    "status": "error",
+                    "message": "Message is required."
+                })
+            }
         
         # Stage 1: Validate query is construction-related
         validation = validate_construction_query(message)
         
         if not validation.get("valid", True):
-            return cors_response(200, {
-                "status": "clarification",
-                "message": validation.get("reason", "Please enter a construction-related item or work description.")
-            })
+             return {
+                "statusCode": 200,
+                "headers": headers,
+                "body": json.dumps({
+                    "status": "clarification",
+                    "message": validation.get("reason", "Please enter a construction-related item or work description.")
+                })
+            }
         
         search_query = validation.get("refined_query", message)
         
@@ -428,10 +472,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         candidates = search_pinecone(search_query, chat_type)
         
         if not candidates:
-            return cors_response(200, {
-                "status": "no_match",
-                "message": "No matching items found in the database. Please try a different description."
-            })
+             return {
+                "statusCode": 200,
+                "headers": headers,
+                "body": json.dumps({
+                    "status": "no_match",
+                    "message": "No matching items found in the database. Please try a different description."
+                })
+            }
         
         # Stage 3: Apply matching logic (same as pipelines)
         if chat_type == "pricecode":
@@ -440,27 +488,36 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if match_result.get("matched") and match_result.get("best_match"):
                 best = match_result["best_match"]
                 confidence = match_result.get("confidence_level", "HIGH").lower()
-                return cors_response(200, {
-                    "status": "success",
-                    "message": f"Found {confidence} match: **{best['code']}** - {best['description']}",
-                    "match": {
-                        "code": best["code"],
-                        "description": best["description"],
-                        "match_type": confidence
-                    },
-                    "reference": {
-                        "source_file": best["source_file"],
-                        "sheet_name": best["sheet_name"],
-                        "category": best["category"],
-                        "row_number": best["row_number"]
-                    },
-                    "reasoning": match_result.get("reason", "")
-                })
+                 
+                return {
+                    "statusCode": 200,
+                    "headers": headers,
+                    "body": json.dumps({
+                        "status": "success",
+                        "message": f"Found {confidence} match: **{best['code']}** - {best['description']}",
+                        "match": {
+                            "code": best["code"],
+                            "description": best["description"],
+                            "match_type": confidence
+                        },
+                        "reference": {
+                            "source_file": best["source_file"],
+                            "sheet_name": best["sheet_name"],
+                            "category": best["category"],
+                            "row_number": best["row_number"]
+                        },
+                        "reasoning": match_result.get("reason", "")
+                    })
+                }
             else:
-                return cors_response(200, {
-                    "status": "no_match",
-                    "message": "Could not find a confident match for your query."
-                })
+                 return {
+                    "statusCode": 200,
+                    "headers": headers,
+                    "body": json.dumps({
+                        "status": "no_match",
+                        "message": "Could not find a confident match for your query."
+                    })
+                }
         
         else:  # unitrate
             match_result = match_unitrate(message, candidates)
@@ -487,29 +544,39 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     item["reasoning"] = m["reason"]
                     api_matches.append(item)
 
-                return cors_response(200, {
-                    "status": "success",
-                    "message": msg,
-                    "matches": api_matches,
-                    # Backward compat: populate 'match' with the first one
-                    "match": api_matches[0], 
-                    "reference": api_matches[0]["reference"],
-                    "reasoning": api_matches[0]["reasoning"]
-                })
+                return {
+                    "statusCode": 200,
+                    "headers": headers,
+                    "body": json.dumps({
+                        "status": "success",
+                        "message": msg,
+                        "matches": api_matches,
+                        # Backward compat: populate 'match' with the first one
+                        "match": api_matches[0], 
+                        "reference": api_matches[0]["reference"],
+                        "reasoning": api_matches[0]["reasoning"]
+                    })
+                }
             else:
-                return cors_response(200, {
-                    "status": "no_match",
-                    "message": "Could not find a confident match for your query."
-                })
+                 return {
+                    "statusCode": 200,
+                    "headers": headers,
+                    "body": json.dumps({
+                        "status": "no_match",
+                        "message": "Could not find a confident match for your query."
+                    })
+                }
         
-    except json.JSONDecodeError:
-        return cors_response(400, {
-            "status": "error",
-            "message": "Invalid JSON in request body."
-        })
     except Exception as e:
-        logger.error(f"Handler error: {e}", exc_info=True)
-        return cors_response(500, {
-            "status": "error",
-            "message": f"Internal server error: {str(e)}"
-        })
+        # 7. GLOBAL ERROR CATCHER (Prevents 502)
+        logger.error(f"CRITICAL ERROR: {str(e)}")
+        traceback.print_exc() # Log full stack trace to CloudWatch
+        
+        return {
+            "statusCode": 500, # Return 500 but WITH HEADERS
+            "headers": headers,
+            "body": json.dumps({
+                "status": "error",
+                "message": f"Server Error: {str(e)}"
+            })
+        }

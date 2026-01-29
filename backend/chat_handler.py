@@ -123,7 +123,6 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
             temperature=0.3,
             response_format={"type": "json_object"}
         )
-        )
         result = parse_llm_json(response.choices[0].message.content)
         return result
     except Exception as e:
@@ -228,7 +227,6 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
             temperature=0.3,
             response_format={"type": "json_object"}
         )
-        )
         result = parse_llm_json(response.choices[0].message.content)
         
         # Add matched candidate details with full reference info
@@ -325,7 +323,6 @@ def match_unitrate(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
             ],
             temperature=0.3,
             response_format={"type": "json_object"}
-        )
         )
         result = parse_llm_json(response.choices[0].message.content)
         

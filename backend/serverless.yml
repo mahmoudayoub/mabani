@@ -157,14 +157,14 @@ layers:
     name: ${self:service}-${self:provider.stage}-shared-code
     description: Common shared code for Lambda functions (lambda_helpers, bedrock_client, etc.)
     compatibleRuntimes:
-      - python3.13
+      - python3.11
     retain: false
   kbSharedCode:
     path: layers/kb
     name: ${self:service}-${self:provider.stage}-kb-shared-code
     description: Knowledge Base specific shared code (kb_repositories, faiss_utils, document_processing, dynamic_bedrock)
     compatibleRuntimes:
-      - python3.13
+      - python3.11
     retain: false
 
 package:

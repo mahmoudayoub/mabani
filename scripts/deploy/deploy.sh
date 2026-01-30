@@ -108,6 +108,15 @@ deploy_backend() {
     pip install --upgrade pip
     pip install -r requirements.txt
     
+    # Sync shared code to layers
+    log_info "Syncing shared code to layers..."
+    if [ -f "layers/sync-from-source.sh" ]; then
+        chmod +x layers/sync-from-source.sh
+        ./layers/sync-from-source.sh
+    else
+        log_warning "layers/sync-from-source.sh not found. Skipping sync."
+    fi
+    
     # Fetch Cognito User Pool ARN
     log_info "Fetching Cognito User Pool ARN..."
     export COGNITO_USER_POOL_ARN=$(aws cloudformation describe-stacks \

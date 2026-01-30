@@ -49,6 +49,9 @@ export COGNITO_USER_POOL_ARN=$(aws cloudformation describe-stacks \
 
 log_info "Using Cognito User Pool ARN: $COGNITO_USER_POOL_ARN"
 
+log_warning "NOTE: This script ONLY updates the lambda function code."
+log_warning "If you modified SHARED CODE (layers), you MUST run './scripts/deploy/deploy.sh $ENVIRONMENT backend' instead."
+
 log_info "Deploying single Lambda function: $FUNCTION_NAME"
 
 cd "$PROJECT_ROOT/backend"

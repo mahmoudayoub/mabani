@@ -15,6 +15,7 @@ try:
     from shared.conversation_state import ConversationState
     # Handlers
     from handlers.start_handler import handle_start
+    from handlers.project_handler import handle_project_selection
     from handlers.confirmation_handler import handle_confirmation, handle_classification_selection
     from handlers.data_collection_handlers import handle_location, handle_observation_type, handle_breach_source
     from handlers.severity_handler import handle_severity
@@ -24,6 +25,7 @@ except ImportError:
     from lambdas.shared.conversation_state import ConversationState
     # Handlers
     from lambdas.handlers.start_handler import handle_start
+    from lambdas.handlers.project_handler import handle_project_selection
     from lambdas.handlers.confirmation_handler import handle_confirmation, handle_classification_selection
     from lambdas.handlers.data_collection_handlers import handle_location, handle_observation_type, handle_breach_source
     from lambdas.handlers.severity_handler import handle_severity
@@ -76,6 +78,9 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             response_message = handle_start(user_input, clean_number, state_manager)
             
         # Case C: Active State
+        elif current_state == "WAITING_FOR_PROJECT":
+            response_message = handle_project_selection(body_content, clean_number, state_manager, state_item)
+
         elif current_state == "WAITING_FOR_CONFIRMATION":
             response_message = handle_confirmation(body_content, clean_number, state_manager, state_item)
             

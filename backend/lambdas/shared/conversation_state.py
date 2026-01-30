@@ -104,7 +104,7 @@ class ConversationState:
             print(f"Error updating state: {e}")
             raise
 
-    def start_conversation(self, phone_number: str, report_id: str, draft_data: Dict[str, Any]) -> None:
+    def start_conversation(self, phone_number: str, report_id: str, draft_data: Dict[str, Any], start_state: str = "WAITING_FOR_CONFIRMATION") -> None:
         """
         Start a new conversation session, overwriting any previous one.
 
@@ -112,11 +112,12 @@ class ConversationState:
             phone_number: User's phone number.
             report_id: New Report ID.
             draft_data: Initial data (e.g., initial classification).
+            start_state: Initial state of the conversation.
         """
         timestamp = int(time.time())
         item = {
             "PK": f"PHONE#{phone_number}",
-            "currentState": "WAITING_FOR_CONFIRMATION", # Default start state
+            "currentState": start_state,
             "reportId": report_id,
             "draftData": draft_data,
             "lastUpdated": timestamp,

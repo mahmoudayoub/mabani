@@ -13,12 +13,14 @@ try:
     from shared.s3_client import S3Client
     from shared.conversation_state import ConversationState
     from shared.config_manager import ConfigManager
+    from shared.user_project_manager import UserProjectManager
 except ImportError:
     # Fallback for local testing
     from lambdas.shared.bedrock_client import BedrockClient
     from lambdas.shared.s3_client import S3Client
     from lambdas.shared.conversation_state import ConversationState
     from lambdas.shared.config_manager import ConfigManager
+    from lambdas.shared.user_project_manager import UserProjectManager
 
 def handle_start(
     user_input: Dict[str, Any], 
@@ -123,35 +125,74 @@ def handle_start(
         if " (" in hazard_category and ")" in hazard_category:
             hazard_category = hazard_category.split(" (")[0]
         
-        # 4. Save Draft State
+        # 4. Check Project Selection
+        user_project_manager = UserProjectManager()
+        last_project = user_project_manager.get_last_project(phone_number)
+        
         draft_data = {
             "imageId": request_id,
             "imageKey": image_metadata["s3Key"],
             "imageCaption": caption,
             "s3Url": image_metadata["s3Url"],
             "imageUrl": image_metadata["httpsUrl"],
-            "classification": hazard_category,      # Store detailed category here (e.g., A15 Working at Height)
-            "observationType": observation_type,    # Store high-level type here (e.g., Unsafe Condition)
+            "classification": hazard_category,
+            "observationType": observation_type,
             "originalDescription": description
         }
         
+        response_payload = {}
+        next_state = "WAITING_FOR_CONFIRMATION"
+
+        if last_project:
+            # Case A: Auto-select Last Project
+            print(f"Auto-selecting project: {last_project}")
+            draft_data["projectId"] = last_project
+            
+            response_payload = {
+                "text": f"Project: *{last_project}*\n\nI've analyzed the photo and identified a *{observation_type}* related to *{hazard_category}*.\n\nIs this correct?",
+                "interactive": {
+                    "type": "button",
+                    "buttons": [
+                        {"id": "yes", "title": "Yes"},
+                        {"id": "no", "title": "No"}
+                    ]
+                }
+            }
+        else:
+            # Case B: Prompt for Project
+            print("No project selected. Prompting user...")
+            next_state = "WAITING_FOR_PROJECT"
+            
+            # Get Projects list
+            projects = config.get_options("PROJECTS")
+            
+            if not projects:
+                # Fallback if no projects configured
+                projects = ["Default Project"]
+                
+            # Create interactive list
+            rows = [{"id": p, "title": p[:24]} for p in projects[:10]]
+            
+            response_payload = {
+                "text": "Please select the *Project* for this report:",
+                "interactive": {
+                    "type": "list",
+                    "body_text": "Choose from the active projects below:",
+                    "button_text": "Select Project",
+                    "items": rows
+                }
+            }
+
+        # 5. Save State
         state_manager.start_conversation(
             phone_number=phone_number,
             report_id=request_id,
-            draft_data=draft_data
+            draft_data=draft_data,
+            start_state=next_state
         )
         
-        # 5. Return Response
-        return {
-            "text": f"I've analyzed the photo and identified a *{observation_type}* related to *{hazard_category}*.\n\nIs this correct?",
-            "interactive": {
-                "type": "button",
-                "buttons": [
-                    {"id": "yes", "title": "Yes"},
-                    {"id": "no", "title": "No"}
-                ]
-            }
-        }
+        # 6. Return Response
+        return response_payload
 
     except Exception as e:
         print(f"Error in handle_start: {e}")

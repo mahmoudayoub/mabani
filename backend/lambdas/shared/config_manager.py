@@ -140,6 +140,13 @@ class ConfigManager:
                 "Site Engineer B",
                 "Safety Officer X",
                 "Project Manager Y"
+            ],
+            "PROJECTS": [
+                "Riyadh Metro Line 3",
+                "King Salman Park",
+                "Red Sea Airport",
+                "Diriyah Gate",
+                "NEOM The Line"
             ]
         }
         return defaults.get(config_type.upper(), [])

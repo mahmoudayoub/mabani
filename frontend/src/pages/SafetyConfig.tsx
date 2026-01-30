@@ -7,7 +7,8 @@ const CONFIG_TYPES = [
     { id: "LOCATIONS", label: "Locations" },
     { id: "OBSERVATION_TYPES", label: "Observation Types" },
     { id: "BREACH_SOURCES", label: "Breach Sources" },
-    { id: "SEVERITY_LEVELS", label: "Severity Levels" }
+    { id: "SEVERITY_LEVELS", label: "Severity Levels" },
+    { id: "PROJECTS", label: "Projects" }
 ];
 
 const SafetyConfig: React.FC = () => {

@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     
     # ==================== Vector Search Settings ====================
     similarity_threshold: float = 0.5
-    top_k: int = 6  # Rate filler default
+    top_k: int = 10  # Rate filler default
     
     # ==================== Processing Settings ====================
     batch_size: int = 500

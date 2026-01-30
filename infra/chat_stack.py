@@ -47,7 +47,7 @@ class ChatStack(Stack):
                 "data", "layers", "*.xlsx", "*.json"
             ]),
             timeout=Duration.seconds(120),  # 2 minutes for long LLM calls
-            memory_size=512,
+            memory_size=1024,
             layers=[deps_layer],
             environment={
                 "OPENAI_API_KEY": openai_api_key,

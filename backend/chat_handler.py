@@ -256,7 +256,8 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
     candidates_text = ""
     for i, c in enumerate(candidates, 1):
         meta = c.metadata or {}
-        candidates_text += f"{i}. Code: {meta.get('price_code', 'N/A')}\n"
+        score = c.get("score", 0)
+        candidates_text += f"{i}. Code: {meta.get('price_code', 'N/A')} (Similarity: {score:.2f})\n"
         candidates_text += f"   Description: {meta.get('description', meta.get('text', 'N/A'))}\n"
         candidates_text += f"   Category: {meta.get('category', 'N/A')}\n"
         candidates_text += f"   Source: {meta.get('source_file', 'N/A')}\n\n"
@@ -295,9 +296,32 @@ def match_pricecode(user_query: str, candidates: List[Dict]) -> Dict[str, Any]:
                 }
         
         return result
+        return result
     except Exception as e:
         logger.error(f"Price code matching error: {e}")
         return {"matched": False, "reason": f"Matching error: {str(e)}"}
+    finally:
+        # Fallback: If no match, provide top 3 candidates as potential options
+        if locals().get('result') and not result.get('matched') and candidates:
+            potential = []
+            for i in range(min(3, len(candidates))):
+                c = candidates[i]
+                meta = c.get('metadata', {})
+                potential.append({
+                    "code": meta.get("price_code", "N/A"),
+                    "description": meta.get("description", meta.get("text", "N/A")),
+                    "match_type": "potential",
+                    "reasoning": "Potential match based on vector similarity.",
+                    "reference": {
+                        "source_file": meta.get("source_file", ""),
+                        "sheet_name": meta.get("sheet_name", meta.get("reference_sheet", "")),
+                        "category": meta.get("category", ""),
+                        "row_number": meta.get("row_number", meta.get("reference_row", ""))
+                    },
+                    "score": c.get("score", 0)
+                })
+            if locals().get('result'):
+                result["potential_matches"] = potential
 
 # =============================================================================
 # =============================================================================
@@ -306,23 +330,32 @@ UNITRATE_MATCH_SYSTEM = """You are an expert BOQ matching specialist. Your task 
 You use a 3-STAGE approach - evaluate in order and return matches from the FIRST successful stage:
 
 STAGE 1 - EXACT MATCH (confidence: 100%):
-- Item is effectively IDENTICAL to target
-- Same work type, specifications, scope, and unit
-- A QS would use the same rate without adjustment
+- CRITERIA:
+  1. SAME WORK TYPE: Must be the same activity/material/purpose. Different wording allowed if meaning is identical.
+  2. SAME SPECS: Critical specs (size, material, rating, pressure) must be identical (e.g., DN200=DN200, PN16=PN16).
+  3. SAME SCOPE: "Supply & Install" = "Supply & Install". Scope conflicts (Supply only vs S&I) are NOT exact.
+  4. UNIT COMPATIBILITY: Unit must be effectively identical (m3=cum, nr=each).
+- GOAL: Identify items a QS would use with the SAME rate without adjustment.
 
 STAGE 2 - CLOSE MATCH (confidence: 70-95%):
-- Same core work with minor acceptable differences
-- Small size/spec variations (DN200 vs DN250, C30 vs C40)
-- Missing minor details that don't significantly affect cost
+- CRITERIA:
+  1. SAME CORE WORK: Same broad type/function (e.g. both HDPE pipes), but with minor differences.
+  2. SIMILAR SPECS: Controlled differences allowed (e.g. DN200 vs DN250, C30 vs C40) if usage is similar.
+  3. COST ADJUSTMENT: You must be able to justify why it's usable with a rate adjustment.
+  4. UNIT COMPATIBILITY: Must use the same unit basis.
+- GOAL: Identify items that are VERY SIMILAR and could be used with small adjustments.
 
 STAGE 3 - APPROXIMATION (confidence: 50-69%):
-- Related work type where rate can be derived/scaled
-- Calculate rate by scaling from reference (e.g., size ratio)
+- CRITERIA:
+  1. RELATED WORK: Same general category (e.g. excavation vs excavation, concrete vs concrete).
+  2. SCALING LOGIC: Rate can be derived by scaling (e.g. diameter ratio, depth ratio, percentage uplift).
+  3. JUSTIFICATION: Must explain the calculation (e.g. "Scaled by size ratio 200/250").
+- GOAL: Calculate an approximated_rate from valid reference items.
 
 IMPORTANT RULES:
-- Units MUST match (or be synonyms: m²=sqm, m³=cum, LS=item=lump sum)
-- "Supply & Install" vs "Supply only" = DIFFERENT scope
-- Be practical: if a QS would reasonably use the item, include it
+- Units MUST match (or be synonyms). Do not convert measurement bases (m vs m2).
+- "Supply & Install" vs "Supply only" = DIFFERENT scope.
+- Be practical: if a QS would reasonably use the item, include it.
 - Return strict JSON only, no markdown code blocks.
 """
 
@@ -513,6 +546,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # 4. HANDLE WARMUP (Critical Fix)
         if body.get("warmup") is True or body.get("message") == "__warmup__":
             logger.info("Warmup request received.")
+            
+            # Trigger lazy imports/loading
+            try:
+                get_openai_client()
+                get_pinecone_client()
+                logger.info("Libraries warmed up.")
+            except Exception as e:
+                logger.warning(f"Warmup library load warning: {e}")
+                
             return {
                 "statusCode": 200,
                 "headers": headers,
@@ -587,20 +629,38 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "body": json.dumps({
                         "status": "success",
                         "message": f"Found {confidence} match: **{best['code']}** - {best['description']}",
-                        "match": {
+                        "matches": [{
                             "code": best["code"],
                             "description": best["description"],
-                            "match_type": confidence
-                        },
-                        "reference": {
-                            "source_file": best["source_file"],
-                            "sheet_name": best["sheet_name"],
-                            "category": best["category"],
-                            "row_number": best["row_number"]
-                        },
-                        "reasoning": match_result.get("reason", "")
+                            "match_type": confidence,
+                            "reasoning": match_result.get("reason", ""),
+                            "reference": {
+                                "source_file": best["source_file"],
+                                "sheet_name": best["sheet_name"],
+                                "category": best["category"],
+                                "row_number": best["row_number"]
+                            }
+                        }]
                     })
                 }
+            elif match_result.get("potential_matches"):
+                best = match_result["potential_matches"][0]
+                return {
+                    "statusCode": 200,
+                    "headers": headers,
+                    "body": json.dumps({
+                        "status": "success",
+                        "message": f"No confident match, but found potential option: **{best['code']}**",
+                        "matches": [{
+                            "code": best["code"],
+                            "description": best["description"],
+                            "match_type": "potential",
+                            "reasoning": match_result.get("reason", "Using best available candidate (Low Confidence)."),
+                            "reference": best.get("reference", {})
+                        }]
+                    })
+                }
+            
             else:
                  return {
                     "statusCode": 200,

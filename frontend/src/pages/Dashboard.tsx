@@ -8,9 +8,9 @@ const Dashboard: React.FC = () => {
   const modules = [
     {
       id: "hs",
-      name: "Health & Safety",
+      name: "H&S Observations",
       acronym: "H&S",
-      description: "WhatsApp-based monitoring system",
+      description: "AI-powered H&S observations logging",
       color: "primary",
       path: "/health-safety",
       icon: (
@@ -33,7 +33,7 @@ const Dashboard: React.FC = () => {
       id: "qc",
       name: "Quality Control",
       acronym: "QC",
-      description: "Real-time quality monitoring",
+      description: "AI-powered observations logging",
       color: "primary",
       path: undefined,
       icon: (
@@ -54,9 +54,9 @@ const Dashboard: React.FC = () => {
     },
     {
       id: "ai-t",
-      name: "Code Allocation",
+      name: "Price Code Allocation",
       acronym: "AI-C",
-      description: "AI-driven code assignment",
+      description: "AI-driven price code matching",
       color: "primary",
       path: "/code-allocation",
       icon: (
@@ -77,9 +77,9 @@ const Dashboard: React.FC = () => {
     },
     {
       id: "ai-p",
-      name: "Price Allocation",
+      name: "Unit Rate Allocation",
       acronym: "AI-P",
-      description: "Intelligent pricing system",
+      description: "AI-driven unit rate matching with Chatbot",
       color: "primary",
       path: "/file-processing",
       icon: (

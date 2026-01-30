@@ -43,7 +43,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, signOut }) => {
   const navigation = [
     { name: "Dashboard", href: "/", current: location.pathname === "/" },
     {
-      name: "Health & Safety",
+      name: "H&S Observations",
       href: "/health-safety",
       current: location.pathname.startsWith("/health-safety") ||
         location.pathname.startsWith("/knowledge-base") ||
@@ -75,7 +75,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, signOut }) => {
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <h1 className="text-xl font-bold text-black">TaskFlow</h1>
+                <h1 className="text-xl font-bold text-black">Almabani AI Platform — lmaAIP</h1>
               </div>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                 {navigation.map((item) => (

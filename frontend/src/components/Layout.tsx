@@ -74,8 +74,13 @@ const Layout: React.FC<LayoutProps> = ({ children, user, signOut }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <h1 className="text-xl font-bold text-black">Almabani AI Platform — lmaAIP</h1>
+              <div className="flex-shrink-0 flex items-center space-x-3">
+                <img
+                  className="h-8 w-auto"
+                  src="/logo-almabani.png"
+                  alt="Almabani Logo"
+                />
+                <h1 className="text-xl font-bold text-black">Almabani AI Platform — AlmaAIP</h1>
               </div>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                 {navigation.map((item) => (

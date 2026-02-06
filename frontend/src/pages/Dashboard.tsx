@@ -8,7 +8,7 @@ const Dashboard: React.FC = () => {
   const modules = [
     {
       id: "hs",
-      name: "H&S Observations",
+      name: "Health & Safety",
       acronym: "H&S",
       description: "AI-powered H&S observations logging",
       color: "primary",

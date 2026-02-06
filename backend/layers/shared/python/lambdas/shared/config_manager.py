@@ -141,11 +141,31 @@ class ConfigManager:
                 "Project Manager Y"
             ],
             "PROJECTS": [
-                "Riyadh Metro Line 3",
-                "King Salman Park",
-                "Red Sea Airport",
-                "Diriyah Gate",
-                "NEOM The Line"
+                {
+                    "id": "PROJ-001",
+                    "name": "Riyadh Metro Line 3",
+                    "locations": ["Main Station", "Tunnel A", "Tunnel B", "Storage Yard"]
+                },
+                {
+                    "id": "PROJ-002",
+                    "name": "King Salman Park",
+                    "locations": ["Visitor Center", "Landscape Zone A", "Construction Site B"]
+                },
+                {
+                    "id": "PROJ-003",
+                    "name": "Red Sea Airport",
+                    "locations": ["Terminal 1", "Runway", "ATC Tower"]
+                },
+                {
+                    "id": "PROJ-004",
+                    "name": "Diriyah Gate",
+                    "locations": ["Heritage Site", "Museum", "Parking Area"]
+                },
+                {
+                    "id": "PROJ-005",
+                    "name": "NEOM The Line",
+                    "locations": ["Module 42", "Spine Layer", "Logistics Hub"]
+                }
             ]
         }
         return defaults.get(config_type.upper(), [])

@@ -23,6 +23,7 @@ cp "$BACKEND_DIR/lambdas/shared/twilio_client.py" "$SCRIPT_DIR/shared/python/lam
 cp "$BACKEND_DIR/lambdas/shared/conversation_state.py" "$SCRIPT_DIR/shared/python/lambdas/shared/"
 cp "$BACKEND_DIR/lambdas/shared/validators.py" "$SCRIPT_DIR/shared/python/lambdas/shared/"
 cp "$BACKEND_DIR/lambdas/shared/config_manager.py" "$SCRIPT_DIR/shared/python/lambdas/shared/"
+cp "$BACKEND_DIR/lambdas/shared/user_project_manager.py" "$SCRIPT_DIR/shared/python/lambdas/shared/"
 
 cp "$BACKEND_DIR/lambdas/shared/__init__.py" "$SCRIPT_DIR/shared/python/lambdas/shared/"
 
@@ -40,6 +41,7 @@ cp "$BACKEND_DIR/lambdas/shared/kb_repositories.py" "$SCRIPT_DIR/kb/python/lambd
 cp "$BACKEND_DIR/lambdas/shared/faiss_utils.py" "$SCRIPT_DIR/kb/python/lambdas/shared/"
 cp "$BACKEND_DIR/lambdas/shared/document_processing.py" "$SCRIPT_DIR/kb/python/lambdas/shared/"
 cp "$BACKEND_DIR/lambdas/shared/dynamic_bedrock.py" "$SCRIPT_DIR/kb/python/lambdas/shared/"
+cp "$BACKEND_DIR/lambdas/shared/user_project_manager.py" "$SCRIPT_DIR/kb/python/lambdas/shared/"
 cp "$BACKEND_DIR/lambdas/shared/__init__.py" "$SCRIPT_DIR/kb/python/lambdas/shared/"
 
 # Cleanup

@@ -1,5 +1,5 @@
 """
-Handlers for the final steps: Stop Work Check, Responsible Person, and Finalization.
+Handers for the final steps: Stop Work Check, Responsible Person, and Finalization.
 """
 
 import uuid
@@ -129,7 +129,7 @@ def handle_responsible_person(
     if len(advice) > 800:
         advice = advice[:800] + "... (truncated)"
         
-    message = f"""🔍 Hazard Type: {obs_type}
+    message = f\"\"\"🔍 Hazard Type: {obs_type}
 📂 Category: {category}
 📍 Location: {location}
 👤 Source: {source}
@@ -141,7 +141,8 @@ Date: {date_str}
 🖼️ - {image_link}
 🔎 - {description}
 Log ID {report_num}
-——————————————————"""
+—
+—————————————————\"\"\"
 
     if source_ref and source_ref != "Standard Safety Protocols":
         message += f"\n\n📚 Source: {source_ref}\n(Reference from Safety Knowledge Base)"

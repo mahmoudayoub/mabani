@@ -47,8 +47,38 @@ def handle_confirmation(
             }
         }
         
-    # 2. Handle "No"
-    elif text in ["no", "n", "nope", "incorrect"]:
+    # 2. Handle "Change Project"
+    elif text == "change_project":
+        # Transition to Project Selection
+        state_manager.update_state(
+            phone_number=phone_number,
+            new_state="WAITING_FOR_PROJECT"
+        )
+        
+        # Need to fetch projects to show list
+        # We can reuse logic from start_handler or just direct them
+        config = ConfigManager()
+        projects = config.get_options("PROJECTS")
+        
+        # Helper to format list (duplicated code, should be utility)
+        rows = []
+        for p in projects[:10]:
+            if isinstance(p, dict):
+                rows.append({"id": p["id"], "title": p["name"][:24]})
+            else:
+                rows.append({"id": p, "title": p[:24]})
+                
+        return {
+            "text": "Okay, please select the correct *Project*:",
+            "interactive": {
+                "type": "list",
+                "button_text": "Select Project",
+                "items": rows
+            }
+        }
+
+    # 3. Handle "Edit Hazard" or "No"
+    elif text in ["no", "n", "nope", "incorrect", "edit_hazard", "edit hazard"]:
         # Transition to Classification Selection
         state_manager.update_state(
             phone_number=phone_number,
@@ -56,6 +86,7 @@ def handle_confirmation(
         )
         
         # Fallback classifications
+        # ... (Same as before)
         CLASSIFICATIONS = [
             "Falls from Height", "Electrical Hazards", "Fire Hazards", 
             "Chemical Exposure", "Manual Handling", "Confined Spaces", 

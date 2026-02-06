@@ -148,13 +148,25 @@ def handle_start(
             print(f"Auto-selecting project: {last_project}")
             draft_data["projectId"] = last_project
             
+            # Resolve Name
+            project_name = last_project
+            projects = config.get_options("PROJECTS")
+            if projects:
+                for p in projects:
+                    if isinstance(p, dict) and p.get("id") == last_project:
+                        project_name = p.get("name")
+                        break
+                    elif isinstance(p, str) and p == last_project: # Legacy
+                        project_name = p
+                        
             response_payload = {
-                "text": f"Project: *{last_project}*\n\nI've analyzed the photo and identified a *{observation_type}* related to *{hazard_category}*.\n\nIs this correct?",
+                "text": f"Project: *{project_name}*\n\nI've analyzed the photo and identified a *{observation_type}* related to *{hazard_category}*.\n\nIs this correct?",
                 "interactive": {
                     "type": "button",
                     "buttons": [
                         {"id": "yes", "title": "Yes"},
-                        {"id": "no", "title": "No"}
+                        {"id": "change_project", "title": "Change Project"},
+                        {"id": "edit_hazard", "title": "Edit Hazard"}
                     ]
                 }
             }
@@ -171,7 +183,12 @@ def handle_start(
                 projects = ["Default Project"]
                 
             # Create interactive list
-            rows = [{"id": p, "title": p[:24]} for p in projects[:10]]
+            rows = []
+            for p in projects[:10]:
+                if isinstance(p, dict):
+                    rows.append({"id": p["id"], "title": p["name"][:24]})
+                else:
+                    rows.append({"id": p, "title": p[:24]})
             
             response_payload = {
                 "text": "Please select the *Project* for this report:",

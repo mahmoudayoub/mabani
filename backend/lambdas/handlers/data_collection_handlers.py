@@ -73,7 +73,27 @@ def _resolve_selection(user_input: str, options: List[str]) -> str:
 def handle_location(user_input_text: str, phone_number: str, state_manager: ConversationState, current_state_data: Dict[str, Any]) -> Dict[str, Any]:
     # Resolve Location Selection
     config = ConfigManager()
-    locations = config.get_options("LOCATIONS")
+    
+    # Context-Aware Locations
+    draft_data = current_state_data.get("draftData", {})
+    project_id = draft_data.get("projectId")
+    
+    locations = []
+    
+    if project_id:
+        all_projects = config.get_options("PROJECTS")
+        target_proj = None
+        for p in all_projects:
+            if isinstance(p, dict) and p["id"] == project_id:
+                target_proj = p
+                break
+        
+        if target_proj and "locations" in target_proj:
+            locations = target_proj["locations"]
+    
+    # Fallback to global if no project selected or project has no locations
+    if not locations:
+        locations = config.get_options("LOCATIONS")
     
     selected_loc = None
     text = user_input_text.strip()

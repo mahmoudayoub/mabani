@@ -191,9 +191,8 @@ Classification:"""
         taxonomy = """
 - Unsafe Act
 - Unsafe Condition
-- Positive Observation
-- Environmental Protection
-- Improvement Opportunity
+- Near Miss
+- Good Practice
 """
         prompt = f"""Classify this report into exactly ONE of the following Observation Types:
 
@@ -203,7 +202,13 @@ Visual Analysis: {image_caption}
 Types:
 {taxonomy}
 
-Return ONLY the classification name exactly as listed above. Do not include "Classification:" or any other text.
+Rules:
+1. If the report describes an Environmental issue (e.g., spill, waste, dust):
+   - Classify as "Unsafe Condition" if it is a hazard or negative issue.
+   - Classify as "Good Practice" if it is a positive environmental measure.
+2. Positive observations should be classified as "Good Practice".
+3. Return ONLY the classification name exactly as listed above.
+
 Classification:"""
 
         try:

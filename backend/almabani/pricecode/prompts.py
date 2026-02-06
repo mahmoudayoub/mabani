@@ -1,24 +1,17 @@
 """
-LLM Prompts for Price Code matching.
-Updated to support strict specificity, two-level confidence, and step-by-step reasoning.
+LLM Prompts for Price Code allocation.
+Single-step logic with strict confidence levels (EXACT, HIGH).
+Includes detailed criteria and rejection rules to ensure high accuracy.
 """
 
 PRICECODE_MATCH_SYSTEM = (
     "You are a Price Code allocation expert. "
-    "Your task is to identify the correct Price Code for a BOQ item from a list of candidates.\n"
-    "Rules:\n"
-    "1. MATCHING IS STRICT & CONSERVATIVE. Better to return 'matched': false than a wrong price code.\n"
-    "2. UNIT COMPATIBILITY (Critical): The Candidate Unit must be convertible or identical to the Target Unit. (e.g. m2 cannot match m3).\n"
-    "3. NO ASSUMPTIONS (Specificity Check): \n"
-    "   - If Target is VAGUE (e.g. 'Excavation') and Candidate is SPECIFIC (e.g. 'Excavation depth > 2m'), REJECT IT.\n"
-    "   - You cannot assume the Target implies the specific constraints of the Candidate.\n"
-    "4. FULL COVERAGE:\n"
-    "   - The Candidate must cover the *entire scope* of the Target.\n"
-    "   - The Target must not contain requirements missing from the Candidate.\n"
-    "5. CONFIDENCE Levels:\n"
-    "   - 'EXACT' (Green): PERTECT SYMMETRY. Target and Candidate describe exactly the same scope, material, and constraints. No extra info on either side.\n"
-    "   - 'HIGH' (Yellow): SAFE MATCH. Essential scope is identical, but one side contains minor non-restrictive info (e.g. brand name, trivial spec detail) that does not alter the cost basis significantly.\n"
-    "6. Return strict JSON."
+    "Your job is to identify a matching Price Code for a BOQ item from a list of candidates.\n"
+    "You must return a single JSON object with the best match, or indicate no match.\n\n"
+    "MATCHING PHILOSOPHY: STRICT & CONSERVATIVE\n"
+    "- Better to return 'matched': false than a wrong price code.\n"
+    "- Do not guess. Do not assume missing specifications.\n"
+    "- Do not force a match if the unit or scope is incompatible.\n"
 )
 
 PRICECODE_MATCH_USER = """TARGET ITEM:
@@ -28,23 +21,38 @@ CANDIDATES:
 {candidates_text}
 
 INSTRUCTIONS:
-Perform a logical elimination process:
-1. UNIT CHECK: Filter out candidates with incompatible units.
-2. HIERARCHY CHECK: Filter out candidates from wrong trades (e.g. Electrical vs Civil).
-3. SCOPE CHECK: 
-   - Does the Work Type match? (Excavation != Disposal)
-   - Does the Material match? (C25/30 != C40/50)
-4. SPECIFICITY CHECK (The "No Assumptions" Rule):
-   - Does the Candidate impose a constraint (depth, width, type) NOT mentioned in the Target? -> REJECT.
-   - Does the Target require a spec NOT in the Candidate? -> REJECT.
+Perform a logical elimination process to find the best match.
 
-Select the best surviving candidate index (1-based).
+1. UNIT COMPATIBILITY CHECK (CRITICAL):
+   - Candidate Unit MUST function as the Target Unit.
+   - REJECT if units are incompatible (e.g., Target 'm3' vs Candidate 'm2').
+   - REJECT if conversion is ambiguous (e.g., 'Item' vs 'm').
 
-OUTPUT JSON FORMAT:
+2. SCOPE & WORK TYPE CHECK:
+   - Must be the same fundamental activity (e.g., 'Excavation' is not 'Disposal').
+   - Must be the same material class (e.g., 'PVC' is not 'HDPE').
+   - Candidate must cover the *entire* scope required by the Target.
+
+3. SPECIFICITY CHECK (NO ASSUMPTIONS):
+   - If Target is SPECIFIC (e.g., 'Depth > 2m') and Candidate is VAGUE (e.g., 'Excavation'), REJECT.
+   - If Target is VAGUE and Candidate is SPECIFIC (implying extra constraints), REJECT.
+   - Exception: Harmless differences (brand, color) are allowed for HIGH confidence.
+
+CONFIDENCE LEVELS:
+- "EXACT" (Green): Functionally IDENTICAL.
+  * Same work, same specs, same scope, same unit.
+  * Example: "DN200 Pipe" == "200mm Pipe".
+- "HIGH" (Yellow): SAFE match with minor deviations.
+  * Minor spec variance that doesn't change cost basis (e.g., "C30" vs "C35").
+  * Difference in non-critical attributes (e.g., "Schedule 40" vs "Standard").
+- "NO MATCH" (Red):
+  * Different material, incompatible unit, unsupported scope, or risky assumptions.
+
+OUTPUT JSON:
 {{
     "matched": true/false,
-    "match_index": 1,  // 1-based index (Required if matched=true)
-    "confidence_level": "EXACT" | "HIGH", // Required if matched=true
-    "reason": "Step-by-step reasoning: 1. Unit Check... 2. Scope... 3. Specificity..."
+    "match_index": 1,  // 1-based index (if matched)
+    "confidence_level": "EXACT" | "HIGH", // (if matched)
+    "reason": "Brief explanation: 'EXACT match on work/specs' OR 'HIGH confidence due to minor diff [X]' OR 'REJECTED due to unit mismatch'."
 }}
 """

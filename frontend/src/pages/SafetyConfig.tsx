@@ -12,12 +12,18 @@ interface Project {
 
 type ConfigOption = string | Project;
 
+// Safe rendering helper to avoid React Error #31
+const safeRender = (val: any): string => {
+    if (typeof val === 'string' || typeof val === 'number') return String(val);
+    return ""; // swallow objects/nulls
+};
+
 const CONFIG_TYPES = [
-    { id: "LOCATIONS", label: "Locations (Legacy)" }, // Kept for reference or simple lists if needed
+    // { id: "LOCATIONS", label: "Locations (Legacy)" }, // REMOVED as per request
+    { id: "PROJECTS", label: "Projects & Locations" },
     { id: "OBSERVATION_TYPES", label: "Observation Types" },
     { id: "BREACH_SOURCES", label: "Breach Sources" },
-    { id: "SEVERITY_LEVELS", label: "Severity Levels" },
-    { id: "PROJECTS", label: "Projects & Locations" }
+    { id: "SEVERITY_LEVELS", label: "Severity Levels" }
 ];
 
 const SafetyConfig: React.FC = () => {
@@ -43,10 +49,18 @@ const SafetyConfig: React.FC = () => {
         setLoading(true);
         try {
             const data = await configService.getConfig(type);
-            console.log(`[SafetyConfig] Fetched ${type}:`, data); // Debugging
+            console.log(`[SafetyConfig] Fetched ${type}:`, data);
+
+            // Validate data is array
+            if (!Array.isArray(data)) {
+                console.error("[SafetyConfig] Expected array but got:", data);
+                setOptions([]);
+                return;
+            }
             setOptions(data || []);
             setError(null);
         } catch (err) {
+            console.error(err);
             setError("Failed to load configuration.");
         } finally {
             setLoading(false);
@@ -120,6 +134,7 @@ const SafetyConfig: React.FC = () => {
             setOptions(updatedOptions);
             setError(null);
         } catch (err) {
+            console.error(err);
             setError("Failed to save changes.");
         } finally {
             setIsSaving(false);
@@ -162,7 +177,7 @@ const SafetyConfig: React.FC = () => {
                 <div className="flex-1 bg-white shadow rounded-lg p-6">
                     <div className="flex justify-between items-center mb-6">
                         <h4 className="text-lg font-medium text-gray-900">
-                            {CONFIG_TYPES.find(t => t.id === activeType)?.label}
+                            {CONFIG_TYPES.find(t => t.id === activeType)?.label || activeType}
                         </h4>
                         <span className="text-xs text-gray-400">PK: CONFIG, SK: {activeType}</span>
                     </div>
@@ -197,7 +212,7 @@ const SafetyConfig: React.FC = () => {
                                                 type="text"
                                                 value={newProjectLocations}
                                                 onChange={(e) => setNewProjectLocations(e.target.value)}
-                                                placeholder="Locations (comma separated, e.g. Main Station, Tunnel A)"
+                                                placeholder="Locations (comma separated)"
                                                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                                             />
                                             <div className="flex justify-end">
@@ -212,26 +227,31 @@ const SafetyConfig: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    {/* Projects List */}
+                                    {/* Projects List with Safe Rendering */}
                                     <div className="space-y-4">
-                                        {options.map((opt, idx) => {
-                                            // Guard against legacy strings mixed in
-                                            if (typeof opt !== 'object') return null;
-                                            const proj = opt as Project;
+                                        {Array.isArray(options) && options.map((opt, idx) => {
+                                            // Guard against legacy strings mixed in or nulls
+                                            if (typeof opt !== 'object' || opt === null) return null;
+                                            const proj = opt as unknown as Project;
+
+                                            // Extra guard: Ensure it looks like a project
+                                            if (!proj.id && !proj.name) return null;
+
                                             return (
-                                                <div key={String(proj.id) || idx} className="border rounded-md p-4 hover:shadow-sm transition-shadow">
+                                                <div key={safeRender(proj.id) || idx} className="border rounded-md p-4 hover:shadow-sm transition-shadow">
                                                     <div className="flex justify-between items-start">
                                                         <div className="flex items-center">
                                                             <span className="text-gray-400 mr-3 text-xl">🏢</span>
                                                             <div>
-                                                                <h3 className="text-md font-bold text-gray-900">{proj.name}</h3>
-                                                                <p className="text-xs text-gray-500">ID: {String(proj.id)}</p>
+                                                                <h3 className="text-md font-bold text-gray-900">{safeRender(proj.name)}</h3>
+                                                                <p className="text-xs text-gray-500">ID: {safeRender(proj.id)}</p>
                                                             </div>
                                                         </div>
                                                         <button
                                                             onClick={() => handleDeleteProject(idx)}
                                                             className="text-red-600 hover:text-red-900 p-1 font-bold"
                                                             title="Delete Project"
+                                                            type="button"
                                                         >
                                                             [x]
                                                         </button>
@@ -240,14 +260,13 @@ const SafetyConfig: React.FC = () => {
                                                     {/* Locations List */}
                                                     <div className="mt-4 pl-9">
                                                         <h6 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                                            Locations ({proj.locations?.length || 0})
+                                                            Locations ({Array.isArray(proj.locations) ? proj.locations.length : 0})
                                                         </h6>
                                                         <div className="flex flex-wrap gap-2">
                                                             {Array.isArray(proj.locations) && proj.locations.map((loc, lIdx) => {
-                                                                if (typeof loc === 'object') return null; // Safety guard
                                                                 return (
                                                                     <span key={lIdx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                                        📍 {String(loc)}
+                                                                        📍 {safeRender(loc)}
                                                                     </span>
                                                                 );
                                                             })}
@@ -286,16 +305,17 @@ const SafetyConfig: React.FC = () => {
                                         {options.length === 0 ? (
                                             <li className="px-4 py-4 text-center text-gray-500 text-sm">No options defined.</li>
                                         ) : (
-                                            options.map((opt, idx) => {
+                                            Array.isArray(options) && options.map((opt, idx) => {
                                                 if (typeof opt !== 'string') return null; // Skip objects in string mode
                                                 return (
                                                     <li key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50">
-                                                        <span className="text-sm text-gray-700">{opt}</span>
+                                                        <span className="text-sm text-gray-700">{safeRender(opt)}</span>
                                                         <button
                                                             onClick={() => handleDeleteGenericItem(idx)}
                                                             disabled={isSaving}
                                                             className="text-red-600 hover:text-red-900 text-sm font-bold"
                                                             title="Delete"
+                                                            type="button"
                                                         >
                                                             [x]
                                                         </button>

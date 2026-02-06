@@ -43,6 +43,7 @@ const SafetyConfig: React.FC = () => {
         setLoading(true);
         try {
             const data = await configService.getConfig(type);
+            console.log(`[SafetyConfig] Fetched ${type}:`, data); // Debugging
             setOptions(data || []);
             setError(null);
         } catch (err) {
@@ -218,13 +219,13 @@ const SafetyConfig: React.FC = () => {
                                             if (typeof opt !== 'object') return null;
                                             const proj = opt as Project;
                                             return (
-                                                <div key={proj.id || idx} className="border rounded-md p-4 hover:shadow-sm transition-shadow">
+                                                <div key={String(proj.id) || idx} className="border rounded-md p-4 hover:shadow-sm transition-shadow">
                                                     <div className="flex justify-between items-start">
                                                         <div className="flex items-center">
                                                             <span className="text-gray-400 mr-3 text-xl">🏢</span>
                                                             <div>
                                                                 <h3 className="text-md font-bold text-gray-900">{proj.name}</h3>
-                                                                <p className="text-xs text-gray-500">ID: {proj.id}</p>
+                                                                <p className="text-xs text-gray-500">ID: {String(proj.id)}</p>
                                                             </div>
                                                         </div>
                                                         <button
@@ -239,14 +240,17 @@ const SafetyConfig: React.FC = () => {
                                                     {/* Locations List */}
                                                     <div className="mt-4 pl-9">
                                                         <h6 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                                                            Locations ({proj.locations.length})
+                                                            Locations ({proj.locations?.length || 0})
                                                         </h6>
                                                         <div className="flex flex-wrap gap-2">
-                                                            {proj.locations.map((loc, lIdx) => (
-                                                                <span key={lIdx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                                    📍 {loc}
-                                                                </span>
-                                                            ))}
+                                                            {Array.isArray(proj.locations) && proj.locations.map((loc, lIdx) => {
+                                                                if (typeof loc === 'object') return null; // Safety guard
+                                                                return (
+                                                                    <span key={lIdx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                                        📍 {String(loc)}
+                                                                    </span>
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
                                                 </div>

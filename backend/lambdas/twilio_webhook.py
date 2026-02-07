@@ -55,7 +55,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
         # Handle Contact Card (vCard)
         contact_vcard_url = None
-        if num_media > 0 and processed_params.get("MediaContentType0") == "text/x-vcard":
+        print(f"DEBUG: num_media={num_media}, MediaContentType0={params.get('MediaContentType0')}")
+        if num_media > 0 and params.get("MediaContentType0") == "text/vcard":
             contact_vcard_url = params.get("MediaUrl0")
             body_content = "[Contact Card Shared]"
             print(f"Contact vCard received: {contact_vcard_url}")

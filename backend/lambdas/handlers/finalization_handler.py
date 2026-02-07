@@ -39,7 +39,7 @@ def handle_stop_work(
     )
     
     return {
-        "text": "Do you have any additional remarks or details? (Type 'none' to skip)",
+        "text": "Do you have any additional remarks or details?",
         "interactive": {
              "type": "button",
              "buttons": [
@@ -86,7 +86,14 @@ def handle_responsible_person(
     if contact_vcard_url:
         try:
             print(f"Fetching vCard: {contact_vcard_url}")
-            resp = requests.get(contact_vcard_url)
+            # Twilio media URLs require HTTP Basic Auth
+            from lambdas.shared.twilio_client import TwilioClient
+            twilio_client = TwilioClient()
+            creds = twilio_client._get_credentials()
+            resp = requests.get(
+                contact_vcard_url,
+                auth=(creds.get("account_sid"), creds.get("auth_token"))
+            )
             if resp.status_code == 200:
                 vcard_data = resp.text
                 # Extract Valid Name (FN)
@@ -146,16 +153,15 @@ def handle_responsible_person(
     )
     
     # Prepare Next Step (Notified Persons)
-    stakeholders = config.get_options("STAKEHOLDERS") 
-    if not stakeholders:
-        stakeholders = persons # Fallback to project persons
+    # Use project-specific responsible persons, fallback to global stakeholders
+    stakeholders = persons if persons else config.get_options("STAKEHOLDERS")
         
     return {
         "text": "Who should be notified about this observation?",
         "interactive": {
             "type": "list",
             "button_text": "Select Person",
-            "items": [{"id": f"n_{i}", "title": p[:24]} for i, p in enumerate(stakeholders)]
+            "items": [{"id": f"n_{i}", "title": (p.get("name", "Unknown") if isinstance(p, dict) else p)[:24]} for i, p in enumerate(stakeholders)]
         }
     }
 

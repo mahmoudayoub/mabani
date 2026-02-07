@@ -44,11 +44,11 @@ def handle_start(
     description = user_input.get("description", "")
     
     if not image_url and not description:
-        return "👋 Hi! To report a safety observation, please send a *photo* and a brief description.\n(Type 'Stop' to cancel)"
+        return "👋 Hi! To report a safety observation, please send a *photo* and a brief description.\n(Type 'cancel' to cancel)"
         
     if not image_url:
         # Strict workflow A1: "Take photo of breach" is step 1.
-        return "Please upload a *photo* of the observation to begin processing.\n(Type 'Stop' to cancel)"
+        return "Please upload a *photo* of the observation to begin processing.\n(Type 'cancel' to cancel)"
 
     # 2. Upload Image to S3
     s3_client = S3Client()
@@ -175,19 +175,29 @@ def handle_start(
             print(f"Auto-selecting project: {last_project}")
             draft_data["projectId"] = last_project
             
-            # Resolve Name
+            # Resolve full project details (name, locations, responsible persons)
             project_name = last_project
+            project_locations = []
+            responsible_persons = []
+            
             projects = config.get_options("PROJECTS")
             if projects:
                 for p in projects:
                     if isinstance(p, dict) and p.get("id") == last_project:
-                        project_name = p.get("name")
+                        project_name = p.get("name", last_project)
+                        project_locations = p.get("locations", [])
+                        responsible_persons = p.get("responsiblePersons", [])
                         break
                     elif isinstance(p, str) and p == last_project: # Legacy
                         project_name = p
+            
+            # Save all project details to draftData
+            draft_data["project"] = project_name
+            draft_data["projectLocations"] = project_locations
+            draft_data["responsiblePersons"] = responsible_persons
                         
             response_payload = {
-                "text": f"Project: *{project_name}*\n\nI've analyzed the photo and identified a *{observation_type}*.\n\nIs this correct?",
+                "text": f"Project: *{project_name}*\n\nI've analyzed the photo and identified a *{observation_type}*.\n\nIs this correct?\n\n_Type 'cancel' at any time to stop this observation._",
                 "interactive": {
                     "type": "button",
                     "buttons": [
@@ -218,7 +228,7 @@ def handle_start(
                     rows.append({"id": p, "title": p[:24]})
             
             response_payload = {
-                "text": "Please select the *Project* for this report:",
+                "text": "Please select the *Project* for this report:\n\n_Type 'cancel' at any time to stop this observation._",
                 "interactive": {
                     "type": "list",
                     "body_text": "Choose from the active projects below:",

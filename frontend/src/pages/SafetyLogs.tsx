@@ -334,6 +334,14 @@ const SafetyLogs: React.FC = () => {
                                                 </svg>
                                             </button>
                                         </div>
+                                        {/* DEBUG: Log selectedReport */}
+                                        {(() => {
+                                            console.log('=== SELECTED REPORT DEBUG ===', selectedReport);
+                                            console.log('classification field:', selectedReport.classification);
+                                            console.log('hazardType field:', selectedReport.hazardType);
+                                            console.log('category field:', selectedReport.category);
+                                            return null;
+                                        })()}
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             {/* Left Column: Image & Basic Info */}
@@ -353,12 +361,32 @@ const SafetyLogs: React.FC = () => {
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                                     <div>
+                                                        <p className="text-gray-500">Project</p>
+                                                        <p className="font-medium text-gray-900">{selectedReport.project || "N/A"}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500">Hazard Category</p>
+                                                        <p className="font-medium text-gray-900">{selectedReport.hazardCategory || selectedReport.classification || "N/A"}</p>
+                                                    </div>
+                                                    <div>
                                                         <p className="text-gray-500">Responsible Person</p>
                                                         <p className="font-medium text-gray-900">{selectedReport.responsiblePerson || "N/A"}</p>
                                                     </div>
                                                     <div>
                                                         <p className="text-gray-500">Reporter</p>
                                                         <p className="font-medium text-gray-900">{selectedReport.reporter || selectedReport.sender || "N/A"}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500">Breach Source</p>
+                                                        <p className="font-medium text-gray-900">{selectedReport.breachSource || "N/A"}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500">Stop Work</p>
+                                                        <p className="font-medium">
+                                                            <span className={`px-2 py-1 rounded ${selectedReport.stopWork ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                                                                {selectedReport.stopWork ? "YES" : "NO"}
+                                                            </span>
+                                                        </p>
                                                     </div>
                                                     <div>
                                                         <p className="text-gray-500">Location</p>
@@ -411,6 +439,23 @@ const SafetyLogs: React.FC = () => {
                                                         </p>
                                                     </div>
                                                 </div>
+                                                {/* Additional Fields Row */}
+                                                {(selectedReport.remarks || selectedReport.notifiedPersons) && (
+                                                    <div className="grid grid-cols-1 gap-4 text-sm mt-4 pt-4 border-t border-gray-200">
+                                                        {selectedReport.remarks && selectedReport.remarks !== "None" && selectedReport.remarks !== "No Remarks" && (
+                                                            <div>
+                                                                <p className="text-gray-500">Remarks</p>
+                                                                <p className="font-medium text-gray-900 bg-gray-50 p-2 rounded">{selectedReport.remarks}</p>
+                                                            </div>
+                                                        )}
+                                                        {selectedReport.notifiedPersons && selectedReport.notifiedPersons.length > 0 && (
+                                                            <div>
+                                                                <p className="text-gray-500">Notified Persons</p>
+                                                                <p className="font-medium text-gray-900">{Array.isArray(selectedReport.notifiedPersons) ? selectedReport.notifiedPersons.join(", ") : selectedReport.notifiedPersons}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Right Column: AI Analysis & Details */}

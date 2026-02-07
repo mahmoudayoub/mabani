@@ -151,25 +151,43 @@ def handle_observation_type(user_input_text: str, phone_number: str, state_manag
     config = ConfigManager()
     types = config.get_options("OBSERVATION_TYPES")
     
-    selected_type = _resolve_selection(user_input_text, types)
-    start_val = selected_type if selected_type else user_input_text.strip()
+    # Parse button ID (e.g., "type_1") or use direct selection
+    text = user_input_text.strip()
+    selected_type = None
     
+    if text.startswith("type_"):
+        # Extract index from button ID
+        try:
+            idx = int(text.split("_")[1])
+            if 0 <= idx < len(types):
+                selected_type = types[idx]
+        except (IndexError, ValueError):
+            pass
+    
+    if not selected_type:
+        selected_type = _resolve_selection(text, types)
+    
+    observation_type = selected_type if selected_type else text
+    
+    # Save observation type and redirect to category confirmation
     state_manager.update_state(
         phone_number=phone_number,
-        new_state="WAITING_FOR_BREACH_SOURCE",
-        curr_data={"observationType": start_val}
+        new_state="WAITING_FOR_CATEGORY_CONFIRMATION",
+        curr_data={"observationType": observation_type}
     )
     
-    # Prepare Next Question (Breach Source)
-    config = ConfigManager()
-    sources = config.get_options("BREACH_SOURCES")
+    # Get the hazard category to confirm
+    draft_data = current_state_data.get("draftData", {})
+    category = draft_data.get("hazardCategory", "Unknown")
     
     return {
-        "text": f"Type saved: {start_val}\n\nWho/What is the source?",
+        "text": f"Type changed to *{observation_type}*.\\n\\nIt is related to *{category}*.\\n\\nIs this correct?",
         "interactive": {
-            "type": "list",
-            "button_text": "Select Source",
-            "items": [{"id": f"src_{i}", "title": src} for i, src in enumerate(sources)]
+            "type": "button",
+            "buttons": [
+                {"id": "yes", "title": "Yes"},
+                {"id": "change_category", "title": "Change Category"}
+            ]
         }
     }
 

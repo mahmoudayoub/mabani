@@ -17,6 +17,8 @@ except ImportError:
 
 import boto3
 import os
+import re
+import requests
 
 def handle_stop_work(
     user_input_text: str, 
@@ -32,20 +34,17 @@ def handle_stop_work(
     
     state_manager.update_state(
         phone_number=phone_number,
-        new_state="WAITING_FOR_RESPONSIBLE_PERSON",
+        new_state="WAITING_FOR_REMARKS",
         curr_data={"stopWork": stop_work}
     )
     
-    # Prepare Responsible Person Prompt
-    config = ConfigManager()
-    persons = config.get_options("RESPONSIBLE_PERSONS")
-    
     return {
-        "text": "Who is the responsible person for this area?",
+        "text": "Do you have any additional remarks or details? (Type 'none' to skip)",
         "interactive": {
-            "type": "list",
-            "button_text": "Select Person",
-            "items": [{"id": f"p_{i}", "title": p} for i, p in enumerate(persons)]
+             "type": "button",
+             "buttons": [
+                 {"id": "none", "title": "No Remarks"}
+             ]
         }
     }
 
@@ -53,37 +52,208 @@ def handle_responsible_person(
     user_input_text: str, 
     phone_number: str, 
     state_manager: ConversationState,
-    current_state_data: Dict[str, Any]
-) -> str:
+    current_state_data: Dict[str, Any],
+    contact_vcard_url: str = None
+) -> Dict[str, Any]:
     """
-    Handle Responsible Person Input and Finalize Report.
+    Handle Responsible Person Input (Text or vCard).
+    Transitions to Notified Persons.
     """
     text = user_input_text.strip()
+    draft_data = current_state_data.get("draftData", {})
+    project_id = draft_data.get("projectId")
     
-    # Resolve List Selection
+    # 1. Fetch Project-Specific List
+    config = ConfigManager()
+    all_projects = config.get_options("PROJECTS")
+    persons = []
+    
+    # Find project and get persons
+    if project_id:
+        for p in all_projects:
+            p_id = p.get("id") if isinstance(p, dict) else p
+            if p_id == project_id and isinstance(p, dict):
+                persons = p.get("responsiblePersons", [])
+                break
+    
+    # Fallback
+    if not persons:
+        persons = config.get_options("RESPONSIBLE_PERSONS")
+        
     responsible_person = text
     
-    config = ConfigManager()
-    persons = config.get_options("RESPONSIBLE_PERSONS")
-    
-    if text.startswith("p_"):
+    # 2. Handle vCard (Contact Shared)
+    if contact_vcard_url:
+        try:
+            print(f"Fetching vCard: {contact_vcard_url}")
+            resp = requests.get(contact_vcard_url)
+            if resp.status_code == 200:
+                vcard_data = resp.text
+                # Extract Valid Name (FN)
+                fn_match = re.search(r"FN:(.*)", vcard_data)
+                full_name = fn_match.group(1).strip() if fn_match else "Unknown Contact"
+                
+                # Extract Phones (TEL)
+                phones = re.findall(r"TEL.*:(.*)", vcard_data)
+                phones = [p.strip() for p in phones if p.strip()]
+                
+                if len(phones) > 1:
+                    # Edge Case: Multiple Numbers -> Ask User
+                    rows = [{"id": f"sel_contact_{i}", "title": p[:24], "description": full_name[:72]} for i, p in enumerate(phones)]
+                    # Store temp state to handle selection
+                    state_manager.update_state(
+                        phone_number=phone_number,
+                        new_state="WAITING_FOR_RESPONSIBLE_PERSON_SELECTION",
+                        curr_data={"contactName": full_name, "contactPhones": phones}
+                    )
+                    return {
+                        "text": f"I found multiple numbers for *{full_name}*. Please select one:",
+                        "interactive": {
+                            "type": "list",
+                            "button_text": "Select Number",
+                            "items": rows
+                        }
+                    }
+                elif len(phones) == 1:
+                    responsible_person = f"{full_name} ({phones[0]})"
+                else:
+                    responsible_person = full_name
+            else:
+                print("Failed to download vCard")
+        except Exception as e:
+            print(f"Error Parsing vCard: {e}")
+
+    # 3. Handle Text Selection (List or Manual)
+    elif text.startswith("p_"):
         try:
             idx = int(text.split("_")[1])
             if 0 <= idx < len(persons):
                 responsible_person = persons[idx]
         except:
             pass
-            
-    # Try name match
-    if responsible_person == text: # If not resolved by ID
-        for p in persons:
+    # Text Match
+    else:
+         for p in persons:
             if p.lower() == text.lower():
                 responsible_person = p
                 break
+
+    # 4. Save and Proceed
+    state_manager.update_state(
+        phone_number=phone_number,
+        new_state="WAITING_FOR_NOTIFIED_PERSONS",
+        curr_data={"responsiblePerson": responsible_person}
+    )
     
+    # Prepare Next Step (Notified Persons)
+    stakeholders = config.get_options("STAKEHOLDERS") 
+    if not stakeholders:
+        stakeholders = persons # Fallback to project persons
+        
+    return {
+        "text": "Who should be notified about this observation?",
+        "interactive": {
+            "type": "list",
+            "button_text": "Select Person",
+            "items": [{"id": f"n_{i}", "title": p[:24]} for i, p in enumerate(stakeholders)]
+        }
+    }
+
+def handle_responsible_person_selection(
+    user_input_text: str, 
+    phone_number: str, 
+    state_manager: ConversationState,
+    current_state_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Handle selection of phone number for a contact.
+    """
+    text = user_input_text.strip()
+    contact_name = current_state_data.get("contactName", "Unknown")
+    contact_phones = current_state_data.get("contactPhones", [])
+    
+    selected_phone = text
+    if text.startswith("sel_contact_"):
+        try:
+            idx = int(text.split("_")[2])
+            if 0 <= idx < len(contact_phones):
+                selected_phone = contact_phones[idx]
+        except:
+             pass
+             
+    responsible_person = f"{contact_name} ({selected_phone})"
+    
+    # Save to draftData and Proceed
+    draft_data = current_state_data.get("draftData", {})
+    updated_draft = draft_data.copy()
+    updated_draft["responsiblePerson"] = responsible_person
+    
+    state_manager.update_state(
+        phone_number=phone_number,
+        new_state="WAITING_FOR_NOTIFIED_PERSONS",
+        curr_data=updated_draft
+    )
+    
+    config = ConfigManager()
+    draft_data = current_state_data.get("draftData", {})
+    project_id = draft_data.get("projectId")
+    all_projects = config.get_options("PROJECTS")
+    persons = config.get_options("RESPONSIBLE_PERSONS") # Default
+    
+    if project_id:
+        for p in all_projects:
+             if isinstance(p, dict) and p.get("id") == project_id:
+                  persons = p.get("responsiblePersons", [])
+                  break
+    
+    stakeholders = config.get_options("STAKEHOLDERS") 
+    if not stakeholders:
+        stakeholders = persons
+        
+    return {
+        "text": "Who should be notified about this observation?",
+        "interactive": {
+            "type": "list",
+            "button_text": "Select Person",
+            "items": [{"id": f"n_{i}", "title": p[:24]} for i, p in enumerate(stakeholders)]
+        }
+    }
+
+def handle_notified_persons(
+    user_input_text: str, 
+    phone_number: str, 
+    state_manager: ConversationState,
+    current_state_data: Dict[str, Any]
+) -> str:
+    """
+    Handle Notified Persons and Finalize Report.
+    """
+    text = user_input_text.strip()
+    config = ConfigManager()
+    stakeholders = config.get_options("STAKEHOLDERS")
+    if not stakeholders:
+        stakeholders = config.get_options("RESPONSIBLE_PERSONS")
+        
+    notified_person = text
+    
+    if text.startswith("n_"):
+        try:
+            idx = int(text.split("_")[1])
+            if 0 <= idx < len(stakeholders):
+                notified_person = stakeholders[idx]
+        except:
+            pass
+            
+    # Resolution attempt
+    if notified_person == text:
+        for p in stakeholders:
+            if p.lower() == text.lower():
+                notified_person = p
+                break
+
     # 1. Finalize Data
     draft_data = current_state_data.get("draftData", {})
-    draft_data["responsiblePerson"] = responsible_person
+    draft_data["notifiedPersons"] = [notified_person] # store as list for future multi-support
     draft_data["reporter"] = phone_number
     draft_data["status"] = "OPEN"
     
@@ -99,14 +269,12 @@ def handle_responsible_person(
     # 4. Construct Final Message
     report_num = draft_data.get("reportNumber", "N/A")
     severity = draft_data.get("severity", "Medium").capitalize()
-    # hazard_type = Type (UA/UC)
     obs_type = draft_data.get("observationType", "Observation")
-    # classification = Category (Working at Height)
-    category = draft_data.get("classification", "General")
+    category = draft_data.get("hazardCategory", "General")
     
     description = draft_data.get("originalDescription", "")
-    s3_https_url = draft_data.get("s3Url", "").replace("s3://", "https://").replace(".s3.eu-central-1.amazonaws.com", ".s3.eu-central-1.wasabisys.com/in-files") 
     
+    # Image Link Processing
     image_link = draft_data.get("imageUrl")
     if not image_link:
         s3_url = draft_data.get("s3Url", "")
@@ -115,39 +283,44 @@ def handle_responsible_person(
         else:
              image_link = "Image Link Not Available"
     
-    # Advice / Control Measure
     advice = draft_data.get("controlMeasure", draft_data.get("safetyAdvice", "Conduct immediate safety assessment."))
     source_ref = draft_data.get("reference", draft_data.get("safetySource", ""))
     
     date_str = datetime.datetime.utcnow().strftime("%Y-%m-%d")
     
+    project = draft_data.get("project", "Unknown Project")
     location = draft_data.get("location", "Unknown")
     source = draft_data.get("breachSource", "Unknown")
     stop_work_status = "YES" if draft_data.get("stopWork") else "NO"
+    remarks = draft_data.get("remarks", "None")
+    responsible = draft_data.get("responsiblePerson", "Unknown")
+    notified = ", ".join(draft_data.get("notifiedPersons", []))
 
-    # Truncate advice if too long (Twilio limit 1600 chars total)
-    if len(advice) > 800:
-        advice = advice[:800] + "... (truncated)"
+    # Truncate advice
+    if len(advice) > 600:
+        advice = advice[:600] + "..."
         
-    message = f\"\"\"🔍 Hazard Type: {obs_type}
+    message = f"""🏗️ Project: {project}
+🔍 Hazard Type: {obs_type}
 📂 Category: {category}
 📍 Location: {location}
 👤 Source: {source}
 ⚠️ Severity: {severity}
 🛑 Stop Work: {stop_work_status}
-👤 Responsible: {responsible_person}
+📝 Remarks: {remarks}
+👤 Responsible: {responsible}
+📢 Notified: {notified}
 🔒 Control measures: {advice}
 Date: {date_str}
-🖼️ - {image_link}
-🔎 - {description}
+🖼️ {image_link}
+🔎 {description}
 Log ID {report_num}
 —
-—————————————————\"\"\"
+————————————————"""
 
     if source_ref and source_ref != "Standard Safety Protocols":
-        message += f"\n\n📚 Source: {source_ref}\n(Reference from Safety Knowledge Base)"
+        message += f"\n\n📚 Source: {source_ref}"
 
-    # Final Safety Truncation
     if len(message) > 1590:
         message = message[:1590] + "..."
         

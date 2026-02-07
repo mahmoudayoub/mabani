@@ -45,64 +45,91 @@ const SafetyLogs: React.FC = () => {
 
             // 1. Define Columns
             worksheet.columns = [
-                { header: 'Name', key: 'name', width: 20 },
-                { header: 'Observation', key: 'observation', width: 25 },
-                { header: 'Hazard Type', key: 'hazardType', width: 25 },
-                { header: 'Date and Time', key: 'date', width: 20 },
-                { header: 'Project', key: 'project', width: 30 },
-                { header: 'AI Proposed Mitigation (HSG150)', key: 'mitigation', width: 40 },
-                { header: 'Positive/Negative', key: 'posNeg', width: 15 },
-                { header: 'Image', key: 'image', width: 30 } // Width for image column
+                { header: 'Report #', key: 'reportNumber', width: 10 },
+                { header: 'Date', key: 'date', width: 20 },
+                { header: 'Project', key: 'project', width: 25 },
+                { header: 'Location', key: 'location', width: 25 },
+                { header: 'Observation Type', key: 'observationType', width: 25 },
+                { header: 'Hazard Category', key: 'hazardCategory', width: 25 },
+                { header: 'Breach Source', key: 'breachSource', width: 20 },
+                { header: 'Severity', key: 'severity', width: 15 },
+                { header: 'Stop Work', key: 'stopWork', width: 15 },
+                { header: 'Remarks', key: 'remarks', width: 30 },
+                { header: 'Responsible Person', key: 'responsiblePerson', width: 25 },
+                { header: 'Notified Persons', key: 'notifiedPersons', width: 30 },
+                { header: 'Reporter', key: 'reporter', width: 20 },
+                { header: 'AI Mitigation', key: 'mitigation', width: 40 },
+                { header: 'Image', key: 'image', width: 30 }
             ];
 
             // 2. Add Data & Images
             for (const report of reports) {
                 // Prepare Data Fields
-                const name = report.responsiblePerson || report.reporter || report.sender || "N/A";
-
-                let observation = "General";
-                const val = report.classification || report.observationType;
-                if (typeof val === 'object' && val !== null) {
-                    const v = val as any;
-                    observation = v.name ? `${v.code ? v.code + ' ' : ''}${v.name}` : JSON.stringify(v);
-                } else if (val) {
-                    observation = val;
-                }
-
-                let hazardType = "Unsafe Condition (UC)";
-                if (report.observationType && typeof report.observationType === 'string') {
-                    hazardType = report.observationType;
-                } else if (observation.toLowerCase().includes("good")) {
-                    hazardType = "Good Practice (GP)";
-                }
+                const reportNumber = report.reportNumber || "N/A";
 
                 const dateStr = report.timestamp || report.completedAt || report.updatedAt;
-                const date = dateStr ? new Date(dateStr).toISOString().replace("T", " ").split(".")[0] : "N/A";
+                const date = dateStr ? new Date(dateStr).toLocaleString() : "N/A";
 
                 let project = "Unknown";
-                const loc = report.location;
-                if (typeof loc === "object" && loc !== null) {
+                const locObj = report.location;
+                // In revised flow, 'project' is separate from 'location'.
+                // If 'project' field exists, use it.
+                if (report.project) {
+                    project = report.project;
+                } else if (typeof locObj === "object" && locObj !== null) {
+                    // Legacy fallback
                     // @ts-ignore
-                    project = loc.label || loc.extracted_name || loc.text || `Lat:${loc.latitude}, Long:${loc.longitude}`;
-                } else if (loc) {
-                    project = loc;
+                    project = locObj.label || "Unknown";
                 }
 
-                const mitigation = report.controlMeasure || "N/A";
-                const isPositive = hazardType.toLowerCase().includes("good") || observation.toLowerCase().includes("good");
-                const posNeg = isPositive ? "Positive" : "Negative";
+                const location = typeof report.location === 'string' ? report.location : "N/A";
+
+                // Observation Type & Category
+                let observationType = report.observationType || "Observation";
+                if (typeof observationType === 'object') {
+                    observationType = JSON.stringify(observationType);
+                }
+
+                let hazardCategory = report.hazardCategory || report.classification || "General";
+                if (typeof hazardCategory === 'object') {
+                    // @ts-ignore
+                    hazardCategory = hazardCategory.name || JSON.stringify(hazardCategory);
+                }
+
+                const breachSource = report.breachSource || "N/A";
+                const severity = report.severity || "Medium";
+                const stopWork = report.stopWork ? "YES" : "NO";
+                const remarks = report.remarks || "None";
+                const responsiblePerson = report.responsiblePerson || "N/A";
+
+                let notified = "None";
+                if (Array.isArray(report.notifiedPersons)) {
+                    notified = report.notifiedPersons.join(", ");
+                } else if (report.notifiedPersons) {
+                    notified = String(report.notifiedPersons);
+                }
+
+                const reporter = report.reporter || report.sender || "N/A";
+                const mitigation = report.controlMeasure || report.safetyAdvice || "N/A";
 
                 const imageUrl = report.imageUrl || (report.s3Url ? report.s3Url.replace("s3://", "https://").replace("taskflow-backend-dev-reports", "taskflow-backend-dev-reports.s3.eu-west-1.amazonaws.com") : null);
 
                 // Add Row
                 const row = worksheet.addRow({
-                    name,
-                    observation,
-                    hazardType,
+                    reportNumber,
                     date,
                     project,
+                    location,
+                    observationType,
+                    hazardCategory,
+                    breachSource,
+                    severity,
+                    stopWork,
+                    remarks,
+                    responsiblePerson,
+                    notifiedPersons: notified,
+                    reporter,
                     mitigation,
-                    posNeg,
                     image: imageUrl ? "Loading..." : "No Image"
                 });
 
@@ -115,11 +142,11 @@ const SafetyLogs: React.FC = () => {
 
                         const imageId = workbook.addImage({
                             buffer: buffer,
-                            extension: 'jpeg', // Assuming jpeg/png, ExcelJS handles mostly automatically however
+                            extension: 'jpeg',
                         });
 
                         worksheet.addImage(imageId, {
-                            tl: { col: 7, row: row.number - 1 }, // col 7 is 'H' (0-indexed)
+                            tl: { col: 14, row: row.number - 1 }, // col 14 is 'O' (0-indexed)
                             ext: { width: 200, height: 150 },
                             editAs: 'oneCell'
                         });
@@ -132,7 +159,6 @@ const SafetyLogs: React.FC = () => {
 
                     } catch (imageError) {
                         console.warn("Failed to embed image, falling back to IMAGE formula", imageError);
-                        // Fallback to IMAGE function (available in Microsoft 365)
                         row.getCell('image').value = { formula: `IMAGE("${imageUrl}")` };
                     }
                 }

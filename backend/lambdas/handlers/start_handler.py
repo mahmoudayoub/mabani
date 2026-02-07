@@ -44,11 +44,11 @@ def handle_start(
     description = user_input.get("description", "")
     
     if not image_url and not description:
-        return "👋 Hi! To report a safety observation, please send a *photo* and a brief description."
+        return "👋 Hi! To report a safety observation, please send a *photo* and a brief description.\n(Type 'Stop' to cancel)"
         
     if not image_url:
         # Strict workflow A1: "Take photo of breach" is step 1.
-        return "Please upload a *photo* of the observation to begin processing."
+        return "Please upload a *photo* of the observation to begin processing.\n(Type 'Stop' to cancel)"
 
     # 2. Upload Image to S3
     s3_client = S3Client()
@@ -100,7 +100,8 @@ def handle_start(
         
         # Format taxonomy for AI (handle dicts)
         if taxonomy_list and isinstance(taxonomy_list[0], dict):
-            taxonomy_str = "\n".join([f"- {item['name']} ({item['category']})" for item in taxonomy_list])
+            # Format: "Code Name (Category)" e.g. "A1 Confined Spaces (Safety)"
+            taxonomy_str = "\n".join([f"- {item.get('code','')} {item['name']} ({item['category']})" for item in taxonomy_list])
         else:
             taxonomy_str = "\n".join(taxonomy_list)
         
@@ -121,9 +122,34 @@ def handle_start(
         else:
             hazard_category = str(raw_hazard)
             
-        # Remove any lingering " (Safety)" suffix if AI included it
-        if " (" in hazard_category and ")" in hazard_category:
-            hazard_category = hazard_category.split(" (")[0]
+        # Refine: Match against known taxonomy to get clean Name (remove Code/Category)
+        # AI might return "A1 Confined Spaces" or "Confined Spaces (Safety)"
+        found_clean_name = None
+        if taxonomy_list and isinstance(taxonomy_list[0], dict):
+             for item in taxonomy_list:
+                code = item.get('code', '').lower()
+                name = item.get('name', '').lower()
+                target = hazard_category.lower()
+                
+                # Check 1: Exact Name match (ignoring case)
+                if name == target:
+                    found_clean_name = item['name']
+                    break
+                # Check 2: "Code Name" pattern (e.g. "A1 Confined Spaces")
+                if code and code in target and name in target:
+                    found_clean_name = item['name']
+                    break
+                # Check 3: Just Name contained (risky if names overlap, but usually safe)
+                if name in target:
+                     found_clean_name = item['name']
+                     break
+        
+        if found_clean_name:
+            hazard_category = found_clean_name
+        else:
+            # Fallback cleanup
+            if " (" in hazard_category and ")" in hazard_category:
+                hazard_category = hazard_category.split(" (")[0]
         
         # 4. Check Project Selection
         user_project_manager = UserProjectManager()
@@ -135,7 +161,8 @@ def handle_start(
             "imageCaption": caption,
             "s3Url": image_metadata["s3Url"],
             "imageUrl": image_metadata["httpsUrl"],
-            "classification": hazard_category,
+            "hazardCategory": hazard_category,
+            "hazardCandidates": hazards,
             "observationType": observation_type,
             "originalDescription": description
         }
@@ -160,13 +187,13 @@ def handle_start(
                         project_name = p
                         
             response_payload = {
-                "text": f"Project: *{project_name}*\n\nI've analyzed the photo and identified a *{observation_type}* related to *{hazard_category}*.\n\nIs this correct?",
+                "text": f"Project: *{project_name}*\n\nI've analyzed the photo and identified a *{observation_type}*.\n\nIs this correct?",
                 "interactive": {
                     "type": "button",
                     "buttons": [
                         {"id": "yes", "title": "Yes"},
-                        {"id": "change_project", "title": "Change Project"},
-                        {"id": "edit_hazard", "title": "Edit Hazard"}
+                        {"id": "change_type", "title": "Change Type"},
+                        {"id": "change_project", "title": "Change Project"}
                     ]
                 }
             }

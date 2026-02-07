@@ -136,6 +136,7 @@ sys.modules["lambdas.shared.conversation_state"] = m_state
 # NOW Import Handlers
 from lambdas.handlers.start_handler import handle_start
 from lambdas.handlers.project_handler import handle_project_selection
+from lambdas.handlers.confirmation_handler import handle_confirmation, handle_category_confirmation
 from lambdas.handlers.data_collection_handlers import handle_location
 
 def run_test():
@@ -160,31 +161,34 @@ def run_test():
     resp = handle_project_selection("Project Alpha", phone, state_mgr)
     print(f"Resp: {resp['text']}")
     
-    # Verify State: Should be WAITING_FOR_CONFIRMATION
+    # Verify State: Should be WAITING_FOR_CONFIRMATION (Type Confirmation)
     curr = state_mgr.get_state(phone)
     assert curr["state"] == "WAITING_FOR_CONFIRMATION", f"Expected WAITING_FOR_CONFIRMATION, got {curr['state']}"
     assert curr["draftData"]["projectId"] == "PROJ-A", "Project ID not set"
     
-    # LOCATION (Assuming confirmation said Yes -> WAITING_FOR_LOCATION would be managed by confirmation_handler, let's simulate transition)
-    state_mgr.update_state(phone, "WAITING_FOR_LOCATION", {}) 
+    # CONFIRM TYPE ("Yes")
+    print("\n[Input] 'Yes' (Confirm Type)")
+    resp = handle_confirmation("Yes", phone, state_mgr, curr)
+    print(f"Resp: {resp['text']}")
+    
+    # Verify State: Should be WAITING_FOR_CATEGORY_CONFIRMATION
+    curr = state_mgr.get_state(phone)
+    assert curr["state"] == "WAITING_FOR_CATEGORY_CONFIRMATION", f"Expected WAITING_FOR_CATEGORY_CONFIRMATION, got {curr['state']}"
+    
+    # CONFIRM CATEGORY ("Yes")
+    print("\n[Input] 'Yes' (Confirm Category)")
+    resp = handle_category_confirmation("Yes", phone, state_mgr, curr)
+    print(f"Resp: {resp['text']}")
+    
+    # Verify State: Should be WAITING_FOR_LOCATION
+    curr = state_mgr.get_state(phone)
+    assert curr["state"] == "WAITING_FOR_LOCATION", f"Expected WAITING_FOR_LOCATION, got {curr['state']}"
     
     # Handle Location Input (Should filter by PROJ-A locations)
     print("\n[Input] 'Alpha Loc 1'") # Valid
     resp = handle_location("Alpha Loc 1", phone, state_mgr, curr)
     print(f"Resp: {resp['text']}")
     # Should accept it.
-    
-    print("\n[Input] 'Global Loc 1'") # Invalid for this project? 
-    # Current logic accepts FREE TEXT if no match, BUT we want to verify it populated the LIST options correctly?
-    # handle_location doesn't return list options for *next* step (Breach Source), so we can't see the location options.
-    # But we can verify logic:
-    # Actually handle_location *receives* the location. To verify the *list* presented TO the user, we need to see what the PREVIOUS handler returned.
-    # The previous handler was 'handle_confirmation' or 'project_handler' (if confirmation skipped).
-    
-    # 'project_handler' returned: "Is this correct?".
-    # If user says "Yes" -> 'confirmation_handler' (mocked validation) -> returns "Where is the location?" with OPTIONS.
-    # I didn't write confirmation_handler here, but I can check logic in 'data_collection_handlers.py' if I had a function to 'get_location_prompt'.
-    # But wait, 'handle_location' IS the one that processes the answer.
     
     # 2. RETURNING USER FLOW
     print("\n--- Test 2: Returning User (Has history) ---")
@@ -207,10 +211,10 @@ def run_test():
     # 3. CHANGE PROJECT FLOW
     print("\n--- Test 3: Returning User Changes Project ---")
     # Simulate user clicking "Change Project" button (ID: change_project)
-    from lambdas.handlers.confirmation_handler import handle_confirmation
     
     # Mocking current state for confirmation handler
-    curr = {"draftData": {"projectId": "PROJ-A", "classification": "A1 Hazard"}}
+    curr = {"draftData": {"projectId": "PROJ-A", "observationType": "Unsafe Act", "hazardCategory": "A1 Hazard"}}
+    state_mgr.state[phone] = {"state": "WAITING_FOR_CONFIRMATION", "draftData": curr["draftData"]}
     
     print("[Input] 'change_project'")
     resp = handle_confirmation("change_project", phone, state_mgr, curr)
@@ -229,6 +233,43 @@ def run_test():
     curr = state_mgr.get_state(phone)
     assert curr["draftData"]["projectId"] == "PROJ-B", f"Expected PROJ-B, got {curr['draftData']['projectId']}"
     
+    # 4. FINAL REPORT FORMAT CHECK
+    print("\n--- Test 4: Final Report Format ---")
+    from lambdas.handlers.finalization_handler import handle_responsible_person
+    
+    # Mock data for final step
+    final_data = {
+        "draftData": {
+            "imageId": "test-id",
+            "project": "Project Alpha",
+            "observationType": "Unsafe Act",
+            "hazardCategory": "Electrical Safety",
+            "location": "Site Office",
+            "breachSource": "Almabani",
+            "severity": "High",
+            "stopWork": True,
+            "imageUrl": "http://img.jpg",
+            "originalDescription": "Exposed wires"
+        }
+    }
+    
+    # Mock saving
+    with patch("lambdas.handlers.finalization_handler._save_final_report") as mock_save:
+        resp = handle_responsible_person("Site Engineer A", "CLIENT_NEW", state_mgr, final_data)
+        
+        print("\n[Final Report Output]")
+        print(resp)
+        
+        if "Project: Project Alpha" in resp:
+            print("  [PASS] Project Name present")
+        else:
+            print("  [FAIL] Project Name MISSING")
+            
+        if "Category: Electrical Safety" in resp:
+             print("  [PASS] Category Correct")
+        else:
+             print("  [FAIL] Category Incorrect (Got General?)")
+             
     print("=== TEST COMPLETE ===")
 
 if __name__ == "__main__":

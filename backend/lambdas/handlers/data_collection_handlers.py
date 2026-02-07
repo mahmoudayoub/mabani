@@ -121,10 +121,14 @@ def handle_location(user_input_text: str, phone_number: str, state_manager: Conv
     # Currently assuming we skip if present, or we can force ask.
     # Let's Skip to Breach Source to streamline, as per user request to "Replace with AI".
     
+    # Update draftData with location
+    updated_draft = draft_data.copy()
+    updated_draft["location"] = location_val
+    
     state_manager.update_state(
         phone_number=phone_number,
         new_state="WAITING_FOR_BREACH_SOURCE",
-        curr_data={"location": location_val}
+        curr_data=updated_draft
     )
     
     # Prepare Next Question (Breach Source)
@@ -205,5 +209,54 @@ def handle_breach_source(user_input_text: str, phone_number: str, state_manager:
         "interactive": {
             "type": "button",
             "buttons": [{"id": lvl.lower(), "title": lvl} for lvl in levels]
+        }
+    }
+
+def handle_remarks(
+    user_input_text: str, 
+    phone_number: str, 
+    state_manager: ConversationState,
+    current_state_data: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """
+    Handle Remarks Input (Free Text).
+    Transitions to Responsible Person selection.
+    """
+    remarks = user_input_text.strip()
+    
+    # Save remarks
+    state_manager.update_state(
+        phone_number=phone_number,
+        new_state="WAITING_FOR_RESPONSIBLE_PERSON",
+        curr_data={"remarks": remarks}
+    )
+    
+    # Prepare Next Question (Responsible Person) using Project Specific List
+    if not current_state_data:
+        current_state_data = state_manager.get_state(phone_number) or {}
+        
+    draft_data = current_state_data.get("draftData", {})
+    project_id = draft_data.get("projectId")
+    
+    config = ConfigManager()
+    all_projects = config.get_options("PROJECTS")
+    persons = []
+    
+    if project_id:
+        for p in all_projects:
+            p_id = p.get("id") if isinstance(p, dict) else p
+            if p_id == project_id and isinstance(p, dict):
+                 persons = p.get("responsible_persons", [])
+                 break
+                 
+    if not persons:
+        persons = config.get_options("RESPONSIBLE_PERSONS")
+    
+    return {
+        "text": "Remarks saved.\n\nWho is the *Responsible Person* for this area?\n(You can also share a Contact Card)",
+        "interactive": {
+            "type": "list",
+            "button_text": "Select Person",
+            "items": [{"id": f"p_{i}", "title": p[:24]} for i, p in enumerate(persons)]
         }
     }

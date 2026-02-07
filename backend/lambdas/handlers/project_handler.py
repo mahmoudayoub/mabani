@@ -38,26 +38,44 @@ def handle_project_selection(
     config = ConfigManager()
     all_projects = config.get_options("PROJECTS")
     
+    # Determine Page Number
+    page = 0
+    if text.startswith("next_projects:"):
+        try:
+            page = int(text.split(":")[1])
+        except:
+            pass
+
     # 1. Handle "Yes" (Smart Selection)
-    if suggested_project_id and text.lower() in ["yes", "y", "confirm"]:
+    if suggested_project_id and text.lower() in ["yes", "y", "confirm"] and page == 0:
         selected_project_id = suggested_project_id
         
-    # 2. Handle "Change" (User wants to see list)
-    elif text.lower() in ["change", "change project", "no", "n"]:
-        # Resend list
+    # 2. Handle "Change" (User wants to see list) OR Pagination
+    elif text.lower() in ["change", "change project", "no", "n"] or text.startswith("next_projects:"):
+        
+        # Setup Pagination
+        start_idx = page * 9
+        end_idx = start_idx + 9
+        
         list_items = []
-        for p in all_projects:
+        paginated = all_projects[start_idx:end_idx]
+        
+        for p in paginated:
             if isinstance(p, dict):
                  list_items.append({"id": p["id"], "title": p["name"][:24]})
             else:
                  list_items.append({"id": p, "title": p[:24]})
                  
+        # Add "Next" if more items exist
+        if len(all_projects) > end_idx:
+             list_items.append({"id": f"next_projects:{page+1}", "title": "Next ➡️"})
+             
         return {
-            "text": "Okay, please select the project:",
+            "text": f"Please select the project (Page {page+1}):",
             "interactive": {
                 "type": "list",
                 "button_text": "Select Project",
-                "items": list_items[:10]
+                "items": list_items
             }
         }
         
@@ -80,36 +98,42 @@ def handle_project_selection(
     user_project_manager = UserProjectManager()
     user_project_manager.set_last_project(phone_number, selected_project_id)
     
-    # Resolve Project Name
+    # Resolve full Project Details
     project_name = selected_project_id
+    project_locations = []
+    responsible_persons = []
+    
     for p in all_projects:
         if isinstance(p, dict) and p["id"] == selected_project_id:
-             project_name = p["name"]
-             break
+            project_name = p["name"]
+            project_locations = p.get("locations", [])
+            responsible_persons = p.get("responsiblePersons", [])
+            break
+    
+    # Update draftData with complete project information
+    updated_draft = draft_data.copy()
+    updated_draft["projectId"] = selected_project_id
+    updated_draft["project"] = project_name
+    updated_draft["projectLocations"] = project_locations
+    updated_draft["responsiblePersons"] = responsible_persons
     
     # Update State -> Proceed to CONFIRMATION (Classification)
-    # We assume 'classification' is already in draftData from start_handler
-    
     state_manager.update_state(
         phone_number=phone_number,
         new_state="WAITING_FOR_CONFIRMATION", 
-        curr_data={
-            "projectId": selected_project_id, 
-            "project": project_name
-        }
+        curr_data=updated_draft
     )
     
     # Generate Confirmation Message
     observation_type = draft_data.get("observationType", "Observation")
-    hazard_category = draft_data.get("classification", "Unknown Hazard")
     
     return {
-        "text": f"Project set to *{project_name}*.\n\nI identified a *{observation_type}* related to *{hazard_category}*.\n\nIs this correct?",
+        "text": f"Project set to *{project_name}*.\n\nI identified a *{observation_type}*.\n\nIs this correct?",
         "interactive": {
             "type": "button",
             "buttons": [
                 {"id": "yes", "title": "Yes"},
-                {"id": "no", "title": "No"}
+                {"id": "change_type", "title": "Change Type"}
             ]
         }
     }

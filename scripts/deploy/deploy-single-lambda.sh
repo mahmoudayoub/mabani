@@ -30,6 +30,10 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
 if [ -z "$FUNCTION_NAME" ]; then
     log_error "Function name is required"
     echo "Usage: $0 <function-name> [environment]"

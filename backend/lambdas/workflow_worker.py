@@ -16,20 +16,30 @@ try:
     # Handlers
     from handlers.start_handler import handle_start
     from handlers.project_handler import handle_project_selection
-    from handlers.confirmation_handler import handle_confirmation, handle_classification_selection
-    from handlers.data_collection_handlers import handle_location, handle_observation_type, handle_breach_source
+    from handlers.confirmation_handler import (
+        handle_confirmation, 
+        handle_classification_selection, 
+        handle_category_confirmation,
+        handle_parent_category_selection
+    )
+    from handlers.data_collection_handlers import handle_location, handle_observation_type, handle_breach_source, handle_remarks
     from handlers.severity_handler import handle_severity
-    from handlers.finalization_handler import handle_stop_work, handle_responsible_person
+    from handlers.finalization_handler import handle_stop_work, handle_responsible_person, handle_notified_persons
 except ImportError:
     from lambdas.shared.twilio_client import TwilioClient
     from lambdas.shared.conversation_state import ConversationState
     # Handlers
     from lambdas.handlers.start_handler import handle_start
     from lambdas.handlers.project_handler import handle_project_selection
-    from lambdas.handlers.confirmation_handler import handle_confirmation, handle_classification_selection
-    from lambdas.handlers.data_collection_handlers import handle_location, handle_observation_type, handle_breach_source
+    from lambdas.handlers.confirmation_handler import (
+        handle_confirmation, 
+        handle_classification_selection, 
+        handle_category_confirmation,
+        handle_parent_category_selection
+    )
+    from lambdas.handlers.data_collection_handlers import handle_location, handle_observation_type, handle_breach_source, handle_remarks
     from lambdas.handlers.severity_handler import handle_severity
-    from lambdas.handlers.finalization_handler import handle_stop_work, handle_responsible_person
+    from lambdas.handlers.finalization_handler import handle_stop_work, handle_responsible_person, handle_notified_persons, handle_responsible_person_selection
 
 # Initialize clients
 twilio_client = TwilioClient()
@@ -46,10 +56,14 @@ def handler(event: Dict[str, Any], context: Any) -> None:
         # 1. Extract Data
         # Format expects: {"from_number": "...", "body_content": "...", "params": {...}}
         from_number = event.get("from_number")
-        body_content = event.get("body_content", "")
+        body_content = event.get("body_content", "").strip()
         media_url = event.get("media_url")
+        contact_vcard_url = event.get("contact_vcard_url")
         
         # Clean phone number
+        if not from_number:
+            print("Error: Missing 'from_number' in event payload.")
+            return # Exit if essential data is missing
         clean_number = from_number.replace("whatsapp:", "")
         
         # 2. Check State
@@ -66,8 +80,8 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             state_manager.clear_state(clean_number)
             response_message = "🔄 Conversation reset. Send a photo to start a new report."
             
-        # Case B: Start
-        elif current_state is None or media_url:
+        # Case B: Start (New conversation or new image, but NOT vCard)
+        elif current_state is None or (media_url and not contact_vcard_url):
             user_input = {
                 "description": body_content,
                 "imageUrl": media_url
@@ -84,8 +98,14 @@ def handler(event: Dict[str, Any], context: Any) -> None:
         elif current_state == "WAITING_FOR_CONFIRMATION":
             response_message = handle_confirmation(body_content, clean_number, state_manager, state_item)
             
+        elif current_state == "WAITING_FOR_CATEGORY_CONFIRMATION":
+            response_message = handle_category_confirmation(body_content, clean_number, state_manager, state_item)
+            
+        elif current_state == "WAITING_FOR_PARENT_CATEGORY_SELECTION":
+            response_message = handle_parent_category_selection(body_content, clean_number, state_manager, state_item)
+
         elif current_state == "WAITING_FOR_CLASSIFICATION_SELECTION":
-            response_message = handle_classification_selection(body_content, clean_number, state_manager)
+            response_message = handle_classification_selection(body_content, clean_number, state_manager, state_item)
             
         elif current_state == "WAITING_FOR_LOCATION":
             response_message = handle_location(body_content, clean_number, state_manager, state_item)
@@ -104,8 +124,17 @@ def handler(event: Dict[str, Any], context: Any) -> None:
         elif current_state == "WAITING_FOR_STOP_WORK":
             response_message = handle_stop_work(body_content, clean_number, state_manager)
             
+        elif current_state == "WAITING_FOR_REMARKS":
+            response_message = handle_remarks(body_content, clean_number, state_manager, state_item)
+            
         elif current_state == "WAITING_FOR_RESPONSIBLE_PERSON":
-            response_message = handle_responsible_person(body_content, clean_number, state_manager, state_item)
+            response_message = handle_responsible_person(body_content, clean_number, state_manager, state_item, contact_vcard_url)
+            
+        elif current_state == "WAITING_FOR_RESPONSIBLE_PERSON_SELECTION":
+            response_message = handle_responsible_person_selection(body_content, clean_number, state_manager, state_item)
+            
+        elif current_state == "WAITING_FOR_NOTIFIED_PERSONS":
+            response_message = handle_notified_persons(body_content, clean_number, state_manager, state_item)
             
         else:
             response_message = "⚠️ Unknown state. Send 'reset' to start over."

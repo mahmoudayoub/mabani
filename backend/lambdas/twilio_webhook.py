@@ -52,11 +52,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             lon = processed_params.get("Longitude")
             body_content = f"Location: {lat},{lon}"
             print(f"Location received: {body_content}")
+            
+        # Handle Contact Card (vCard)
+        contact_vcard_url = None
+        if num_media > 0 and processed_params.get("MediaContentType0") == "text/x-vcard":
+            contact_vcard_url = params.get("MediaUrl0")
+            body_content = "[Contact Card Shared]"
+            print(f"Contact vCard received: {contact_vcard_url}")
         
         payload = {
             "from_number": from_number,
             "body_content": body_content,
-            "media_url": params.get("MediaUrl0") if num_media > 0 else None
+            "media_url": params.get("MediaUrl0") if num_media > 0 else None,
+            "contact_vcard_url": contact_vcard_url
         }
         
         # 4. Invoke Worker Async

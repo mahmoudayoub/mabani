@@ -87,6 +87,103 @@ def list_available_sheets(event, context):
     except Exception as e:
         return create_error_response(500, f"Failed to list sheets: {str(e)}")
 
+
+@with_error_handling
+def get_sheet_config(event, context):
+    """
+    Get full sheet configuration including groups.
+    Returns the entire available_sheets.json for download/editing.
+    """
+    try:
+        response = s3_client.get_object(
+            Bucket=FILE_PROCESSING_BUCKET,
+            Key="metadata/available_sheets.json"
+        )
+        content = json.loads(response["Body"].read())
+        # Ensure both sheets and groups exist
+        return create_response(200, {
+            "sheets": content.get("sheets", []),
+            "groups": content.get("groups", [])
+        })
+        
+    except s3_client.exceptions.NoSuchKey:
+        return create_response(200, {"sheets": [], "groups": []})
+    except Exception as e:
+        return create_error_response(500, f"Failed to get sheet config: {str(e)}")
+
+
+@with_error_handling
+def update_sheet_config(event, context):
+    """
+    Update sheet configuration (groups only).
+    Sheets array is managed by the parsing pipeline, not by users.
+    Users can only modify the groups array.
+    """
+    try:
+        body = json.loads(event.get("body", "{}"))
+        new_groups = body.get("groups")
+        
+        if new_groups is None:
+            return create_error_response(400, "Missing 'groups' in request body")
+        
+        if not isinstance(new_groups, list):
+            return create_error_response(400, "'groups' must be an array")
+        
+        # Validate group structure
+        for group in new_groups:
+            if not isinstance(group, dict):
+                return create_error_response(400, "Each group must be an object")
+            if "name" not in group or "sheets" not in group:
+                return create_error_response(400, "Each group must have 'name' and 'sheets'")
+            if not isinstance(group["sheets"], list):
+                return create_error_response(400, "Group 'sheets' must be an array")
+        
+        # Get existing config to preserve sheets array
+        try:
+            response = s3_client.get_object(
+                Bucket=FILE_PROCESSING_BUCKET,
+                Key="metadata/available_sheets.json"
+            )
+            existing = json.loads(response["Body"].read())
+            existing_sheets = existing.get("sheets", [])
+        except s3_client.exceptions.NoSuchKey:
+            existing_sheets = []
+        
+        # Validate that all sheets in groups exist in available_sheets
+        existing_sheets_set = set(existing_sheets)
+        invalid_sheets = []
+        for group in new_groups:
+            for sheet in group["sheets"]:
+                if sheet not in existing_sheets_set:
+                    invalid_sheets.append(f"'{sheet}' in group '{group['name']}'")
+        
+        if invalid_sheets:
+            return create_error_response(400, 
+                f"Invalid sheet names (not in available sheets): {', '.join(invalid_sheets[:5])}"
+                + (f" and {len(invalid_sheets) - 5} more" if len(invalid_sheets) > 5 else "")
+            )
+        
+        # Update config with new groups, preserving sheets
+        updated_config = {
+            "sheets": existing_sheets,
+            "groups": new_groups
+        }
+        
+        s3_client.put_object(
+            Bucket=FILE_PROCESSING_BUCKET,
+            Key="metadata/available_sheets.json",
+            Body=json.dumps(updated_config, indent=2),
+            ContentType="application/json"
+        )
+        
+        return create_response(200, {"success": True, "groups": new_groups})
+        
+    except json.JSONDecodeError:
+        return create_error_response(400, "Invalid JSON in request body")
+    except Exception as e:
+        return create_error_response(500, f"Failed to update sheet config: {str(e)}")
+
+
 @with_error_handling
 def list_output_files(event, context):
     """

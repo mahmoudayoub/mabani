@@ -50,6 +50,49 @@ export const listAvailableSheets = async (): Promise<string[]> => {
     return data.sheets || [];
 };
 
+// Sheet Groups Types and Functions
+export interface SheetGroup {
+    name: string;
+    sheets: string[];
+}
+
+export interface SheetConfig {
+    sheets: string[];
+    groups: SheetGroup[];
+}
+
+export const getSheetConfig = async (): Promise<SheetConfig> => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/files/sheet-config`, {
+        method: 'GET',
+        headers: headers,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to get sheet config: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return {
+        sheets: data.sheets || [],
+        groups: data.groups || []
+    };
+};
+
+export const updateSheetConfig = async (groups: SheetGroup[]): Promise<void> => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/files/sheet-config`, {
+        method: 'PUT',
+        headers: headers,
+        body: JSON.stringify({ groups })
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Failed to update sheet config: ${response.statusText}`);
+    }
+};
+
 export const uploadFileToS3 = async (uploadUrl: string, file: File) => {
     const response = await fetch(uploadUrl, {
         method: 'PUT',

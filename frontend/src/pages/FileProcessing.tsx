@@ -10,7 +10,10 @@ import {
     deleteEstimate,
     OutputFile,
     EstimateData,
-    deleteSheet
+    deleteSheet,
+    getSheetConfig,
+    updateSheetConfig,
+    SheetGroup
 } from '../services/fileProcessingService';
 import ChatInterface from '../components/chat/ChatInterface';
 
@@ -59,6 +62,9 @@ const FileProcessing: React.FC = () => {
     const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
     const [loadingSheets, setLoadingSheets] = useState(false);
     const [showSheetPicker, setShowSheetPicker] = useState(false);
+    const [sheetGroups, setSheetGroups] = useState<SheetGroup[]>([]);
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const configFileInputRef = useRef<HTMLInputElement>(null);
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -192,12 +198,21 @@ const FileProcessing: React.FC = () => {
         const fetchSheets = async () => {
             setLoadingSheets(true);
             try {
-                const sheets = await listAvailableSheets();
-                setAvailableSheets(sheets);
+                const config = await getSheetConfig();
+                setAvailableSheets(config.sheets);
+                setSheetGroups(config.groups);
                 // Select all sheets by default
-                setSelectedSheets(sheets);
+                setSelectedSheets(config.sheets);
             } catch (error) {
-                console.error("Failed to fetch available sheets", error);
+                console.error("Failed to fetch sheet config", error);
+                // Fallback to simple sheets list
+                try {
+                    const sheets = await listAvailableSheets();
+                    setAvailableSheets(sheets);
+                    setSelectedSheets(sheets);
+                } catch (e) {
+                    console.error("Failed to fetch sheets", e);
+                }
             } finally {
                 setLoadingSheets(false);
             }
@@ -210,6 +225,87 @@ const FileProcessing: React.FC = () => {
             setSelectedSheets(prev => [...prev, sheetName]);
         } else {
             setSelectedSheets(prev => prev.filter(name => name !== sheetName));
+        }
+    };
+
+    const handleGroupToggle = (group: SheetGroup, checked: boolean) => {
+        if (checked) {
+            // Add all sheets from this group that aren't already selected
+            setSelectedSheets(prev => {
+                const newSheets = group.sheets.filter(s => !prev.includes(s));
+                return [...prev, ...newSheets];
+            });
+        } else {
+            // Remove all sheets from this group
+            setSelectedSheets(prev => prev.filter(s => !group.sheets.includes(s)));
+        }
+    };
+
+    const toggleGroupExpanded = (groupName: string) => {
+        setExpandedGroups(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(groupName)) {
+                newSet.delete(groupName);
+            } else {
+                newSet.add(groupName);
+            }
+            return newSet;
+        });
+    };
+
+    const isGroupFullySelected = (group: SheetGroup): boolean => {
+        return group.sheets.every(s => selectedSheets.includes(s));
+    };
+
+    const isGroupPartiallySelected = (group: SheetGroup): boolean => {
+        const selectedCount = group.sheets.filter(s => selectedSheets.includes(s)).length;
+        return selectedCount > 0 && selectedCount < group.sheets.length;
+    };
+
+    // Get sheets that are not in any group
+    const ungroupedSheets = availableSheets.filter(sheet =>
+        !sheetGroups.some(group => group.sheets.includes(sheet))
+    );
+
+    const handleDownloadConfig = async () => {
+        try {
+            const config = await getSheetConfig();
+            const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sheet_config.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to download config:', error);
+            alert('Failed to download configuration');
+        }
+    };
+
+    const handleUploadConfig = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        try {
+            const text = await file.text();
+            const config = JSON.parse(text);
+
+            if (!config.groups || !Array.isArray(config.groups)) {
+                throw new Error('Invalid config: missing groups array');
+            }
+
+            await updateSheetConfig(config.groups);
+            setSheetGroups(config.groups);
+            alert('Configuration updated successfully!');
+        } catch (error) {
+            console.error('Failed to upload config:', error);
+            alert(`Failed to upload configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+
+        // Reset file input
+        if (configFileInputRef.current) {
+            configFileInputRef.current.value = '';
         }
     };
 
@@ -686,27 +782,112 @@ const FileProcessing: React.FC = () => {
 
                                 {showSheetPicker && (
                                     <div className="mt-3 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                        {/* Download/Upload Config Buttons */}
+                                        <div className="flex gap-2 mb-3 pb-3 border-b border-gray-200">
+                                            <button
+                                                onClick={handleDownloadConfig}
+                                                className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                </svg>
+                                                Download Config
+                                            </button>
+                                            <label className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors cursor-pointer">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                </svg>
+                                                Upload Config
+                                                <input
+                                                    ref={configFileInputRef}
+                                                    type="file"
+                                                    accept=".json"
+                                                    className="hidden"
+                                                    onChange={handleUploadConfig}
+                                                />
+                                            </label>
+                                        </div>
+
                                         {loadingSheets ? (
                                             <p className="text-xs text-gray-400">Loading sheets...</p>
                                         ) : availableSheets.length === 0 ? (
                                             <p className="text-xs text-gray-400">No available sheets found.</p>
                                         ) : (
-                                            <div className="max-h-60 overflow-y-auto space-y-2">
-                                                {availableSheets.map(sheetName => (
-                                                    <label key={sheetName} className="flex items-center justify-between p-2 hover:bg-white rounded transition-colors group">
-                                                        <div className="flex items-start space-x-2 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                className="mt-1 h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                                                                checked={selectedSheets.includes(sheetName)}
-                                                                onChange={(e) => handleSheetToggle(sheetName, e.target.checked)}
-                                                            />
-                                                            <div className="text-xs">
-                                                                <p className="font-medium text-gray-900 break-all">{sheetName}</p>
+                                            <div className="max-h-80 overflow-y-auto space-y-2">
+                                                {/* Groups Section */}
+                                                {sheetGroups.map(group => (
+                                                    <div key={group.name} className="border border-gray-200 rounded-lg bg-white">
+                                                        {/* Group Header */}
+                                                        <div className="flex items-center justify-between p-2 bg-gray-100 rounded-t-lg">
+                                                            <div className="flex items-center gap-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                                                    checked={isGroupFullySelected(group)}
+                                                                    ref={(el) => {
+                                                                        if (el) el.indeterminate = isGroupPartiallySelected(group);
+                                                                    }}
+                                                                    onChange={(e) => handleGroupToggle(group, e.target.checked)}
+                                                                />
+                                                                <button
+                                                                    onClick={() => toggleGroupExpanded(group.name)}
+                                                                    className="flex items-center gap-1 text-sm font-medium text-gray-800 hover:text-primary-600"
+                                                                >
+                                                                    <svg
+                                                                        className={`w-4 h-4 transition-transform ${expandedGroups.has(group.name) ? 'rotate-90' : ''}`}
+                                                                        fill="none"
+                                                                        stroke="currentColor"
+                                                                        viewBox="0 0 24 24"
+                                                                    >
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                                    </svg>
+                                                                    📂 {group.name}
+                                                                </button>
                                                             </div>
+                                                            <span className="text-xs text-gray-500">
+                                                                {group.sheets.filter(s => selectedSheets.includes(s)).length}/{group.sheets.length}
+                                                            </span>
                                                         </div>
-                                                    </label>
+                                                        {/* Group Sheets (Collapsible) */}
+                                                        {expandedGroups.has(group.name) && (
+                                                            <div className="p-2 pl-8 space-y-1">
+                                                                {group.sheets.map(sheetName => (
+                                                                    <label key={sheetName} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                                                            checked={selectedSheets.includes(sheetName)}
+                                                                            onChange={(e) => handleSheetToggle(sheetName, e.target.checked)}
+                                                                        />
+                                                                        <span className="text-xs text-gray-700">{sheetName}</span>
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 ))}
+
+                                                {/* Ungrouped Sheets Section */}
+                                                {ungroupedSheets.length > 0 && (
+                                                    <div className="border border-gray-200 rounded-lg bg-white">
+                                                        <div className="p-2 bg-gray-50 rounded-t-lg">
+                                                            <span className="text-sm font-medium text-gray-600">📄 Ungrouped Sheets</span>
+                                                        </div>
+                                                        <div className="p-2 space-y-1">
+                                                            {ungroupedSheets.map(sheetName => (
+                                                                <label key={sheetName} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                                                        checked={selectedSheets.includes(sheetName)}
+                                                                        onChange={(e) => handleSheetToggle(sheetName, e.target.checked)}
+                                                                    />
+                                                                    <span className="text-xs text-gray-700">{sheetName}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>

@@ -138,6 +138,12 @@ custom:
     # Note: numpy and faiss-cpu are included in the layer for the indexing worker
     # They are large but necessary for FAISS vector operations
     # pydantic_core will be built for Linux inside Docker
+    slimPatternsAppendDefaults: false
+    slimPatternsAppend:
+      - '**/*.py[c|o]'
+      - '**/__pycache__*'
+      - '*.pyc'
+      - '*.pyo'
   serverless-offline:
     httpPort: 3001
     lambdaPort: 3002

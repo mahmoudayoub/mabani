@@ -127,7 +127,7 @@ plugins:
 custom:
   pythonRequirements:
     dockerizePip: true # Force Docker for all builds (including macOS and Linux)
-    dockerImage: public.ecr.aws/sam/build-python3.11:latest # Use AWS SAM build image for Python 3.11
+    dockerImage: public.ecr.aws/sam/build-python3.11:latest-arm64 # Use AWS SAM build image for Python 3.11 ARM64
     layer: true # Create Python requirements layer
     slim: true
     noDeploy:

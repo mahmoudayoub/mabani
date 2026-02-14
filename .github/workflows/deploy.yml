@@ -39,6 +39,9 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       # --- COMPLIANCE & TESTS ---
 
       # Frontend Checks (Build required for CDK Synth)

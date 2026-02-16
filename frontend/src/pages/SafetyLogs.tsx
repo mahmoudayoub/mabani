@@ -100,7 +100,10 @@ const SafetyLogs: React.FC = () => {
                 const severity = report.severity || "Medium";
                 const stopWork = report.stopWork ? "YES" : "NO";
                 const remarks = report.remarks || "None";
-                const responsiblePerson = report.responsiblePerson || "N/A";
+                const responsiblePersonVal = report.responsiblePerson;
+                const responsiblePerson = (typeof responsiblePersonVal === 'object' && responsiblePersonVal !== null)
+                    ? (responsiblePersonVal.name || "Unknown")
+                    : (responsiblePersonVal || "N/A");
 
                 let notified = "None";
                 if (Array.isArray(report.notifiedPersons)) {
@@ -109,7 +112,10 @@ const SafetyLogs: React.FC = () => {
                     notified = String(report.notifiedPersons);
                 }
 
-                const reporter = report.reporter || report.sender || "N/A";
+                const reporterVal = report.reporter || report.sender;
+                const reporter = (typeof reporterVal === 'object' && reporterVal !== null)
+                    ? (reporterVal.name || "Unknown")
+                    : (reporterVal || "N/A");
                 const mitigation = report.controlMeasure || report.safetyAdvice || "N/A";
 
                 const imageUrl = report.imageUrl || (report.s3Url ? report.s3Url.replace("s3://", "https://").replace("taskflow-backend-dev-reports", "taskflow-backend-dev-reports.s3.eu-west-1.amazonaws.com") : null);
@@ -370,11 +376,29 @@ const SafetyLogs: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <p className="text-gray-500">Responsible Person</p>
-                                                        <p className="font-medium text-gray-900">{selectedReport.responsiblePerson || "N/A"}</p>
+                                                        <p className="font-medium text-gray-900">
+                                                            {(() => {
+                                                                const val = selectedReport.responsiblePerson;
+                                                                if (typeof val === 'object' && val !== null) {
+                                                                    // @ts-ignore
+                                                                    return val.name || "Unknown";
+                                                                }
+                                                                return val || "N/A";
+                                                            })()}
+                                                        </p>
                                                     </div>
                                                     <div>
                                                         <p className="text-gray-500">Reporter</p>
-                                                        <p className="font-medium text-gray-900">{selectedReport.reporter || selectedReport.sender || "N/A"}</p>
+                                                        <p className="font-medium text-gray-900">
+                                                            {(() => {
+                                                                const val = selectedReport.reporter || selectedReport.sender;
+                                                                if (typeof val === 'object' && val !== null) {
+                                                                    // @ts-ignore
+                                                                    return val.name || "Unknown";
+                                                                }
+                                                                return val || "N/A";
+                                                            })()}
+                                                        </p>
                                                     </div>
                                                     <div>
                                                         <p className="text-gray-500">Breach Source</p>

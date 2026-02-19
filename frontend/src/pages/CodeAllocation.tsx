@@ -225,8 +225,25 @@ const CodeAllocation: React.FC = () => {
         fetchOutputFiles();
     }, []);
 
+    const [isDragOver, setIsDragOver] = useState(false);
+
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        if (file) {
+            if (!file.name.endsWith('.xlsx')) {
+                setUploadError('Please select an Excel (.xlsx) file');
+                return;
+            }
+            setSelectedFile(file);
+            setUploadError(null);
+        }
+    };
+
+    const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsDragOver(false);
+        const file = event.dataTransfer.files?.[0];
         if (file) {
             if (!file.name.endsWith('.xlsx')) {
                 setUploadError('Please select an Excel (.xlsx) file');
@@ -604,7 +621,13 @@ const CodeAllocation: React.FC = () => {
                     )}
 
                     {/* File Input */}
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                    <div
+                        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}
+                        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                        onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                        onDragLeave={() => setIsDragOver(false)}
+                        onDrop={handleDrop}
+                    >
                         <input
                             type="file"
                             accept=".xlsx"
@@ -617,9 +640,9 @@ const CodeAllocation: React.FC = () => {
                             htmlFor="file-upload"
                             className={`cursor-pointer ${isProcessing || isUploading ? 'opacity-50' : ''}`}
                         >
-                            <div className="text-5xl mb-4">📄</div>
+                            <div className="text-5xl mb-4">{isDragOver ? '📥' : '📄'}</div>
                             <p className="text-gray-600">
-                                {selectedFile ? selectedFile.name : 'Click to select an Excel file (.xlsx)'}
+                                {selectedFile ? selectedFile.name : 'Click or drag and drop an Excel file (.xlsx)'}
                             </p>
                         </label>
                     </div>

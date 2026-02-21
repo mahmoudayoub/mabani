@@ -56,3 +56,74 @@ You can simulate the cloud "Process & Die" behavior on your local machine to ver
     ```
 
 4.  Check S3 `output/` folder for results.
+
+---
+
+## 3. Testing the Price Code Worker Locally
+
+```bash
+cd backend
+
+# Index price codes
+export JOB_MODE=INDEX
+export S3_KEY=input/pricecode/index/catalog.xlsx
+python pricecode_worker.py
+
+# Allocate price codes to BOQ items
+export JOB_MODE=ALLOCATE
+export S3_KEY=input/pricecode/allocate/boq.xlsx
+python pricecode_worker.py
+```
+
+Check S3 `output/pricecode/` folder for allocated results.
+
+---
+
+## 4. Testing the Chat Handler Locally
+
+The chat handler is designed for Lambda, but you can test it locally by calling the handler function directly:
+
+```python
+# test_chat.py
+from chat_handler import handler
+
+event = {
+    "body": '{"message": "HDPE pipe DN200 PN16", "chat_type": "unitrate"}'
+}
+result = handler(event, None)
+print(result)
+```
+
+```bash
+cd backend
+python test_chat.py
+```
+
+---
+
+## 5. CLI Tool
+
+The `almabani` package includes a Typer-based CLI:
+
+```bash
+cd backend
+pip install -e .
+
+# Then use the CLI commands (run with --help for options)
+python -m almabani.cli.main --help
+```
+
+---
+
+## 6. Docker Compose (Web GUI)
+
+Run the Flask web GUI in a Docker container:
+
+```bash
+cd backend
+docker-compose up --build
+# Access at http://localhost:8080
+```
+
+The compose file mounts persistent volumes for uploads, fills, indexes, and logs.
+

@@ -60,9 +60,12 @@ class PriceCodePipeline:
         ws = wb[sheet_name]
         
         # Determine column indices (1-based)
-        def get_col_idx(name: str):
+        def get_col_idx(name: str, position_key: str = None):
             if not name: return None
-            # Find column by header value
+            # First: try stored position index (handles pandas-renamed duplicate columns)
+            if position_key and columns.get(position_key) is not None:
+                return columns[position_key] + 1  # Convert 0-based to 1-based
+            # Fallback: find column by header value
             row = header_row_idx + 1
             for col in range(1, ws.max_column + 1):
                 cell_val = ws.cell(row=row, column=col).value
@@ -70,7 +73,7 @@ class PriceCodePipeline:
                     return col
             return None
             
-        code_col_idx = get_col_idx(columns.get('code'))
+        code_col_idx = get_col_idx(columns.get('code'), 'code_col_position')
         desc_col_idx = get_col_idx(columns.get('code_description'))
         
         # Create output columns if they don't exist
@@ -400,9 +403,10 @@ class PriceCodePipeline:
         logger.info(f"Detected columns: {columns}")
         
         # Detect Code column for output
-        # Hierarchy of checks:
-        # 1. "Price Code" (Explicit)
-        # 2. "Code" (Generic) - but verified to NOT be the Item column
+        # Strategy:
+        # 1. "Price Code" (Explicit) — always wins
+        # 2. "Code" under a "Pricing" group header (row above) — preferred
+        # 3. "Code" generic fallback — last resort, but NOT the zone/bill code
         
         detected_code_col = None
         
@@ -411,33 +415,83 @@ class PriceCodePipeline:
             col_lower = str(col).lower()
             if 'price code' in col_lower:
                 detected_code_col = col
+                logger.info(f"Found explicit 'Price Code' column: {col}")
                 break
         
-        # 2. Fallback to generic "Code" if no explicit "Price Code" found
+        # 2. Check for "Code" under a "Pricing" group header (row above header)
+        if not detected_code_col and header_row_idx > 0:
+            # Read the row above the header row for group headers
+            group_row = df.iloc[header_row_idx - 1]  # Row above the column headers
+            
+            # Collect all "code"-containing columns
+            code_candidates = []
+            for col_idx, col in enumerate(df.columns):
+                col_lower = str(col).lower()
+                if 'code' in col_lower and 'description' not in col_lower and 'item' not in col_lower:
+                    item_col_name = columns.get('item')
+                    if item_col_name and item_col_name == col:
+                        continue  # Skip if this is the Item column
+                    code_candidates.append((col_idx, col))
+            
+            if code_candidates:
+                # Check which candidate falls under a "Pricing" group header
+                # Group headers span multiple columns; check the group_row value
+                # at each candidate's position and scan leftward for "Pricing"
+                pricing_candidate = None
+                for col_idx, col in code_candidates:
+                    # Check group header at this column position
+                    group_val = group_row.iloc[col_idx] if col_idx < len(group_row) else None
+                    if group_val is not None and not pd.isna(group_val):
+                        group_str = str(group_val).strip().lower()
+                        if 'pricing' in group_str or 'price' in group_str:
+                            pricing_candidate = col
+                            logger.info(f"Found 'Code' column under 'Pricing' group: {col} (col_idx={col_idx})")
+                            break
+                    
+                    # Also scan leftward in the group row to find merged "Pricing" header
+                    if pricing_candidate is None:
+                        for scan_idx in range(col_idx - 1, max(col_idx - 6, -1), -1):
+                            if scan_idx < 0 or scan_idx >= len(group_row):
+                                continue
+                            scan_val = group_row.iloc[scan_idx]
+                            if scan_val is not None and not pd.isna(scan_val):
+                                scan_str = str(scan_val).strip().lower()
+                                if 'pricing' in scan_str or 'price' in scan_str:
+                                    pricing_candidate = col
+                                    logger.info(f"Found 'Code' column under 'Pricing' group (via scan): {col} (col_idx={col_idx})")
+                                break  # Stop at first non-empty group cell
+                    
+                    if pricing_candidate:
+                        break
+                
+                if pricing_candidate:
+                    detected_code_col = pricing_candidate
+                else:
+                    # 3. Fallback: use a "code" column that is NOT the item column
+                    for col_idx, col in code_candidates:
+                        detected_code_col = col
+                        logger.info(f"Fallback: using first 'Code' candidate: {col}")
+                        break
+        
+        # 3. Final fallback if header_row_idx == 0 (no group row to check)
         if not detected_code_col:
             for col in df.columns:
                 col_lower = str(col).lower()
-                # Must contain 'code' but NOT 'description' or 'item' (unless it's just 'code')
                 if 'code' in col_lower and 'description' not in col_lower and 'item' not in col_lower:
-                    # HEURISTIC CHECK:
-                    # Check first few non-null values. If they look like BOQ Item IDs (e.g. matches the Item column pattern), 
-                    # we risk skipping specific rows. 
-                    # However, user explicitly requested to consider "Code".
-                    # We will assume "Code" is the target unless it's obviously the Item Numbering column.
-                    
-                    # If we already identified an 'item' column, ensure this 'code' column isn't practically identical
                     item_col_name = columns.get('item')
-                    if item_col_name and item_col_name != col:
-                         detected_code_col = col
-                         break
-                    elif not item_col_name:
-                         # If no item column found yet, this might be it, but we are looking for Price Code destination.
-                         # We'll take it as a candidate.
-                         detected_code_col = col
-                         break
+                    if item_col_name and item_col_name == col:
+                        continue
+                    detected_code_col = col
+                    logger.info(f"Fallback: using 'Code' column: {col}")
+                    break
         
         if detected_code_col:
             columns['code'] = detected_code_col
+            # Store the 0-based position index for write_results
+            # (needed because pandas may rename duplicate columns, e.g., 'Code' -> 'Code_2',
+            #  but the openpyxl worksheet still has the original header 'Code')
+            columns['code_col_position'] = list(df.columns).index(detected_code_col)
+            logger.info(f"Using code column: {detected_code_col} (position: {columns['code_col_position']})")
         
         # Detect output Description column (different from input description)
         # DISABLED: User requested not to fill Price Description

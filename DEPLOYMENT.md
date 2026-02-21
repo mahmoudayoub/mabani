@@ -77,31 +77,78 @@ This architecture is optimized for minimal cost. You pay **only** for the second
 ## 4. Usage Instructions
 
 ### Deployment
-To deploy this stack to your AWS account:
+To deploy all stacks to your AWS account:
 
 ```bash
 # 1. Install dependencies
 pip install -r infra/requirements.txt
 
-# 2. Bootstrap (if not done)
+# 2. Bootstrap (first time only)
 cdk bootstrap aws://239146712026/eu-west-1
 
-# 3. Deploy
-cdk deploy --app "python3 infra/app.py"
+# 3. Deploy all 4 stacks
+cdk deploy --app "python3 infra/app.py" --all
 ```
-*Note: The first deployment populates SSM parameters using values from your local `backend/env` file.*
 
-### How to Run a Job
-**Bucket Name**: `almabanistack-almabanidataf54b245b-big4a9rsdgn2`
+To deploy a single stack:
+```bash
+cdk deploy --app "python3 infra/app.py" AlmabaniStack     # Unit rate pipeline
+cdk deploy --app "python3 infra/app.py" PriceCodeStack     # Price code pipeline
+cdk deploy --app "python3 infra/app.py" ChatStack          # Chat API
+cdk deploy --app "python3 infra/app.py" DeletionStack      # Deletion API
+```
 
-**1. Parse (Excel -> JSON)**:
-*   Upload file to: `s3://almabanistack-almabanidataf54b245b-big4a9rsdgn2/input/parse/myfile.xlsx`
-*   **Result**: `s3://almabanistack-almabanidataf54b245b-big4a9rsdgn2/output/indexes/myfile.json`
+*Note: The first deployment populates SSM parameters using values from your local `backend/env` or root `.env` file.*
 
-**2. Fill Rates (Excel -> Excel)**:
-*   Upload file to: `s3://almabanistack-almabanidataf54b245b-big4a9rsdgn2/input/fill/myfile.xlsx`
-*   **Result**: `s3://almabanistack-almabanidataf54b245b-big4a9rsdgn2/output/fills/myfile_filled.xlsx`
+---
+
+### How to Run a Job (AlmabaniStack)
+
+**1. Parse (Excel → JSON)**:
+*   Upload to: `s3://<bucket>/input/parse/myfile.xlsx`
+*   **Result**: `s3://<bucket>/output/indexes/myfile.json`
+
+**2. Fill Rates (Excel → Excel)**:
+*   Upload to: `s3://<bucket>/input/fill/myfile.xlsx`
+*   **Result**: `s3://<bucket>/output/fills/myfile_filled.xlsx`
+
+### How to Run a Job (PriceCodeStack)
+
+**3. Index Price Codes (Excel → Pinecone)**:
+*   Upload to: `s3://<bucket>/input/pricecode/index/catalog.xlsx`
+*   **Result**: Vectors stored in Pinecone index `almabani-pricecode`
+
+**4. Allocate Price Codes (Excel → Excel)**:
+*   Upload to: `s3://<bucket>/input/pricecode/allocate/boq.xlsx`
+*   **Result**: `s3://<bucket>/output/pricecode/boq_allocated.xlsx`
+
+---
+
+### Chat API (ChatStack)
+
+Natural language queries for unit rates and price codes.
+
+**Endpoints** (check CloudFormation outputs for URLs):
+- **API Gateway**: `POST <ChatApiUrl>` (29-second timeout)
+- **Function URL**: `POST <ChatFunctionUrl>` (no timeout — recommended)
+
+**Example**:
+```bash
+curl -X POST <ChatFunctionUrl> \
+  -H "Content-Type: application/json" \
+  -d '{"message": "HDPE pipe DN200 PN16", "chat_type": "unitrate"}'
+```
+
+### Deletion API (DeletionStack)
+
+**Endpoints** (check CloudFormation output `DeletionApiUrl`):
+- `DELETE <DeletionApiUrl>/files/sheets/{sheet_name}` — Remove a datasheet
+- `DELETE <DeletionApiUrl>/pricecode/sets/{set_name}` — Remove a price code set
+
+---
 
 ### Monitoring
-*   **ECS Console**: View running tasks in `AlmabaniCluster`.
-*   **Log Groups**: View logs in CloudWatch under `AlmabaniWorker`.
+*   **AlmabaniStack**: CloudWatch log group `AlmabaniWorker`, ECS cluster `AlmabaniCluster`
+*   **PriceCodeStack**: CloudWatch log group `PriceCodeWorker`, ECS cluster `PriceCodeCluster`
+*   **ChatStack**: CloudWatch log group for `ChatHandler` Lambda
+*   **DeletionStack**: CloudWatch log groups for deletion Lambdas

@@ -186,11 +186,12 @@ class RateFillerPipeline:
             unit_val = None if pd.isna(unit_val) else unit_val
             rate_val = None if pd.isna(rate_val) else rate_val
             
-            # Extract items needing filling (Level is empty, has Item OR Description)
+            # Extract items needing filling (Level is empty, has Item OR Description, no existing rate)
             has_level = level_val is not None and str(level_val).strip() != ''
             has_item_code = item_val is not None and str(item_val).strip() != ''
             has_desc = desc_val is not None and str(desc_val).strip() != ''
-            if (not has_level) and (has_item_code or has_desc):
+            has_existing_rate = rate_val is not None and str(rate_val).strip() not in ['', 'nan', 'None']
+            if (not has_level) and (has_item_code or has_desc) and not has_existing_rate:
                 parent = None
                 grandparent = None
                 category_path = None

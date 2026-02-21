@@ -58,27 +58,33 @@ def register_sheet_name(bucket, sheet_name):
     
     try:
         try:
-            # 1. Read existing
+            # 1. Read existing (includes sheets AND groups)
             obj = s3.get_object(Bucket=bucket, Key=registry_key)
             data = json.loads(obj['Body'].read())
             current_sheets = set(data.get('sheets', []))
+            existing_groups = data.get('groups', [])  # Preserve groups!
         except s3.exceptions.NoSuchKey:
             current_sheets = set()
+            existing_groups = []
         except Exception as e:
             logger.warning(f"Failed to read registry: {e}")
             current_sheets = set()
+            existing_groups = []
             
         # 2. Add new sheet (idempotent)
         if sheet_name not in current_sheets:
             logger.info(f"Registering new sheet: {sheet_name}")
             current_sheets.add(sheet_name)
             
-            # 3. Write back
-            new_data = {"sheets": sorted(list(current_sheets))}
+            # 3. Write back (preserve groups!)
+            new_data = {
+                "sheets": sorted(list(current_sheets)),
+                "groups": existing_groups  # Keep existing groups intact
+            }
             s3.put_object(
                 Bucket=bucket, 
                 Key=registry_key, 
-                Body=json.dumps(new_data),
+                Body=json.dumps(new_data, indent=2),
                 ContentType='application/json'
             )
     except Exception as e:

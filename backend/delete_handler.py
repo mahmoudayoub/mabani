@@ -77,22 +77,30 @@ def delete_datasheet(event, context):
     try:
         registry_key = "metadata/available_sheets.json"
         
-        # Load existing
+        # Load existing (includes sheets AND groups)
         try:
             obj = s3_client.get_object(Bucket=FILE_PROCESSING_BUCKET, Key=registry_key)
             data = json.loads(obj['Body'].read())
             sheets = data.get("sheets", [])
+            existing_groups = data.get("groups", [])  # Preserve groups!
         except s3_client.exceptions.NoSuchKey:
             sheets = []
+            existing_groups = []
             
         # Update
         if sheet_name in sheets:
             sheets.remove(sheet_name)
-            # Save back
+            
+            # Also remove deleted sheet from any groups
+            for group in existing_groups:
+                if sheet_name in group.get("sheets", []):
+                    group["sheets"].remove(sheet_name)
+            
+            # Save back (preserve groups!)
             s3_client.put_object(
                 Bucket=FILE_PROCESSING_BUCKET,
                 Key=registry_key,
-                Body=json.dumps({"sheets": sheets}),
+                Body=json.dumps({"sheets": sheets, "groups": existing_groups}, indent=2),
                 ContentType="application/json"
             )
             print(f"Removed {sheet_name} from registry")

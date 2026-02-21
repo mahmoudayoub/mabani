@@ -23,10 +23,19 @@ CANDIDATES:
 INSTRUCTIONS:
 Perform a logical elimination process to find the best match.
 
-1. UNIT COMPATIBILITY CHECK (CRITICAL):
-   - Candidate Unit MUST function as the Target Unit.
-   - REJECT if units are incompatible (e.g., Target 'm3' vs Candidate 'm2').
-   - REJECT if conversion is ambiguous (e.g., 'Item' vs 'm').
+1. UNIT COMPATIBILITY CHECK (CRITICAL - DO THIS FIRST):
+   - Look at the TARGET UNIT specified above.
+   - For EACH candidate, check if the candidate's unit matches or is compatible with the TARGET UNIT.
+   - STRICT RULE: If a candidate's unit is fundamentally different from the TARGET UNIT, REJECT that candidate immediately.
+   - Examples of INCOMPATIBLE units (must REJECT):
+     * Target 'm3' (volume) vs Candidate 'm2' (area) → REJECT
+     * Target 'm' (length) vs Candidate 'kg' (weight) → REJECT
+     * Target 'Item' vs Candidate 'm' → REJECT (ambiguous conversion)
+     * Target 'set' vs Candidate 'pc' → REJECT (unless clearly equivalent)
+   - Examples of COMPATIBLE units (may accept):
+     * Target 'm3' vs Candidate 'cu.m' or 'cubic meter' → OK (same dimension)
+     * Target 'm2' vs Candidate 'sq.m' or 'sqm' → OK (same dimension)
+     * Target 'L.M.' vs Candidate 'm' → OK (linear meter)
 
 2. SCOPE & WORK TYPE CHECK:
    - Must be the same fundamental activity (e.g., 'Excavation' is not 'Disposal').
@@ -43,8 +52,11 @@ CONFIDENCE LEVELS:
   * Same work, same specs, same scope, same unit.
   * Example: "DN200 Pipe" == "200mm Pipe".
 - "HIGH" (Yellow): SAFE match with minor deviations.
-  * Minor spec variance that doesn't change cost basis (e.g., "C30" vs "C35").
-  * Difference in non-critical attributes (e.g., "Schedule 40" vs "Standard").
+  * Minor spec variance that doesn't change cost basis significantly (e.g., "C30" vs "C35", "150mm" vs "200mm" for non-critical dimensions).
+  * Difference in non-critical attributes (e.g., "Schedule 40" vs "Standard", brand names).
+  * Equivalent or interchangeable materials (e.g., "galvanized steel" vs "GI steel").
+  * Slightly broader or narrower scope when the core work is identical (e.g., "depth 1-2m" vs "depth up to 2m").
+  * Missing minor details in one side that don't affect the fundamental pricing.
 - "NO MATCH" (Red):
   * Different material, incompatible unit, unsupported scope, or risky assumptions.
 

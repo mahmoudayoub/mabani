@@ -215,10 +215,13 @@ async def process_allocate(input_path: Path, storage):
             # max_concurrent loaded from settings (pricecode_max_concurrent=200)
         )
         
-        # Upload result to fills folder
-        s3_key = f"output/pricecode/fills/{output_filename}"
-        storage.upload_file(output_path, s3_key)
-        logger.info(f"Uploaded result: {s3_key}")
+        # Upload result to fills folder (only if output was created)
+        if output_path.exists():
+            s3_key = f"output/pricecode/fills/{output_filename}"
+            storage.upload_file(output_path, s3_key)
+            logger.info(f"Uploaded result: {s3_key}")
+        else:
+            logger.warning(f"Output file not created (0 items matched?), skipping upload")
 
         # Upload summary file if exists
         if result.get("summary_file"):

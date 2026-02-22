@@ -219,13 +219,19 @@ def handle_start(
                 # Fallback if no projects configured
                 projects = ["Default Project"]
                 
-            # Create interactive list
+            # Create interactive list with pagination logic for the first page
+            # Reserve 1 button for "Next" if items > 9
             rows = []
-            for p in projects[:10]:
+            display_limit = 9 if len(projects) > 9 else 10
+            
+            for p in projects[:display_limit]:
                 if isinstance(p, dict):
                     rows.append({"id": p["id"], "title": p["name"][:24]})
                 else:
                     rows.append({"id": p, "title": p[:24]})
+            
+            if len(projects) > 9:
+                rows.append({"id": "next_projects:1", "title": "Next ➡️"})
             
             response_payload = {
                 "text": "Please select the *Project* for this report:\n\n_Type 'cancel' at any time to stop this observation._",

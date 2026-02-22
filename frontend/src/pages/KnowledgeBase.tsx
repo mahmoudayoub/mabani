@@ -8,6 +8,7 @@ import {
 import CreateKnowledgeBaseModal from "../components/knowledgebase/CreateKnowledgeBaseModal";
 import KnowledgeBaseCard from "../components/knowledgebase/KnowledgeBaseCard";
 import KnowledgeBaseDetails from "../components/knowledgebase/KnowledgeBaseDetails";
+import { Link } from 'react-router-dom';
 
 const KnowledgeBase: React.FC = () => {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseType[]>([]);
@@ -77,6 +78,15 @@ const KnowledgeBase: React.FC = () => {
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
+      <Link
+        to="/health-safety"
+        className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900 mb-4 transition-colors"
+      >
+        <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+        Back to Health & Safety
+      </Link>
       <div className="mb-6 sm:mb-8">
         <div className="flex items-center justify-between">
           <div>

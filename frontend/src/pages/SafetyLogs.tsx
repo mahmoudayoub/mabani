@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from "react";
 import { listReports, Report } from "../services/reportService";
+import { Link } from "react-router-dom";
+
 
 const SafetyLogs: React.FC = () => {
     const [reports, setReports] = useState<Report[]>([]);
@@ -136,37 +138,16 @@ const SafetyLogs: React.FC = () => {
                     notifiedPersons: notified,
                     reporter,
                     mitigation,
-                    image: imageUrl ? "Loading..." : "No Image"
+                    image: '' // Will be set by formula below if exists
                 });
 
-                // Embed Image if exists
+                // Embed Image Formula if exists
                 if (imageUrl) {
-                    try {
-                        const response = await fetch(imageUrl);
-                        const blob = await response.blob();
-                        const buffer = await blob.arrayBuffer();
-
-                        const imageId = workbook.addImage({
-                            buffer: buffer,
-                            extension: 'jpeg',
-                        });
-
-                        worksheet.addImage(imageId, {
-                            tl: { col: 14, row: row.number - 1 }, // col 14 is 'O' (0-indexed)
-                            ext: { width: 200, height: 150 },
-                            editAs: 'oneCell'
-                        });
-
-                        // Clear text content in image cell
-                        row.getCell('image').value = '';
-
-                        // Set row height to accommodate image
-                        row.height = 120;
-
-                    } catch (imageError) {
-                        console.warn("Failed to embed image, falling back to IMAGE formula", imageError);
-                        row.getCell('image').value = { formula: `IMAGE("${imageUrl}")` };
-                    }
+                    // Use Excel's HYPERLINK or IMAGE function depending on support.
+                    // IMAGE() is newer but widely supported in modern Excel/Google Sheets.
+                    // We also make the row taller so it renders nicely.
+                    row.getCell('image').value = { formula: `IMAGE("${imageUrl}")` };
+                    row.height = 120;
                 }
             }
 
@@ -188,6 +169,15 @@ const SafetyLogs: React.FC = () => {
 
     return (
         <div className="space-y-6">
+            <Link
+                to="/health-safety"
+                className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900 mb-2 transition-colors"
+            >
+                <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Health & Safety
+            </Link>
             <div className="border-b border-gray-200 pb-5 flex justify-between items-center">
                 <div>
                     <h3 className="text-2xl font-bold leading-6 text-gray-900">
@@ -271,47 +261,52 @@ const SafetyLogs: React.FC = () => {
                                         </td>
                                     </tr>
                                 ) : (
-                                    reports.map((report) => (
-                                        <tr key={report.requestId || report.PK} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                #{report.reportNumber || "N/A"}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {report.timestamp ? new Date(report.timestamp).toLocaleDateString() : (report.completedAt ? new Date(report.completedAt).toLocaleDateString() : "-")}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {(() => {
-                                                    const val = report.classification || report.observationType || "General";
-                                                    if (typeof val === 'object' && val !== null) {
-                                                        // Handle case where AI returned an object (e.g. {code, name})
-                                                        // casting to any to access potential keys without strict typing issues for now
-                                                        const v = val as any;
-                                                        return v.code && v.name ? `${v.code} ${v.name}` : JSON.stringify(v);
-                                                    }
-                                                    return val;
-                                                })()}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={report.originalDescription}>
-                                                {report.originalDescription || report.description || "-"}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                                    ${(report.severity?.toUpperCase() === 'HIGH') ? 'bg-red-100 text-red-800' :
-                                                        (report.severity?.toUpperCase() === 'MEDIUM') ? 'bg-yellow-100 text-yellow-800' :
-                                                            'bg-green-100 text-green-800'}`}>
-                                                    {report.severity || "Unknown"}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {report.status}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-900">
-                                                <button onClick={() => setSelectedReport(report)} className="font-medium text-primary-600 hover:text-primary-900">
-                                                    View Details
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
+                                    reports.map((report) => {
+                                        let severityColor = 'bg-gray-100 text-gray-800';
+                                        if (report.severity) {
+                                            const sev = report.severity.toUpperCase();
+                                            if (sev === 'HIGH') severityColor = 'bg-red-100 text-red-800';
+                                            else if (sev === 'MEDIUM') severityColor = 'bg-yellow-100 text-yellow-800';
+                                            else if (sev === 'LOW') severityColor = 'bg-green-100 text-green-800';
+                                        }
+
+                                        return (
+                                            <tr key={report.requestId || report.PK} className="hover:bg-gray-50 transition-colors">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                    #{report.reportNumber || "N/A"}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {report.timestamp ? new Date(report.timestamp).toLocaleDateString() : (report.completedAt ? new Date(report.completedAt).toLocaleDateString() : "-")}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {(() => {
+                                                        const val = report.classification || report.observationType || "General";
+                                                        if (typeof val === 'object' && val !== null) {
+                                                            const v = val as any;
+                                                            return v.code && v.name ? `${v.code} ${v.name}` : JSON.stringify(v);
+                                                        }
+                                                        return val;
+                                                    })()}
+                                                </td>
+                                                <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={report.originalDescription}>
+                                                    {report.originalDescription || report.description || "-"}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${severityColor}`}>
+                                                        {report.severity || "Unknown"}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {report.status}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-900">
+                                                    <button onClick={() => setSelectedReport(report)} className="font-medium text-primary-600 hover:text-primary-900">
+                                                        View Details
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })
                                 )}
                             </tbody>
                         </table>

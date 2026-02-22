@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { configService } from "../services/configService";
+import { Link } from "react-router-dom";
 // Icons removed to fix dependency issue
 
 // Types
@@ -64,7 +65,33 @@ const SafetyConfig: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Edit States
+    const [editingGenericIndex, setEditingGenericIndex] = useState<number | null>(null);
+    const [editGenericValue, setEditGenericValue] = useState("");
+
+    const [editingTaxIndex, setEditingTaxIndex] = useState<number | null>(null);
+    const [editTaxCode, setEditTaxCode] = useState("");
+    const [editTaxName, setEditTaxName] = useState("");
+    const [editTaxParent, setEditTaxParent] = useState("Safety");
+
+    const [editingProjectIndex, setEditingProjectIndex] = useState<number | null>(null);
+
     useEffect(() => {
+        // Clear edit states
+        setEditingGenericIndex(null);
+        setEditingTaxIndex(null);
+        setEditingProjectIndex(null);
+
+        // Clear forms
+        setNewItem("");
+        setNewProjectName("");
+        setNewProjectLocations("");
+        setResponsiblePersonsList([]);
+        setNewTaxCode("");
+        setNewTaxName("");
+        setNewTaxParent("Safety");
+
+        // Fetch new category
         fetchConfig(activeType);
     }, [activeType]);
 
@@ -108,6 +135,47 @@ const SafetyConfig: React.FC = () => {
         }
     };
 
+    const handleExportCSV = () => {
+        if (!options || options.length === 0) {
+            alert("No data available to export.");
+            return;
+        }
+
+        let csvContent = "";
+        let filename = `${activeType.toLowerCase()}_export.csv`;
+
+        if (activeType === "PROJECTS") {
+            csvContent = "Project ID,Project Name,Locations,Responsible Persons\n";
+            options.forEach(opt => {
+                const p = opt as Project;
+                const locs = (p.locations || []).join(" | ");
+                const persons = (p.responsiblePersons || []).map(rp => `${rp.name} (${rp.phone || 'N/A'})`).join(" | ");
+                csvContent += `"${p.id}","${p.name}","${locs}","${persons}"\n`;
+            });
+        } else if (activeType === "HAZARD_TAXONOMY") {
+            csvContent = "Code,Name,Parent Category\n";
+            options.forEach(opt => {
+                const c = opt as Category;
+                csvContent += `"${c.code}","${c.name}","${c.category}"\n`;
+            });
+        } else {
+            // Generic single-value lists
+            csvContent = "Value\n";
+            options.forEach(opt => {
+                csvContent += `"${String(opt)}"\n`;
+            });
+        }
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     // --- GENERIC HANDLERS (Strings) ---
     const handleAddGenericItem = async () => {
         if (!newItem.trim()) return;
@@ -126,6 +194,17 @@ const SafetyConfig: React.FC = () => {
         const updated = [...options];
         updated.splice(index, 1);
         await saveConfig(updated);
+    };
+
+    const handleSaveGenericEdit = async (index: number) => {
+        if (!editGenericValue.trim()) {
+            setError("Value cannot be empty.");
+            return;
+        }
+        const updated = [...options];
+        updated[index] = editGenericValue.trim();
+        await saveConfig(updated);
+        setEditingGenericIndex(null);
     };
 
     // --- PROJECT HANDLERS (Objects) ---
@@ -152,6 +231,58 @@ const SafetyConfig: React.FC = () => {
         setResponsiblePersonsList(updated);
     };
 
+    const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const text = event.target?.result as string;
+            const lines = text.split(/\r?\n/);
+            const importedPersons: ResponsiblePerson[] = [];
+
+            lines.forEach((line, index) => {
+                if (!line.trim()) return;
+                if (index === 0 && line.toLowerCase().includes('name')) return; // Skip header
+
+                // Allow comma separated
+                const [name, ...phoneParts] = line.split(',');
+                const phone = phoneParts.join(','); // In case phone had commas for some reason, though unlikely
+
+                if (name && name.trim()) {
+                    importedPersons.push({
+                        name: name.trim(),
+                        phone: phone ? phone.trim() : undefined
+                    });
+                }
+            });
+
+            if (importedPersons.length > 0) {
+                setResponsiblePersonsList((prev) => [...prev, ...importedPersons]);
+            }
+        };
+        reader.readAsText(file);
+
+        // Reset input
+        e.target.value = '';
+    };
+
+    const handleEditProjectClick = (idx: number, opt: any) => {
+        const proj = opt as unknown as Project;
+        setEditingProjectIndex(idx);
+        setNewProjectName(proj.name || "");
+        setNewProjectLocations(Array.isArray(proj.locations) ? proj.locations.join(", ") : "");
+        setResponsiblePersonsList(proj.responsiblePersons || []);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleCancelProjectEdit = () => {
+        setEditingProjectIndex(null);
+        setNewProjectName("");
+        setNewProjectLocations("");
+        setResponsiblePersonsList([]);
+    };
+
     const handleAddProject = async () => {
         if (!newProjectName.trim()) {
             setError("Project Name is required.");
@@ -172,23 +303,32 @@ const SafetyConfig: React.FC = () => {
         }
 
         // Duplicate Check
-        if (options.some(opt => typeof opt === 'object' && opt.name.toLowerCase() === newProjectName.trim().toLowerCase())) {
+        const isDuplicate = options.some((opt, idx) => {
+            if (editingProjectIndex === idx) return false;
+            return typeof opt === 'object' && opt.name.toLowerCase() === newProjectName.trim().toLowerCase();
+        });
+
+        if (isDuplicate) {
             setError("Project with this name already exists.");
             return;
         }
 
         const newProject: Project = {
-            id: `PROJ-${Date.now()}`, // Simple ID gen
+            id: editingProjectIndex !== null ? (options[editingProjectIndex] as Project).id : `PROJ-${Date.now()}`,
             name: newProjectName.trim(),
             locations: locationsList,
             responsiblePersons: responsiblePersonsList
         };
 
-        const updated = [...options, newProject];
+        const updated = [...options];
+        if (editingProjectIndex !== null) {
+            updated[editingProjectIndex] = newProject;
+        } else {
+            updated.push(newProject);
+        }
+
         await saveConfig(updated);
-        setNewProjectName("");
-        setNewProjectLocations("");
-        setResponsiblePersonsList([]);
+        handleCancelProjectEdit();
     };
 
     const handleDeleteProject = async (index: number) => {
@@ -230,6 +370,34 @@ const SafetyConfig: React.FC = () => {
         await saveConfig(updated);
     };
 
+    const handleSaveTaxonomyEdit = async (index: number) => {
+        if (!editTaxCode.trim() || !editTaxName.trim()) {
+            setError("Code and Name are required.");
+            return;
+        }
+
+        // Allow same code if it's the current item being edited, otherwise error on duplicates
+        const currentItem = options[index] as any;
+        const isChangingCode = currentItem.code !== editTaxCode.trim();
+
+        if (isChangingCode) {
+            const codeExists = options.some((opt: any, idx: number) => idx !== index && opt.code === editTaxCode.trim());
+            if (codeExists) {
+                setError(`Category with code ${editTaxCode} already exists.`);
+                return;
+            }
+        }
+
+        const updated = [...options];
+        updated[index] = {
+            code: editTaxCode.trim(),
+            name: editTaxName.trim(),
+            category: editTaxParent
+        };
+        await saveConfig(updated);
+        setEditingTaxIndex(null);
+    };
+
     const saveConfig = async (updatedOptions: ConfigOption[]) => {
         setIsSaving(true);
         try {
@@ -250,13 +418,31 @@ const SafetyConfig: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="border-b border-gray-200 pb-5">
-                <h3 className="text-2xl font-bold leading-6 text-gray-900">
-                    Safety Workflow Configuration
-                </h3>
-                <p className="mt-2 text-sm text-gray-500">
-                    Manage dropdown options and Project sites for the WhatsApp Assistant.
-                </p>
+            <Link
+                to="/health-safety"
+                className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900 mb-2 transition-colors"
+            >
+                <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Health & Safety
+            </Link>
+            <div className="border-b border-gray-200 pb-5 flex justify-between items-center">
+                <div>
+                    <h3 className="text-2xl font-bold leading-6 text-gray-900">
+                        Safety Workflow Configuration
+                    </h3>
+                    <p className="mt-2 text-sm text-gray-500">
+                        Manage dropdown options and Project sites for the WhatsApp Assistant.
+                    </p>
+                </div>
+                <button
+                    onClick={handleExportCSV}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                >
+                    <span className="mr-2">📤</span>
+                    Export {CONFIG_TYPES.find(t => t.id === activeType)?.label}
+                </button>
             </div>
 
             <div className="flex flex-col md:flex-row gap-6">
@@ -382,6 +568,25 @@ const SafetyConfig: React.FC = () => {
                                                     </div>
                                                 </div>
 
+                                                <div className="flex justify-between items-center mt-1 mb-5 bg-white p-3 rounded-md border border-gray-200">
+                                                    <div className="text-xs text-gray-500 flex items-center">
+                                                        <span className="mr-2">💡</span>
+                                                        <span>Bulk import from CSV (Format: <strong>Name, Phone</strong>)</span>
+                                                    </div>
+                                                    <div>
+                                                        <input
+                                                            type="file"
+                                                            accept=".csv"
+                                                            onChange={handleImportCSV}
+                                                            className="hidden"
+                                                            id="csv-upload"
+                                                        />
+                                                        <label htmlFor="csv-upload" className="cursor-pointer inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-semibold rounded text-gray-700 bg-white hover:bg-gray-50 transition-colors">
+                                                            📥 Import CSV
+                                                        </label>
+                                                    </div>
+                                                </div>
+
                                                 {/* List of added responsible persons */}
                                                 {responsiblePersonsList.length > 0 && (
                                                     <div className="space-y-2 mt-4">
@@ -418,13 +623,22 @@ const SafetyConfig: React.FC = () => {
                                             </div>
 
                                             <div className="flex justify-end pt-4 border-t border-gray-200">
+                                                {editingProjectIndex !== null && (
+                                                    <button
+                                                        onClick={handleCancelProjectEdit}
+                                                        disabled={isSaving}
+                                                        className="mr-3 inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={handleAddProject}
                                                     disabled={isSaving}
                                                     className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-semibold rounded-lg text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-4 focus:ring-primary-500 focus:ring-opacity-20 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all"
                                                 >
                                                     <span className="text-lg mr-2">✓</span>
-                                                    {isSaving ? 'Creating Project...' : 'Create Project'}
+                                                    {isSaving ? (editingProjectIndex !== null ? 'Updating...' : 'Creating...') : (editingProjectIndex !== null ? 'Update Project' : 'Create Project')}
                                                 </button>
                                             </div>
                                         </div>
@@ -450,14 +664,23 @@ const SafetyConfig: React.FC = () => {
                                                                 <p className="text-xs text-gray-500">ID: {safeRender(proj.id)}</p>
                                                             </div>
                                                         </div>
-                                                        <button
-                                                            onClick={() => handleDeleteProject(idx)}
-                                                            className="text-red-600 hover:text-red-900 p-1 font-bold"
-                                                            title="Delete Project"
-                                                            type="button"
-                                                        >
-                                                            [x]
-                                                        </button>
+                                                        <div className="space-x-3">
+                                                            <button
+                                                                onClick={() => handleEditProjectClick(idx, proj)}
+                                                                className="text-blue-600 hover:text-blue-900 p-1 font-semibold text-sm"
+                                                                title="Edit Project"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteProject(idx)}
+                                                                className="text-red-600 hover:text-red-900 p-1 font-bold text-sm"
+                                                                title="Delete Project"
+                                                                type="button"
+                                                            >
+                                                                [x]
+                                                            </button>
+                                                        </div>
                                                     </div>
 
                                                     {/* Locations List */}
@@ -584,26 +807,58 @@ const SafetyConfig: React.FC = () => {
                                                     // Guard: Ensure it's a category
                                                     if (!item.code) return null;
 
+                                                    const isEditing = editingTaxIndex === idx;
+
                                                     return (
                                                         <tr key={idx} className="hover:bg-gray-50">
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{safeRender(item.code)}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{safeRender(item.name)}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.category === 'Safety' ? 'bg-green-100 text-green-800' :
-                                                                    item.category === 'Environment' ? 'bg-blue-100 text-blue-800' :
-                                                                        'bg-purple-100 text-purple-800'
-                                                                    }`}>
-                                                                    {safeRender(item.category)}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                                <button
-                                                                    onClick={() => handleDeleteTaxonomyItem(idx)}
-                                                                    className="text-red-600 hover:text-red-900"
-                                                                >
-                                                                    Delete
-                                                                </button>
-                                                            </td>
+                                                            {isEditing ? (
+                                                                <>
+                                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                                        <input type="text" value={editTaxCode} onChange={e => setEditTaxCode(e.target.value)} className="block w-full px-2 py-1 border border-gray-300 rounded focus:ring-primary-500 focus:border-primary-500" />
+                                                                    </td>
+                                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                                        <input type="text" value={editTaxName} onChange={e => setEditTaxName(e.target.value)} className="block w-full px-2 py-1 border border-gray-300 rounded focus:ring-primary-500 focus:border-primary-500" />
+                                                                    </td>
+                                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                                        <select value={editTaxParent} onChange={e => setEditTaxParent(e.target.value)} className="block w-full px-2 py-1 border border-gray-300 rounded focus:ring-primary-500 focus:border-primary-500">
+                                                                            <option value="Safety">🛡️ Safety</option>
+                                                                            <option value="Environment">🌍 Environment</option>
+                                                                            <option value="Health">⚕️ Health</option>
+                                                                        </select>
+                                                                    </td>
+                                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                                                                        <button onClick={() => handleSaveTaxonomyEdit(idx)} className="text-primary-600 hover:text-primary-900">Save</button>
+                                                                        <button onClick={() => setEditingTaxIndex(null)} className="text-gray-500 hover:text-gray-700">Cancel</button>
+                                                                    </td>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{safeRender(item.code)}</td>
+                                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{safeRender(item.name)}</td>
+                                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.category === 'Safety' ? 'bg-green-100 text-green-800' :
+                                                                            item.category === 'Environment' ? 'bg-blue-100 text-blue-800' :
+                                                                                'bg-purple-100 text-purple-800'
+                                                                            }`}>
+                                                                            {safeRender(item.category)}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                                                                        <button onClick={() => {
+                                                                            setEditingTaxIndex(idx);
+                                                                            setEditTaxCode(item.code);
+                                                                            setEditTaxName(item.name);
+                                                                            setEditTaxParent(item.category);
+                                                                        }} className="text-blue-600 hover:text-blue-900">Edit</button>
+                                                                        <button
+                                                                            onClick={() => handleDeleteTaxonomyItem(idx)}
+                                                                            className="text-red-600 hover:text-red-900"
+                                                                        >
+                                                                            Delete
+                                                                        </button>
+                                                                    </td>
+                                                                </>
+                                                            )}
                                                         </tr>
                                                     );
                                                 })}
@@ -657,18 +912,65 @@ const SafetyConfig: React.FC = () => {
                                         ) : (
                                             Array.isArray(options) && options.map((opt, idx) => {
                                                 if (typeof opt !== 'string') return null; // Skip objects in string mode
+                                                const isEditing = editingGenericIndex === idx;
                                                 return (
-                                                    <li key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50">
-                                                        <span className="text-sm text-gray-700">{safeRender(opt)}</span>
-                                                        <button
-                                                            onClick={() => handleDeleteGenericItem(idx)}
-                                                            disabled={isSaving}
-                                                            className="text-red-600 hover:text-red-900 text-sm font-bold"
-                                                            title="Delete"
-                                                            type="button"
-                                                        >
-                                                            [x]
-                                                        </button>
+                                                    <li key={idx} className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 transition-colors">
+                                                        {isEditing ? (
+                                                            <div className="flex-1 mr-4">
+                                                                <input
+                                                                    type="text"
+                                                                    value={editGenericValue}
+                                                                    onChange={(e) => setEditGenericValue(e.target.value)}
+                                                                    onKeyDown={(e) => e.key === 'Enter' && handleSaveGenericEdit(idx)}
+                                                                    className="block w-full px-3 py-2 border-2 border-primary-300 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                                                                    autoFocus
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-sm font-medium text-gray-700">{safeRender(opt)}</span>
+                                                        )}
+                                                        <div className="flex space-x-4 whitespace-nowrap ml-4 items-center">
+                                                            {isEditing ? (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => handleSaveGenericEdit(idx)}
+                                                                        disabled={isSaving}
+                                                                        className="text-primary-600 hover:text-primary-900 text-sm font-semibold transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        Save
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setEditingGenericIndex(null)}
+                                                                        disabled={isSaving}
+                                                                        className="text-gray-500 hover:text-gray-700 text-sm font-semibold transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingGenericIndex(idx);
+                                                                            setEditGenericValue(opt);
+                                                                        }}
+                                                                        disabled={isSaving}
+                                                                        className="text-blue-600 hover:text-blue-800 text-sm font-semibold transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        Edit
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDeleteGenericItem(idx)}
+                                                                        disabled={isSaving}
+                                                                        className="text-red-500 hover:text-red-700 font-bold transition-colors disabled:opacity-50 flex items-center justify-center w-6 h-6 rounded-md hover:bg-red-50"
+                                                                        title="Delete"
+                                                                        type="button"
+                                                                    >
+                                                                        ×
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </li>
                                                 );
                                             })

@@ -24,7 +24,7 @@ try:
     )
     from handlers.data_collection_handlers import handle_location, handle_observation_type, handle_breach_source, handle_remarks
     from handlers.severity_handler import handle_severity
-    from handlers.finalization_handler import handle_stop_work, handle_responsible_person, handle_notified_persons
+    from handlers.finalization_handler import handle_stop_work, handle_responsible_person, handle_notified_persons, handle_notified_person_selection
 except ImportError:
     from lambdas.shared.twilio_client import TwilioClient
     from lambdas.shared.conversation_state import ConversationState
@@ -39,7 +39,7 @@ except ImportError:
     )
     from lambdas.handlers.data_collection_handlers import handle_location, handle_observation_type, handle_breach_source, handle_remarks
     from lambdas.handlers.severity_handler import handle_severity
-    from lambdas.handlers.finalization_handler import handle_stop_work, handle_responsible_person, handle_notified_persons, handle_responsible_person_selection
+    from lambdas.handlers.finalization_handler import handle_stop_work, handle_responsible_person, handle_notified_persons, handle_responsible_person_selection, handle_notified_person_selection
 
 # Initialize clients
 twilio_client = TwilioClient()
@@ -134,7 +134,10 @@ def handler(event: Dict[str, Any], context: Any) -> None:
             response_message = handle_responsible_person_selection(body_content, clean_number, state_manager, state_item)
             
         elif current_state == "WAITING_FOR_NOTIFIED_PERSONS":
-            response_message = handle_notified_persons(body_content, clean_number, state_manager, state_item)
+            response_message = handle_notified_persons(body_content, clean_number, state_manager, state_item, contact_vcard_url)
+            
+        elif current_state == "WAITING_FOR_NOTIFIED_PERSON_SELECTION":
+            response_message = handle_notified_person_selection(body_content, clean_number, state_manager, state_item)
             
         else:
             response_message = "⚠️ Unknown state. Send 'reset' to start over."

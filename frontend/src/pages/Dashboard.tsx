@@ -100,97 +100,6 @@ const Dashboard: React.FC = () => {
     },
   ];
 
-  const recentActivities = [
-    {
-      id: 1,
-      type: "task",
-      title: "New task assigned",
-      description: "Quality check for Project Alpha",
-      time: "2 minutes ago",
-      icon: (
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          />
-        </svg>
-      ),
-    },
-    {
-      id: 2,
-      type: "update",
-      title: "Status updated",
-      description: "Safety inspection completed",
-      time: "15 minutes ago",
-      icon: (
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-          />
-        </svg>
-      ),
-    },
-    {
-      id: 3,
-      type: "notification",
-      title: "New notification",
-      description: "Price allocation review required",
-      time: "1 hour ago",
-      icon: (
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-          />
-        </svg>
-      ),
-    },
-    {
-      id: 4,
-      type: "project",
-      title: "Project milestone",
-      description: "Project Beta reached 75% completion",
-      time: "2 hours ago",
-      icon: (
-        <svg
-          className="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-          />
-        </svg>
-      ),
-    },
-  ];
-
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
       {/* Welcome Section */}
@@ -203,68 +112,34 @@ const Dashboard: React.FC = () => {
         </p>
       </div>
 
-      {/* Statistics Cards */}
-
-
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 mb-6 sm:mb-8">
-        {/* Quick Actions - Modules */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">
-              Quick Actions
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              {modules.map((module) => (
-                <button
-                  key={module.id}
-                  onClick={() => module.path && navigate(module.path)}
-                  className="bg-primary-50 border-2 border-primary-200 rounded-lg p-4 sm:p-6 text-left hover:bg-primary-100 hover:border-primary-300 transition-all group"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="p-2 bg-primary-500 rounded-lg text-white group-hover:bg-primary-600 transition-colors">
-                      {module.icon}
-                    </div>
-                    <span className="text-xs sm:text-sm font-bold text-primary-700 bg-primary-100 px-2 py-1 rounded">
-                      {module.acronym}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-2 text-sm sm:text-base">
-                    {module.name}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-gray-600">
-                    {module.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Activity */}
+      <div className="mb-6 sm:mb-8">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">
-            Recent Activity
+            Quick Actions
           </h2>
-          <div className="space-y-4">
-            {recentActivities.map((activity) => (
-              <div
-                key={activity.id}
-                className="flex items-start space-x-3 pb-4 border-b border-gray-100 last:border-0 last:pb-0"
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+            {modules.map((module) => (
+              <button
+                key={module.id}
+                onClick={() => module.path && navigate(module.path)}
+                className="bg-primary-50 border-2 border-primary-200 rounded-lg p-4 sm:p-6 text-left hover:bg-primary-100 hover:border-primary-300 transition-all group"
               >
-                <div className="flex-shrink-0 p-2 bg-primary-50 rounded-lg text-primary-600">
-                  {activity.icon}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="p-2 bg-primary-500 rounded-lg text-white group-hover:bg-primary-600 transition-colors">
+                    {module.icon}
+                  </div>
+                  <span className="text-xs sm:text-sm font-bold text-primary-700 bg-primary-100 px-2 py-1 rounded">
+                    {module.acronym}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">
-                    {activity.title}
-                  </p>
-                  <p className="text-xs sm:text-sm text-gray-600 truncate">
-                    {activity.description}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
-                </div>
-              </div>
+                <h3 className="font-semibold text-gray-900 mb-2 text-sm sm:text-base">
+                  {module.name}
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-600">
+                  {module.description}
+                </p>
+              </button>
             ))}
           </div>
         </div>
@@ -272,7 +147,7 @@ const Dashboard: React.FC = () => {
 
       {/* Performance Overview */}
 
-    </div>
+    </div >
   );
 };
 

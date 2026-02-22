@@ -53,17 +53,37 @@ def list_reports(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # We will use Scan with a Limit and Filter for SK="METADATA" or just "PK" starts with "REPORT#"
         
         # Scanning is safer for "list" until we are sure about GSI.
-        response = table.scan(
-            FilterExpression=Attr("SK").eq("METADATA"),
-            Limit=50
-        )
-        
-        items = response.get("Items", [])
-        
-        # Sort by completedAt or createdAt descending
-        # completedAt is ISO string
-        items.sort(key=lambda x: x.get("completedAt", ""), reverse=True)
-        
+        # Try Query on GSI1 (status = 'closed' or 'open')
+        # Assuming the PK for GSI is status and SK is completedAt/timestamp
+        # If GSI doesn't exist, this will fallback to Scan safely.
+        try:
+            response = table.query(
+                IndexName="StatusIndex", # Assuming this exists from original design
+                KeyConditionExpression=Key('status').eq('closed'),
+                ScanIndexForward=False, # Descending by date
+                Limit=100
+            )
+            items = response.get("Items", [])
+            
+            # If nothing returned, it might be an open report or index missing
+            if not items:
+                response = table.scan(
+                    FilterExpression=Attr("SK").eq("METADATA"),
+                    Limit=150
+                )
+                items = response.get("Items", [])
+                items.sort(key=lambda x: x.get("completedAt", x.get("timestamp", "")), reverse=True)
+                
+        except Exception as e:
+            print(f"GSI Query failed, falling back to Scan: {e}")
+            response = table.scan(
+                FilterExpression=Attr("SK").eq("METADATA"),
+                Limit=150
+            )
+            items = response.get("Items", [])
+            items.sort(key=lambda x: x.get("completedAt", x.get("timestamp", "")), reverse=True)
+            
+        # Return only what we need to avoid massive payload transfer
         return _create_response(200, items)
 
     except Exception as e:

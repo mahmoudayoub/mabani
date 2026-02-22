@@ -91,6 +91,44 @@ def handle_confirmation(
             }
         }
         
+    # 4. Handle "Change Category" (arriving here from typing change_type then wanting to change category too)
+    elif text in ["change_category", "change category"]:
+        state_manager.update_state(
+            phone_number=phone_number,
+            new_state="WAITING_FOR_PARENT_CATEGORY_SELECTION"
+        )
+        config = ConfigManager()
+        taxonomy = config.get_options("HAZARD_TAXONOMY")
+        
+        # Extract unique parent categories
+        parent_categories = []
+        for item in taxonomy:
+            if isinstance(item, dict):
+                cat = item.get("category")
+                if cat and cat not in parent_categories:
+                    parent_categories.append(cat)
+                    
+        if not parent_categories:
+            parent_categories = ["Safety", "Environment", "Health"]
+            
+        interactive_payload = {}
+        if len(parent_categories) <= 3:
+            interactive_payload = {
+                "type": "button",
+                "buttons": [{"id": cat, "title": cat} for cat in parent_categories]
+            }
+        else:
+            interactive_payload = {
+                "type": "list",
+                "button_text": "Select Category",
+                "items": [{"id": f"pcat_{i}", "title": cat[:24]} for i, cat in enumerate(parent_categories[:10])]
+            }
+            
+        return {
+            "text": "Please select the *Main Category*:",
+            "interactive": interactive_payload
+        }
+        
     else:
         # Re-ask with buttons
         classification = current_state.get('draftData', {}).get('observationType', 'Unknown')
@@ -141,7 +179,7 @@ def handle_category_confirmation(
             locations = config.get_options("LOCATIONS")
         
         return {
-            "text": "Where did this happen?\n\n📍 Share your *Location* (Paperclip -> Location) or select from the list:",
+            "text": "Where did this happen?\n\n📍 Please select from the list below:",
             "interactive": {
                 "type": "list",
                 "button_text": "Select Location",
@@ -157,16 +195,36 @@ def handle_category_confirmation(
             new_state="WAITING_FOR_PARENT_CATEGORY_SELECTION"
         )
         
+        config = ConfigManager()
+        taxonomy = config.get_options("HAZARD_TAXONOMY")
+        
+        # Extract unique parent categories
+        parent_categories = []
+        for item in taxonomy:
+            if isinstance(item, dict):
+                cat = item.get("category")
+                if cat and cat not in parent_categories:
+                    parent_categories.append(cat)
+                    
+        if not parent_categories:
+            parent_categories = ["Safety", "Environment", "Health"]
+            
+        interactive_payload = {}
+        if len(parent_categories) <= 3:
+            interactive_payload = {
+                "type": "button",
+                "buttons": [{"id": cat, "title": cat} for cat in parent_categories]
+            }
+        else:
+            interactive_payload = {
+                "type": "list",
+                "button_text": "Select Category",
+                "items": [{"id": f"pcat_{i}", "title": cat[:24]} for i, cat in enumerate(parent_categories[:10])]
+            }
+            
         return {
             "text": "Please select the *Main Category*:",
-            "interactive": {
-                "type": "button",
-                "buttons": [
-                    {"id": "Safety", "title": "Safety"},
-                    {"id": "Environment", "title": "Environment"},
-                    {"id": "Health", "title": "Health"}
-                ]
-            }
+            "interactive": interactive_payload
         }
         
     return {
@@ -192,18 +250,39 @@ def handle_parent_category_selection(
     """
     text = user_input_text.strip()
     
-    # 1. Validate Parent Category
-    valid_parents = ["Safety", "Environment", "Health"]
+    config = ConfigManager()
+    taxonomy = config.get_options("HAZARD_TAXONOMY")
     
-    # Simple fuzzy match
+    # 1. Validate Parent Category dynamically
+    valid_parents = []
+    for item in taxonomy:
+        if isinstance(item, dict):
+            cat = item.get("category")
+            if cat and cat not in valid_parents:
+                valid_parents.append(cat)
+                
+    if not valid_parents:
+        valid_parents = ["Safety", "Environment", "Health"]
+    
+    # Handle list selection via pcat_ index ID
     selected_parent = None
-    for p in valid_parents:
-        if p.lower() in text.lower():
-            selected_parent = p
-            break
+    if text.startswith("pcat_"):
+        try:
+            idx = int(text.split("_")[1])
+            if 0 <= idx < len(valid_parents):
+                selected_parent = valid_parents[idx]
+        except (IndexError, ValueError):
+            pass
+            
+    # Simple fuzzy match if not list ID
+    if not selected_parent:
+        for p in valid_parents:
+            if p.lower() in text.lower():
+                selected_parent = p
+                break
             
     if not selected_parent:
-         selected_parent = "Safety" # Default fallback
+         selected_parent = valid_parents[0] # Default fallback to first available
          
     # 2. Transition to Sub-Category Selection
     state_manager.update_state(
@@ -265,7 +344,7 @@ def handle_classification_selection(
     if not state_item:
         state_item = state_manager.get_state(phone_number) or {}
         
-    current_data = state_item.get("currData", {}) # currData holds parentCategory
+    current_data = state_item.get("draftData", {}) # Changed from currData since DynamoDB flattens it
     parent = current_data.get("parentCategory", "Safety") # Default if lost
     
     # 1. Paging Logic
@@ -356,7 +435,7 @@ def handle_classification_selection(
             locations = config.get_options("LOCATIONS")
         
         return {
-            "text": f"Got it: *{selected_category}*.\n\nWhere did this happen?\n\n📍 Share your *Location* or select below:",
+            "text": f"Got it: *{selected_category}*.\n\nWhere did this happen?\n\n📍 Please select from the list below:",
             "interactive": {
                 "type": "list",
                 "button_text": "Select Location",

@@ -39,7 +39,7 @@ def handle_stop_work(
     )
     
     return {
-        "text": "Do you have any additional remarks or details?",
+        "text": "Do you have any additional remarks or details? Please type and send your remarks, or click 'No Remarks' if you do not have any.",
         "interactive": {
              "type": "button",
              "buttons": [
@@ -157,7 +157,7 @@ def handle_responsible_person(
     stakeholders = persons if persons else config.get_options("STAKEHOLDERS")
         
     return {
-        "text": "Who should be notified about this observation?",
+        "text": "Who should be notified about this observation? (Select from list or share a contact card)",
         "interactive": {
             "type": "list",
             "button_text": "Select Person",
@@ -217,7 +217,7 @@ def handle_responsible_person_selection(
         stakeholders = persons
         
     return {
-        "text": "Who should be notified about this observation?",
+        "text": "Who should be notified about this observation? (Select from list or share a contact card)",
         "interactive": {
             "type": "list",
             "button_text": "Select Person",
@@ -229,37 +229,164 @@ def handle_notified_persons(
     user_input_text: str, 
     phone_number: str, 
     state_manager: ConversationState,
-    current_state_data: Dict[str, Any]
-) -> str:
+    current_state_data: Dict[str, Any],
+    contact_vcard_url: str = None
+) -> Dict[str, Any]:
     """
-    Handle Notified Persons and Finalize Report.
+    Handle Notified Persons (supports vCard and multiple).
     """
     text = user_input_text.strip()
+    draft_data = current_state_data.get("draftData", {})
+    existing_notified = draft_data.get("notifiedPersons", [])
+    
+    # If user explicitly clicked "Done"
+    if text.lower() == "done" or text.lower() == "finish":
+        return _finish_report(phone_number, state_manager, draft_data)
+
     config = ConfigManager()
     stakeholders = config.get_options("STAKEHOLDERS")
     if not stakeholders:
-        stakeholders = config.get_options("RESPONSIBLE_PERSONS")
-        
+         stakeholders = config.get_options("RESPONSIBLE_PERSONS")
+         
     notified_person = text
     
-    if text.startswith("n_"):
+    # 1. Handle vCard
+    if contact_vcard_url:
+        try:
+            from lambdas.shared.twilio_client import TwilioClient
+            twilio_client = TwilioClient()
+            creds = twilio_client._get_credentials()
+            resp = requests.get(
+                contact_vcard_url,
+                auth=(creds.get("account_sid"), creds.get("auth_token"))
+            )
+            if resp.status_code == 200:
+                vcard_data = resp.text
+                full_name = re.search(r"FN:(.*)", vcard_data).group(1).strip()
+                phones = [p.strip() for p in re.findall(r"TEL.*:(.*)", vcard_data) if p.strip()]
+                
+                if len(phones) > 1:
+                    rows = [{"id": f"sel_notif_{i}", "title": p[:24], "description": full_name[:72]} for i, p in enumerate(phones)]
+                    state_manager.update_state(
+                        phone_number=phone_number,
+                        new_state="WAITING_FOR_NOTIFIED_PERSON_SELECTION",
+                        curr_data={"contactName": full_name, "contactPhones": phones}
+                    )
+                    return {
+                        "text": f"Found multiple numbers for *{full_name}*. Please select one:",
+                        "interactive": {
+                            "type": "list",
+                            "button_text": "Select Number",
+                            "items": rows
+                        }
+                    }
+                elif len(phones) == 1:
+                    notified_person = f"{full_name} ({phones[0]})"
+                else:
+                    notified_person = full_name
+        except Exception as e:
+            print(f"Error parsing Notified vCard: {e}")
+            
+    # 2. Handle Text (List or Manual)
+    elif text.startswith("n_"):
         try:
             idx = int(text.split("_")[1])
             if 0 <= idx < len(stakeholders):
-                notified_person = stakeholders[idx]
+                notif_obj = stakeholders[idx]
+                notified_person = notif_obj.get("name", notif_obj) if isinstance(notif_obj, dict) else notif_obj
         except:
-            pass
-            
-    # Resolution attempt
-    if notified_person == text:
-        for p in stakeholders:
-            if p.lower() == text.lower():
-                notified_person = p
-                break
+             pass
+    else:
+        # Check direct text match
+        for s in stakeholders:
+             s_name = s.get("name", s) if isinstance(s, dict) else s
+             if str(s_name).lower() == text.lower():
+                 notified_person = s_name
+                 break
+                 
+    # 3. Add to Notified List and loop
+    if notified_person and notified_person.lower() not in ["none", "skip"]:
+         if notified_person not in existing_notified:
+             existing_notified.append(notified_person)
+             
+         draft_data["notifiedPersons"] = existing_notified
+         state_manager.update_state(
+              phone_number=phone_number,
+              new_state="WAITING_FOR_NOTIFIED_PERSONS",
+              curr_data={"notifiedPersons": existing_notified}
+         )
+         
+         # Present loop to add more or finish
+         rows = [{"id": f"n_{i}", "title": (p.get("name", "Unknown") if isinstance(p, dict) else p)[:24]} for i, p in enumerate(stakeholders)]
+         
+         # Twilio interactive list: prepend Done to the list of items
+         final_rows = [{"id": "done", "title": "✅ Done / Finish"}]
+         final_rows.extend(rows)
+         
+         return {
+             "text": f"✅ Added: *{notified_person}*\n\nWho else should be notified? (Select from list, share contact, or click Done)",
+             "interactive": {
+                 "type": "list",
+                 "button_text": "Add or Finish",
+                 "items": final_rows[:10] # limits to 10
+             }
+         }
+         
+    # Fallback to direct finish if skip/none
+    return _finish_report(phone_number, state_manager, draft_data)
 
-    # 1. Finalize Data
+def handle_notified_person_selection(
+    user_input_text: str, 
+    phone_number: str, 
+    state_manager: ConversationState,
+    current_state_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    text = user_input_text.strip()
+    contact_name = current_state_data.get("contactName", "Unknown")
+    contact_phones = current_state_data.get("contactPhones", [])
+    
+    selected_phone = text
+    if text.startswith("sel_notif_"):
+        try:
+            idx = int(text.split("_")[2])
+            if 0 <= idx < len(contact_phones):
+                selected_phone = contact_phones[idx]
+        except:
+             pass
+             
+    notified_person = f"{contact_name} ({selected_phone})"
+    
     draft_data = current_state_data.get("draftData", {})
-    draft_data["notifiedPersons"] = [notified_person] # store as list for future multi-support
+    existing_notified = draft_data.get("notifiedPersons", [])
+    if notified_person not in existing_notified:
+        existing_notified.append(notified_person)
+        
+    draft_data["notifiedPersons"] = existing_notified
+    state_manager.update_state(
+         phone_number=phone_number,
+         new_state="WAITING_FOR_NOTIFIED_PERSONS",
+         curr_data={"notifiedPersons": existing_notified}
+    )
+    
+    config = ConfigManager()
+    stakeholders = config.get_options("STAKEHOLDERS")
+    if not stakeholders:
+         stakeholders = config.get_options("RESPONSIBLE_PERSONS")
+         
+    rows = [{"id": "done", "title": "✅ Done / Finish"}]
+    rows.extend([{"id": f"n_{i}", "title": (p.get("name", "Unknown") if isinstance(p, dict) else p)[:24]} for i, p in enumerate(stakeholders)])
+    
+    return {
+         "text": f"✅ Added: *{notified_person}*\n\nWho else should be notified?",
+         "interactive": {
+             "type": "list",
+             "button_text": "Select Person",
+             "items": rows[:10] # limit 10
+         }
+    }
+
+def _finish_report(phone_number: str, state_manager: ConversationState, draft_data: Dict[str, Any]) -> str:
+    # Finalize Data
     draft_data["reporter"] = phone_number
     draft_data["status"] = "OPEN"
     
@@ -314,8 +441,8 @@ def handle_notified_persons(
 ⚠️ Severity: {severity}
 🛑 Stop Work: {stop_work_status}
 📝 Remarks: {remarks}
-👤 Responsible: {responsible}
 📢 Notified: {notified}
+👤 Responsible: {responsible}
 🔒 Control measures: {advice}
 Date: {date_str}
 🖼️ {image_link}

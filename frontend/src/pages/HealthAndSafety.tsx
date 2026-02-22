@@ -42,6 +42,15 @@ const modules = [
 const HealthAndSafety: React.FC = () => {
     return (
         <div className="space-y-6">
+            <Link
+                to="/"
+                className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900 mb-2 transition-colors"
+            >
+                <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Dashboard
+            </Link>
             <div className="border-b border-gray-200 pb-5">
                 <h3 className="text-2xl font-bold leading-6 text-gray-900">
                     Health & Safety

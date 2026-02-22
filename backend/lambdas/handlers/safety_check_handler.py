@@ -19,7 +19,8 @@ def perform_safety_check(
     classification: str, 
     severity: str, 
     description: str = "", 
-    caption: str = ""
+    caption: str = "",
+    context_data: dict = None
 ) -> Tuple[str, str]:
     """
     Query the Knowledge Base for safety protocol.
@@ -101,19 +102,34 @@ def perform_safety_check(
             except Exception as e:
                 print(f"Error performing RAG search: {e}")
         
+        if context_data is None:
+            context_data = {}
+            
+        location = context_data.get("location", "Not specified")
+        observation_type = context_data.get("observationType", "Not specified")
+        breach_source = context_data.get("breachSource", "Not specified")
+        project_name = context_data.get("project", "Not specified")
+
         # 5. Generate Advice using Bedrock
         prompt = f"""You are a Safety Officer. 
         
         System Context:
         {context_text if context_text else "No specific safety manual pages found."}
         
-        Situation: {classification}
-        Severity: {severity}
+        Incident Information:
+        - Project: {project_name}
+        - Location: {location}
+        - Observation Type: {observation_type}
+        - Hazard Category: {classification}
+        - Source of Breach: {breach_source}
+        - Description: {description}
+        - Image Information: {caption}
+        - Selected Severity: {severity}
         
         Instructions:
         1. Access the provided System Context to find specific procedures for this situation.
         2. If relevant procedures are found, summarize the immediate action required strictly based on that context.
-        3. If no context is found, provide standard general safety advice based on the situation and severity.
+        3. If no context is found, provide standard general safety advice tailored specifically to the incident information above.
         4. Keep the advice concise (1-2 sentences).
         5. Warn about "Stop Work" if the severity is High.
         """

@@ -169,23 +169,24 @@ def handle_observation_type(user_input_text: str, phone_number: str, state_manag
     
     observation_type = selected_type if selected_type else text
     
-    # Save observation type and redirect to category confirmation
+    # Save observation type and redirect to main confirmation to catch project and hazard
     state_manager.update_state(
         phone_number=phone_number,
-        new_state="WAITING_FOR_CATEGORY_CONFIRMATION",
+        new_state="WAITING_FOR_CONFIRMATION",
         curr_data={"observationType": observation_type}
     )
     
-    # Get the hazard category to confirm
+    # Get the hazard category and project to confirm
     draft_data = current_state_data.get("draftData", {})
     category = draft_data.get("hazardCategory", "Unknown")
     
     return {
-        "text": f"Type changed to *{observation_type}*.\\n\\nIt is related to *{category}*.\\n\\nIs this correct?",
+        "text": f"Got it, Observation Type updated to *{observation_type}*.\n\nProject: *{draft_data.get('project', 'Unknown')}*\nIs this correct for a *{category}* hazard?",
         "interactive": {
             "type": "button",
             "buttons": [
                 {"id": "yes", "title": "Yes"},
+                {"id": "change_project", "title": "Change Project"},
                 {"id": "change_category", "title": "Change Category"}
             ]
         }

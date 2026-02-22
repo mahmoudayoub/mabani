@@ -1,0 +1,56 @@
+{
+    "events": [
+        {
+            "timestamp": 1770638003358,
+            "message": "INIT_START Runtime Version: python:3.11.v110\tRuntime Version ARN: arn:aws:lambda:eu-west-1::runtime:337245bf349f59d117d2c3ed5dd57fcef23ecdfe05dac10931ee2d5dbefaea8f\n",
+            "ingestionTime": 1770638004101
+        },
+        {
+            "timestamp": 1770638004043,
+            "message": "[WARNING]\t2026-02-09T11:53:24.043Z\t\tLAMBDA_WARNING: Unhandled exception. The most likely cause is an issue in the function code. However, in rare cases, a Lambda runtime update can cause unexpected function behavior. For functions using managed runtimes, runtime updates can be triggered by a function change, or can be applied automatically. To determine if the runtime has been updated, check the runtime version in the INIT_START log entry. If this error correlates with a change in the runtime version, you may be able to mitigate this error by temporarily rolling back to the previous runtime version. For more information, see https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html\r\n",
+            "ingestionTime": 1770638004101
+        },
+        {
+            "timestamp": 1770638004043,
+            "message": "[ERROR] Runtime.ImportModuleError: Unable to import module 'lambdas/kb_indexing_worker': No module named 'pydantic_core._pydantic_core'\nTraceback (most recent call last):",
+            "ingestionTime": 1770638004101
+        },
+        {
+            "timestamp": 1770638004114,
+            "message": "INIT_REPORT Init Duration: 756.24 ms\tPhase: init\tStatus: error\tError Type: Runtime.ImportModuleError\n",
+            "ingestionTime": 1770638004118
+        },
+        {
+            "timestamp": 1770638004702,
+            "message": "[WARNING]\t2026-02-09T11:53:24.702Z\t\tLAMBDA_WARNING: Unhandled exception. The most likely cause is an issue in the function code. However, in rare cases, a Lambda runtime update can cause unexpected function behavior. For functions using managed runtimes, runtime updates can be triggered by a function change, or can be applied automatically. To determine if the runtime has been updated, check the runtime version in the INIT_START log entry. If this error correlates with a change in the runtime version, you may be able to mitigate this error by temporarily rolling back to the previous runtime version. For more information, see https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html\r\n",
+            "ingestionTime": 1770638004706
+        },
+        {
+            "timestamp": 1770638004702,
+            "message": "[ERROR] Runtime.ImportModuleError: Unable to import module 'lambdas/kb_indexing_worker': No module named 'pydantic_core._pydantic_core'\nTraceback (most recent call last):",
+            "ingestionTime": 1770638004706
+        },
+        {
+            "timestamp": 1770638004773,
+            "message": "INIT_REPORT Init Duration: 644.91 ms\tPhase: invoke\tStatus: error\tError Type: Runtime.ImportModuleError\n",
+            "ingestionTime": 1770638013789
+        },
+        {
+            "timestamp": 1770638004773,
+            "message": "START RequestId: ade58d36-b2d7-5fa9-b6a3-ef357e3f2ae2 Version: $LATEST\n",
+            "ingestionTime": 1770638013789
+        },
+        {
+            "timestamp": 1770638004779,
+            "message": "END RequestId: ade58d36-b2d7-5fa9-b6a3-ef357e3f2ae2\n",
+            "ingestionTime": 1770638013789
+        },
+        {
+            "timestamp": 1770638004779,
+            "message": "REPORT RequestId: ade58d36-b2d7-5fa9-b6a3-ef357e3f2ae2\tDuration: 659.14 ms\tBilled Duration: 660 ms\tMemory Size: 3008 MB\tMax Memory Used: 97 MB\tStatus: error\tError Type: Runtime.ImportModuleError\n",
+            "ingestionTime": 1770638013789
+        }
+    ],
+    "nextForwardToken": "f/39486546983411126804000939136305910307457475324527837187/s",
+    "nextBackwardToken": "b/39486546951721767876888923640471509575549427849780723712/s"
+}

@@ -59,12 +59,19 @@ def handle_severity(
         }
 
     # Perform Safety Check (RAG)
-    classification = current_state_data.get("draftData", {}).get("classification", "General Hazard")
-    description = current_state_data.get("draftData", {}).get("originalDescription", "")
-    caption = current_state_data.get("draftData", {}).get("imageCaption", "")
+    draft_data = current_state_data.get("draftData", {})
+    classification = draft_data.get("classification", "General Hazard")
+    description = draft_data.get("originalDescription", "")
+    caption = draft_data.get("imageCaption", "")
     
     # This might take a few seconds
-    advice, source = perform_safety_check(classification, severity, description, caption)
+    advice, source = perform_safety_check(
+        classification=classification,
+        severity=severity,
+        description=description,
+        caption=caption,
+        context_data=draft_data
+    )
     
     # Save advice to draft data and transition
     state_manager.update_state(

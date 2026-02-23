@@ -180,6 +180,12 @@ const CodeAllocation: React.FC = () => {
                     const job = activeJobs[0];
                     console.log('Found active price code job:', job);
 
+                    // If the job is already complete, allow new uploads
+                    if (job.complete) {
+                        console.log('Job already complete, skipping resume');
+                        return;
+                    }
+
                     // Switch to allocate mode
                     setCurrentMode('allocate');
                     setCurrentView('allocate');
@@ -230,7 +236,7 @@ const CodeAllocation: React.FC = () => {
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            if (!file.name.endsWith('.xlsx')) {
+            if (!file.name.toLowerCase().endsWith('.xlsx')) {
                 setUploadError('Please select an Excel (.xlsx) file');
                 return;
             }
@@ -245,7 +251,7 @@ const CodeAllocation: React.FC = () => {
         setIsDragOver(false);
         const file = event.dataTransfer.files?.[0];
         if (file) {
-            if (!file.name.endsWith('.xlsx')) {
+            if (!file.name.toLowerCase().endsWith('.xlsx')) {
                 setUploadError('Please select an Excel (.xlsx) file');
                 return;
             }
@@ -630,7 +636,7 @@ const CodeAllocation: React.FC = () => {
                     >
                         <input
                             type="file"
-                            accept=".xlsx"
+                            accept=".xlsx,.XLSX"
                             onChange={handleFileSelect}
                             className="hidden"
                             id="file-upload"

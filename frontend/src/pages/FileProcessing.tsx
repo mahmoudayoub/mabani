@@ -92,6 +92,12 @@ const FileProcessing: React.FC = () => {
                     const job = activeJobs[0];
                     console.log('Found active job:', job);
 
+                    // If the job is already complete, allow new uploads
+                    if (job.complete) {
+                        console.log('Job already complete, skipping resume');
+                        return;
+                    }
+
                     // Calculate elapsed time
                     // IMPORTANT: started_at is UTC, append 'Z' to parse correctly
                     const startTime = new Date(job.started_at + 'Z').getTime();
@@ -200,7 +206,7 @@ const FileProcessing: React.FC = () => {
         event.stopPropagation();
         setIsDragOver(false);
         const file = event.dataTransfer.files?.[0];
-        if (file && file.name.endsWith('.xlsx')) {
+        if (file && file.name.toLowerCase().endsWith('.xlsx')) {
             setSelectedFile(file);
         }
     };
@@ -923,7 +929,7 @@ const FileProcessing: React.FC = () => {
                                     <div className="flex text-sm text-gray-600">
                                         <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500">
                                             <span>Upload a file</span>
-                                            <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".xlsx" onChange={handleFileChange} />
+                                            <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".xlsx,.XLSX" onChange={handleFileChange} />
                                         </label>
                                         <p className="pl-1">or drag and drop</p>
                                     </div>

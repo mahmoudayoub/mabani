@@ -189,6 +189,10 @@ export interface ActiveJob {
     filename: string;
     task_arn?: string;
     cluster_name?: string;
+    // Completion fields (added by worker before exit)
+    complete?: boolean;
+    success?: boolean;
+    error?: string;
 }
 
 export const listActiveJobs = async (): Promise<ActiveJob[]> => {

@@ -17,8 +17,9 @@ import os
 
 class AlmabaniStack(Stack):
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, opensearch_endpoint: str = None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        self.opensearch_endpoint = opensearch_endpoint
 
         # 1. VPC 
         # Public subnet only to avoid NAT Gateway costs
@@ -80,11 +81,8 @@ class AlmabaniStack(Stack):
         # Create secrets from local env vars or defaults
         secrets = {
             "OPENAI_API_KEY": get_ssm_param("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY")),
-            "PINECONE_API_KEY": get_ssm_param("PINECONE_API_KEY", os.getenv("PINECONE_API_KEY")),
-            "PINECONE_INDEX_NAME": get_ssm_param("PINECONE_INDEX_NAME", os.getenv("PINECONE_INDEX_NAME", "almabani-1")),
             "OPENAI_EMBEDDING_MODEL": get_ssm_param("OPENAI_EMBEDDING_MODEL", os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")),
             "OPENAI_CHAT_MODEL": get_ssm_param("OPENAI_CHAT_MODEL", os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")),
-            "PINECONE_ENVIRONMENT": get_ssm_param("PINECONE_ENVIRONMENT", os.getenv("PINECONE_ENVIRONMENT", "us-east-1"))
         }
 
         container = task_def.add_container("WorkerContainer",
@@ -94,6 +92,7 @@ class AlmabaniStack(Stack):
                 "STORAGE_TYPE": "s3",
                 "S3_BUCKET_NAME": bucket.bucket_name,
                 "AWS_REGION": self.region,
+                "OPENSEARCH_ENDPOINT": kwargs.get("opensearch_endpoint", "")
             },
             secrets=secrets,
             command=["python3", "worker.py"] 
@@ -101,6 +100,12 @@ class AlmabaniStack(Stack):
         
         # Grant permissions to Task Role
         bucket.grant_read_write(task_def.task_role)
+        
+        # Grant OpenSearch Serverless data API access
+        task_def.task_role.add_to_policy(iam.PolicyStatement(
+            actions=["aoss:APIAccessAll"],
+            resources=["*"]
+        ))
 
         # Create a Security Group for the task
         task_sg = ec2.SecurityGroup(self, "TaskSG",

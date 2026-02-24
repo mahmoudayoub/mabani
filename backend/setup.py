@@ -19,7 +19,9 @@ setup(
         "pandas>=2.0.0",
         "openpyxl>=3.1.0",
         "openai>=1.0.0",
-        "pinecone[grpc]>=5.0.0",  # Changed from pinecone-client, includes gRPC support
+        "boto3>=1.35.0",
+        "opensearch-py[async]>=2.5.0",
+        "requests-aws4auth>=1.2.3",
         "pydantic>=2.0.0",
         "pydantic-settings>=2.0.0",
         "typer>=0.9.0",

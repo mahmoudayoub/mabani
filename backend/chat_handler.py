@@ -37,11 +37,26 @@ def get_openai_client():
     return _openai_client
 
 
-def get_pinecone_client():
+def get_opensearch_client():
     global _pinecone_client
     if _pinecone_client is None:
-        from pinecone import Pinecone
-        _pinecone_client = Pinecone(api_key=os.environ['PINECONE_API_KEY'])
+        from almabani.core.vector_store import VectorStoreService
+        
+        # In Lambda env for chat, we get endpoint from env var directly
+        endpoint = os.environ.get('OPENSEARCH_ENDPOINT')
+        if not endpoint:
+            # Fallback for local testing if needed
+            from almabani.config.settings import get_settings
+            settings = get_settings()
+            endpoint = settings.opensearch_endpoint
+            
+        region = os.environ.get('AWS_REGION', 'eu-west-1')
+        
+        _pinecone_client = VectorStoreService(
+            endpoint=endpoint,
+            region=region,
+            index_name='almabani' # Base index name
+        )
     return _pinecone_client
 
 
@@ -168,9 +183,10 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
         return {"valid": True, "refined_query": message}
 
 
-def search_pinecone(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
-    """Search Pinecone index for candidates."""
-    pc = get_pinecone_client()
+def search_opensearch(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
+    """Search OpenSearch index for candidates."""
+    import asyncio
+    vector_store = get_opensearch_client()
     
     # Set top_k based on type (price code needs more candidates)
     if top_k is None:
@@ -180,19 +196,43 @@ def search_pinecone(query: str, chat_type: str, top_k: int = None) -> List[Dict]
     if chat_type == "pricecode":
         index_name = os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode')
     else:  # unitrate
-        index_name = os.environ.get('PINECONE_INDEX_NAME', 'almabani-1')
+        index_name = os.environ.get('OPENSEARCH_INDEX_NAME', 'almabani')
+        
+    # Temporarily override index name for this search
+    # (Since Lambda uses a single instance for warm starts)
+    original_index = vector_store.index_name
+    vector_store.index_name = index_name
     
-    index = pc.Index(index_name)
     embedding = create_embedding(query)
     
-    results = index.query(
-        vector=embedding,
-        top_k=top_k,
-        include_metadata=True,
-        namespace=""
-    )
-    
-    return results.matches
+    try:
+        # VectorStoreService.search is async, but Lambda handler is sync
+        loop = asyncio.get_event_loop()
+        matches = loop.run_until_complete(
+            vector_store.search(
+                query_embedding=embedding,
+                top_k=top_k,
+                include_metadata=True
+            )
+        )
+        # Convert List[Dict] to objects so the rest of the code works unchanged
+        # The existing code expects a class/dict with a `metadata` attribute/key
+        class MatchObj:
+            def __init__(self, m):
+                self.metadata = m.get('metadata', {})
+                self.score = m.get('score', 0)
+                
+            def get(self, key, default=None):
+                if key == 'metadata':
+                    return self.metadata
+                if key == 'score':
+                    return self.score
+                return default
+                
+        return [MatchObj(m) for m in matches]
+    finally:
+        # Restore original index name
+        vector_store.index_name = original_index
 
 
 # =============================================================================
@@ -550,7 +590,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Trigger lazy imports/loading
             try:
                 get_openai_client()
-                get_pinecone_client()
+                get_opensearch_client()
                 logger.info("Libraries warmed up.")
             except Exception as e:
                 logger.warning(f"Warmup library load warning: {e}")
@@ -602,8 +642,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         search_query = validation.get("refined_query", message)
         
-        # Stage 2: Search Pinecone for candidates
-        candidates = search_pinecone(search_query, chat_type)
+        # Stage 2: Search OpenSearch for candidates
+        candidates = search_opensearch(search_query, chat_type)
         
         if not candidates:
              return {

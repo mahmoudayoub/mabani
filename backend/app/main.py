@@ -18,7 +18,7 @@ from werkzeug.utils import secure_filename
 from openai import AsyncOpenAI
 
 # Almabani imports
-from almabani.config.settings import get_settings, get_openai_client, get_pinecone_client
+from almabani.config.settings import get_settings, get_openai_client, get_opensearch_client
 from almabani.config.logging_config import setup_logging
 from almabani.parsers.pipeline import ExcelToJsonPipeline
 from almabani.vectorstore.indexer import JSONProcessor, VectorStoreIndexer
@@ -59,7 +59,6 @@ def get_services():
         timeout=settings.openai_timeout,
         max_retries=settings.openai_max_retries
     )
-    pinecone_client = get_pinecone_client()
     
     embeddings_service = EmbeddingsService(
         async_client=openai_async,
@@ -67,11 +66,7 @@ def get_services():
         max_workers=settings.max_workers
     )
     
-    vector_store_service = VectorStoreService(
-        client=pinecone_client,
-        index_name=settings.pinecone_index_name,
-        environment=settings.pinecone_environment
-    )
+    vector_store_service = get_opensearch_client()
     
     return settings, openai_async, embeddings_service, vector_store_service
 
@@ -267,7 +262,7 @@ async def api_index():
         result = await indexer.index_documents(
             documents,
             embedding_batch_size=settings.batch_size,
-            upsert_batch_size=settings.pinecone_batch_size,
+            upsert_batch_size=settings.batch_size, # Replaced pinecone_batch_size
             namespace=namespace,
             max_workers=settings.max_workers
         )
@@ -464,12 +459,7 @@ def settings_page():
     # Get index stats if possible
     index_stats = None
     try:
-        pinecone_client = get_pinecone_client()
-        vector_store = VectorStoreService(
-            client=pinecone_client,
-            index_name=settings.pinecone_index_name,
-            environment=settings.pinecone_environment
-        )
+        vector_store = get_opensearch_client()
         index_stats = vector_store.get_stats()
     except Exception as e:
         logger.warning(f"Could not get index stats: {e}")
@@ -538,15 +528,7 @@ def list_json_files():
 def api_index_stats():
     """Get vector store index statistics."""
     try:
-        settings = get_settings()
-        pinecone_client = get_pinecone_client()
-        
-        vector_store = VectorStoreService(
-            client=pinecone_client,
-            index_name=settings.pinecone_index_name,
-            environment=settings.pinecone_environment
-        )
-        
+        vector_store = get_opensearch_client()
         stats = vector_store.get_stats()
         
         return jsonify({

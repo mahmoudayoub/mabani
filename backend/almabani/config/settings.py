@@ -43,7 +43,6 @@ class Settings(BaseSettings):
     
     # ==================== API Keys ====================
     openai_api_key: str
-    pinecone_api_key: str
     
     # ==================== OpenAI Settings ====================
     openai_embedding_model: str = 'text-embedding-3-small'
@@ -52,13 +51,12 @@ class Settings(BaseSettings):
     openai_max_retries: int = 3
     openai_timeout: int = 60
     
-    # ==================== Pinecone Settings ====================
-    pinecone_environment: str = 'us-east-1'
-    pinecone_index_name: str = 'almabani'
+    # ==================== OpenSearch Settings ====================
+    opensearch_endpoint: str
+    pinecone_index_name: str = 'almabani' # Keeping the name for backward compat as base index
     pinecone_namespace: Optional[str] = None
     pinecone_dimension: int = 1536
     pinecone_metric: str = 'cosine'
-    pinecone_cloud: str = 'aws'
     
     # ==================== Storage Settings ====================
     storage_type: str = 's3'  # 'local' or 's3'
@@ -149,8 +147,14 @@ def get_openai_client():
     )
 
 
-def get_pinecone_client():
-    """Get configured Pinecone client."""
-    from pinecone import Pinecone
+def get_opensearch_client():
+    """Get configured OpenSearch client."""
+    from almabani.core.vector_store import VectorStoreService
     settings = get_settings()
-    return Pinecone(api_key=settings.pinecone_api_key)
+    # We return the VectorStoreService instance directly instead of a raw client
+    # because it encapsulates the AWS auth logic
+    return VectorStoreService(
+        endpoint=settings.opensearch_endpoint,
+        region=settings.aws_region,
+        index_name=settings.pinecone_index_name
+    )

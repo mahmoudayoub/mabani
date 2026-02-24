@@ -2,7 +2,6 @@
 import os
 import boto3
 import json
-from pinecone import Pinecone
 from urllib.parse import unquote
 
 s3_client = boto3.client("s3")
@@ -41,37 +40,37 @@ def delete_datasheet(event, context):
         
     print(f"Deleting datasheet: {sheet_name}")
 
-    # 1. Delete from Pinecone
-    api_key = os.environ.get("PINECONE_API_KEY")
-    index_name = os.environ.get("PINECONE_INDEX_NAME")
+    # 1. Delete from OpenSearch
+    endpoint = os.environ.get("OPENSEARCH_ENDPOINT")
+    index_name = os.environ.get("OPENSEARCH_INDEX_NAME", "almabani")
+    region = os.environ.get("AWS_REGION", "eu-west-1")
     
-    if api_key and index_name:
+    if endpoint:
         try:
-            pc = Pinecone(api_key=api_key)
-            index = pc.Index(index_name)
-            # Filter deletion by 'source_name' (Assuming metadata field is 'source_name' based on previous context, verify vs guide)
-            # Guide says 'sheet', but our indexer uses 'source_name' or 'sheet'?
-            # Let's check indexer.py if possible, but guide explicitly says `filter={"sheet": sheet_name}`.
-            # I will follow the guide BUT 'source_name' is what we used in unit rate indexer.
-            # Wait, user guide says: index.delete(delete_all=False, filter={"sheet": sheet_name})
-            # I should follow the guide IF the existing metadata uses "sheet".
-            # Checking recent indexer code:
-            # `VectorStoreIndexer.prepare_vectors` uses `source_name`.
-            # If the user *provided* this guide, they might expect "sheet".
-            # However, `sheet` usually refers to Excel sheets.
-            # Let's support both just in case, or stick to what the user logic likely uses.
-            # Actually, `rate_matcher/matcher.py` filters by `source_name`.
-            # I'll stick to the user provided code: `filter={"sheet": sheet_name}` but I suspect it might need to match `source_name`.
-            # Let's implement exactly what is asked first.
+            from almabani.core.vector_store import VectorStoreService
+            import asyncio
             
-            # Filter deletion by 'sheet_name' metadata (Standard Datasheets)
-            index.delete(delete_all=False, filter={"sheet_name": sheet_name})
-            print(f"Deleted vectors for sheet: {sheet_name}")
+            # Use vector store service for standard connection handling
+            vector_store = VectorStoreService(
+                endpoint=endpoint,
+                region=region,
+                index_name=index_name
+            )
+            client = vector_store.get_client()
+            
+            # Execute deletion asynchronously
+            async def run_delete():
+                query = {"query": {"term": {"sheet_name": sheet_name}}}
+                await client.delete_by_query(index=index_name, body=query)
+                
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(run_delete())
+            print(f"Deleted vectors for sheet: {sheet_name} from index {index_name}")
         except Exception as e:
-            print(f"Pinecone deletion failed: {e}")
+            print(f"OpenSearch deletion failed: {e}")
             return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})
     else:
-        print("Skipping Pinecone deletion (missing credentials)")
+        print("Skipping OpenSearch deletion (missing endpoint)")
             
     # 2. Update Registry in S3
     try:
@@ -133,24 +132,35 @@ def delete_price_code_set(event, context):
         
     print(f"Deleting Price Code Set: {set_name}")
 
-    # 1. Delete from Pinecone
-    # 1. Delete from Pinecone
-    api_key = os.environ.get("PINECONE_API_KEY")
-    # Use the dedicated PRICECODE_INDEX_NAME if set, else fallback (though stack provides it now)
-    index_name = os.environ.get("PRICECODE_INDEX_NAME") or os.environ.get("PINECONE_INDEX_NAME")
+    # 1. Delete from OpenSearch
+    endpoint = os.environ.get("OPENSEARCH_ENDPOINT")
+    index_name = os.environ.get("PRICECODE_INDEX_NAME", "almabani-pricecode")
+    region = os.environ.get("AWS_REGION", "eu-west-1")
     
-    if api_key and index_name:
+    if endpoint:
         try:
-            pc = Pinecone(api_key=api_key)
-            index = pc.Index(index_name)
-            # Filter deletion by 'source_file' metadata (Price Codes)
-            index.delete(delete_all=False, filter={"source_file": set_name})
+            from almabani.core.vector_store import VectorStoreService
+            import asyncio
+            
+            vector_store = VectorStoreService(
+                endpoint=endpoint,
+                region=region,
+                index_name=index_name
+            )
+            client = vector_store.get_client()
+            
+            async def run_delete():
+                query = {"query": {"term": {"source_file": set_name}}}
+                await client.delete_by_query(index=index_name, body=query)
+                
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(run_delete())
             print(f"Deleted vectors for set: {set_name} from index {index_name}")
         except Exception as e:
-            print(f"Pinecone deletion failed: {e}")
+            print(f"OpenSearch deletion failed: {e}")
             return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})
     else:
-        print("Skipping Pinecone deletion (missing credentials)")
+        print("Skipping OpenSearch deletion (missing endpoint)")
             
     # 2. Update Registry in PRICECODE_BUCKET
     bucket = os.environ.get("PRICECODE_BUCKET")

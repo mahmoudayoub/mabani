@@ -11,7 +11,8 @@ pyyaml>=6.0.0
 
 # AI & Vector Search
 openai>=1.0.0
-pinecone[grpc,asyncio]>=5.0.0  # Includes gRPC and async support
+opensearch-py[async]>=2.5.0
+requests-aws4auth>=1.2.3
 
 # CLI & Utilities
 typer>=0.9.0

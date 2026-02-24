@@ -12,7 +12,7 @@ from rich import print as rprint
 import logging
 from openai import AsyncOpenAI
 
-from almabani.config.settings import get_settings, get_openai_client, get_pinecone_client
+from almabani.config.settings import get_settings, get_openai_client, get_opensearch_client
 from almabani.config.logging_config import setup_logging
 from almabani.parsers.pipeline import ExcelToJsonPipeline
 from almabani.vectorstore.indexer import JSONProcessor, VectorStoreIndexer
@@ -104,7 +104,7 @@ def index(
         # Apply defaults from settings when CLI values are not provided
         namespace = namespace if namespace is not None else (settings.pinecone_namespace or "")
         batch_size = batch_size if batch_size is not None else settings.batch_size
-        upsert_batch_size = upsert_batch_size if upsert_batch_size is not None else settings.pinecone_batch_size
+        upsert_batch_size = upsert_batch_size if upsert_batch_size is not None else settings.batch_size # Replaced pinecone_batch_size
         workers = workers if workers is not None else settings.max_workers
         
         # Create services
@@ -115,11 +115,7 @@ def index(
             max_workers=workers
         )
         
-        vector_store_service = VectorStoreService(
-            client=pinecone_client,
-            index_name=settings.pinecone_index_name,
-            environment=settings.pinecone_environment
-        )
+        vector_store_service = get_opensearch_client()
         
         # Create or connect to index
         if create_index:
@@ -128,7 +124,7 @@ def index(
                 metric=settings.pinecone_metric
             ))
         else:
-            vector_store_service.get_index()
+            vector_store_service.get_client() # Will initialize the connection
         
         # Process JSON files
         processor = JSONProcessor()
@@ -209,11 +205,7 @@ def fill(
             max_workers=workers
         )
         
-        vector_store_service = VectorStoreService(
-            client=pinecone_client,
-            index_name=settings.pinecone_index_name,
-            environment=settings.pinecone_environment
-        )
+        vector_store_service = get_opensearch_client()
         
         # Create rate matcher
         rate_matcher = RateMatcher(
@@ -292,11 +284,7 @@ def query(
             model=settings.openai_embedding_model
         )
         
-        vector_store_service = VectorStoreService(
-            client=pinecone_client,
-            index_name=settings.pinecone_index_name,
-            environment=settings.pinecone_environment
-        )
+        vector_store_service = get_opensearch_client()
         
         async def run_query():
             query_embedding = await embeddings_service.generate_embedding(search_text)

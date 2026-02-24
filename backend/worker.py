@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from almabani.core.storage import get_storage
 from almabani.parsers.pipeline import ExcelToJsonPipeline
 from almabani.rate_matcher.matcher import RateMatcher
-from almabani.config.settings import get_settings, get_openai_client, get_pinecone_client
+from almabani.config.settings import get_settings, get_openai_client, get_opensearch_client
 from almabani.core.embeddings import EmbeddingsService
 from almabani.core.vector_store import VectorStoreService
 from almabani.rate_matcher.pipeline import RateFillerPipeline
@@ -32,18 +32,14 @@ def get_services():
         timeout=settings.openai_timeout,
         max_retries=settings.openai_max_retries
     )
-    pinecone_client = get_pinecone_client()
+    
+    # get_opensearch_client now returns a fully configured VectorStoreService
+    vector_store_service = get_opensearch_client()
     
     embeddings_service = EmbeddingsService(
         async_client=openai_async,
         model=settings.openai_embedding_model,
         max_workers=settings.max_workers
-    )
-    
-    vector_store_service = VectorStoreService(
-        client=pinecone_client,
-        index_name=settings.pinecone_index_name,
-        environment=settings.pinecone_environment
     )
     
     return settings, openai_async, embeddings_service, vector_store_service
@@ -127,7 +123,7 @@ async def process_parse(input_path: Path, storage):
             await indexer.index_documents(
                 [doc],
                 embedding_batch_size=settings.batch_size,
-                upsert_batch_size=settings.pinecone_batch_size,
+                upsert_batch_size=settings.batch_size, # Replaced pinecone_batch_size
                 namespace=namespace,
                 max_workers=settings.max_workers
             )

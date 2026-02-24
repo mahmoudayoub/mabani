@@ -17,8 +17,10 @@ class DeletionStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, 
                  shared_bucket: s3.IBucket = None,
                  pricecode_bucket: s3.IBucket = None,
+                 opensearch_endpoint: str = None,
                  **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        self.opensearch_endpoint = opensearch_endpoint
 
         # 1. Access Shared Bucket
         if shared_bucket:
@@ -53,8 +55,7 @@ class DeletionStack(Stack):
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
-                "PINECONE_API_KEY": os.getenv("PINECONE_API_KEY", ""),
-                "PINECONE_INDEX_NAME": os.getenv("PINECONE_INDEX_NAME", "almabani-1")
+                "OPENSEARCH_ENDPOINT": kwargs.get("opensearch_endpoint", "")
             },
             timeout=Duration.seconds(30)
         )
@@ -69,9 +70,7 @@ class DeletionStack(Stack):
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
-                "PINECONE_API_KEY": os.getenv("PINECONE_API_KEY", ""),
-                "PINECONE_INDEX_NAME": os.getenv("PINECONE_INDEX_NAME", "almabani-1"),
-                "PRICECODE_INDEX_NAME": os.getenv("PRICECODE_INDEX_NAME", "almabani-pricecode")
+                "OPENSEARCH_ENDPOINT": kwargs.get("opensearch_endpoint", "")
             },
             timeout=Duration.seconds(30)
         )
@@ -80,6 +79,14 @@ class DeletionStack(Stack):
         bucket.grant_read_write(deletion_lambda)
         if pc_bucket:
             pc_bucket.grant_read_write(pc_deletion_lambda)
+            
+        # Grant OpenSearch Serverless data API access
+        aoss_policy = iam.PolicyStatement(
+            actions=["aoss:APIAccessAll"],
+            resources=["*"]
+        )
+        deletion_lambda.add_to_role_policy(aoss_policy)
+        pc_deletion_lambda.add_to_role_policy(aoss_policy)
         
         # 4. API Gateway
         api = apigw.RestApi(self, "DeletionApi",

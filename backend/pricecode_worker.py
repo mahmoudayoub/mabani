@@ -35,7 +35,7 @@ logger = logging.getLogger("pricecode_worker")
 
 def get_services():
     """Initialize all required services"""
-    from almabani.config.settings import get_pinecone_client
+    from almabani.config.settings import get_opensearch_client
     settings = get_settings()
     
     openai_async = AsyncOpenAI(
@@ -44,20 +44,15 @@ def get_services():
         max_retries=settings.openai_max_retries
     )
     
-    pinecone_client = get_pinecone_client()
+    # get_opensearch_client now returns a fully configured VectorStoreService
+    vector_store_service = get_opensearch_client()
+    # Override index name for price code specific operations
+    vector_store_service.index_name = os.getenv('PRICECODE_INDEX_NAME', 'almabani-pricecode')
     
     embeddings_service = EmbeddingsService(
         async_client=openai_async,
         model=settings.openai_embedding_model,
         max_workers=settings.max_workers
-    )
-    
-    # Use price code index instead of main index
-    pricecode_index = os.getenv('PRICECODE_INDEX_NAME', 'almabani-pricecode')
-    vector_store_service = VectorStoreService(
-        client=pinecone_client,
-        index_name=pricecode_index,
-        environment=settings.pinecone_environment
     )
     
     return settings, openai_async, embeddings_service, vector_store_service

@@ -30,19 +30,30 @@ env = cdk.Environment(
     region=region
 )
 
+from opensearch_stack import OpenSearchStack
+
+# ... existing code ...
+
+# OpenSearch Stack (Vector Database)
+os_stack = OpenSearchStack(app, "OpenSearchStack", env=env)
+
 # Main Almabani Stack (rate filler)
-main_stack = AlmabaniStack(app, "AlmabaniStack", env=env)
+main_stack = AlmabaniStack(app, "AlmabaniStack", env=env,
+                           opensearch_endpoint=os_stack.collection_endpoint)
 
 # Price Code Stack (standalone mode - creates its own VPC/bucket)
 # To share VPC/bucket with main stack, pass shared_vpc and shared_bucket parameters
-pc_stack = PriceCodeStack(app, "PriceCodeStack", env=env)
+pc_stack = PriceCodeStack(app, "PriceCodeStack", env=env,
+                          opensearch_endpoint=os_stack.collection_endpoint)
 
 # Deletion API Stack
 DeletionStack(app, "DeletionStack", env=env, 
               shared_bucket=main_stack.bucket,
-              pricecode_bucket=pc_stack.bucket)
+              pricecode_bucket=pc_stack.bucket,
+              opensearch_endpoint=os_stack.collection_endpoint)
 
 # Chat API Stack (natural language interface)
-ChatStack(app, "ChatStack", env=env)
+ChatStack(app, "ChatStack", env=env,
+          opensearch_endpoint=os_stack.collection_endpoint)
 
 app.synth()

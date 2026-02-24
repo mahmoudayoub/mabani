@@ -22,8 +22,9 @@ import os
 class ChatStack(Stack):
     """CDK Stack for Chat API."""
     
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, opensearch_endpoint: str = None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        self.opensearch_endpoint = opensearch_endpoint
         
         # Get environment variables
         openai_api_key = os.environ.get('OPENAI_API_KEY', '')
@@ -51,12 +52,16 @@ class ChatStack(Stack):
             layers=[deps_layer],
             environment={
                 "OPENAI_API_KEY": openai_api_key,
-                "PINECONE_API_KEY": pinecone_api_key,
-                "PINECONE_INDEX_NAME": os.environ.get('PINECONE_INDEX_NAME', 'almabani-1'),
-                "PRICECODE_INDEX_NAME": os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode'),
+                "OPENSEARCH_ENDPOINT": kwargs.get("opensearch_endpoint", ""),
                 "OPENAI_CHAT_MODEL": os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
             }
         )
+        
+        # Grant OpenSearch Serverless data API access
+        chat_lambda.add_to_role_policy(iam.PolicyStatement(
+            actions=["aoss:APIAccessAll"],
+            resources=["*"]
+        ))
         
         # Lambda Function URL (bypasses API Gateway 29-second limit)
         # Enable CORS here so AWS handles OPTIONS preflight automatically.

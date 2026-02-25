@@ -22,13 +22,11 @@ import os
 class ChatStack(Stack):
     """CDK Stack for Chat API."""
     
-    def __init__(self, scope: Construct, construct_id: str, opensearch_endpoint: str = None, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        self.opensearch_endpoint = opensearch_endpoint
         
         # Get environment variables
         openai_api_key = os.environ.get('OPENAI_API_KEY', '')
-        pinecone_api_key = os.environ.get('PINECONE_API_KEY', '')
         
         # Lambda Layer for dependencies (reuse from DeletionStack if available)
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,7 +34,7 @@ class ChatStack(Stack):
             self, "ChatDepsLayer",
             code=_lambda.Code.from_asset(os.path.join(project_root, "backend", "layers", "chat_deps")),
             compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
-            description="Dependencies for Chat Lambda (openai, pinecone)"
+            description="Dependencies for Chat Lambda (openai, boto3)"
         )
         
         # Chat Lambda Function
@@ -53,14 +51,14 @@ class ChatStack(Stack):
             layers=[deps_layer],
             environment={
                 "OPENAI_API_KEY": openai_api_key,
-                "OPENSEARCH_ENDPOINT": kwargs.get("opensearch_endpoint", ""),
+                "S3_VECTORS_BUCKET": "almabani-vectors",
                 "OPENAI_CHAT_MODEL": os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
             }
         )
         
-        # Grant OpenSearch Serverless data API access
+        # Grant S3 Vectors data API access
         chat_lambda.add_to_role_policy(iam.PolicyStatement(
-            actions=["aoss:APIAccessAll"],
+            actions=["s3vectors:*"],
             resources=["*"]
         ))
         

@@ -11,8 +11,7 @@ pyyaml>=6.0.0
 
 # AI & Vector Search
 openai>=1.0.0
-opensearch-py[async]>=2.5.0
-requests-aws4auth>=1.2.3
+# S3 Vectors uses boto3 natively (no extra deps needed)
 
 # CLI & Utilities
 typer>=0.9.0

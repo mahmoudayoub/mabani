@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import os
 
-from almabani.core.async_vector_store import get_async_vector_store
-
 logger = logging.getLogger(__name__)
 
 
@@ -141,32 +139,27 @@ class PriceCodeIndexer:
             
             vectors.append({
                 "id": vector_id,
-                "values": embedding,
-                "metadata": {
-                    "price_code": record["price_code"],
-                    "description": record["description"],
-                    "category": record["category"],
-                    "source_file": record["source_file"],
-                    "reference_sheet": record.get("reference_sheet", ""),
-                    "reference_category": record.get("reference_category", ""),
-                    "reference_row": record.get("reference_row", 0)
-                }
+                "embedding": embedding,
+                "price_code": record["price_code"],
+                "description": record["description"],
+                "category": record["category"],
+                "source_file": record["source_file"],
+                "reference_sheet": record.get("reference_sheet", ""),
+                "reference_category": record.get("reference_category", ""),
+                "reference_row": record.get("reference_row", 0)
             })
         
-        # Upsert to Pinecone using native async
+        # Upsert to OpenSearch using service wrapper
         if vector_store:
-            count = await vector_store.upsert(
-                vectors=vectors,
+            result = await vector_store.upload_vectors(
+                items=vectors,
                 namespace=namespace,
                 batch_size=batch_size
             )
+            count = result.get('uploaded_count', 0)
         else:
-            async with get_async_vector_store() as vs:
-                count = await vs.upsert(
-                    vectors=vectors,
-                    namespace=namespace,
-                    batch_size=batch_size
-                )
+            logger.error("No vector_store instance provided to VectorStoreIndexer")
+            count = 0
         
         logger.info(f"Successfully indexed {count} price codes")
         return count

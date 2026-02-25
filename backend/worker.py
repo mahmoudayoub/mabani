@@ -33,7 +33,7 @@ def get_services():
         max_retries=settings.openai_max_retries
     )
     
-    # get_opensearch_client now returns a fully configured VectorStoreService
+    # get_opensearch_client returns a fully configured VectorStoreService (now using S3 Vectors)
     vector_store_service = get_opensearch_client()
     
     embeddings_service = EmbeddingsService(
@@ -110,7 +110,7 @@ async def process_parse(input_path: Path, storage):
     # Also push parsed sheets into the vector index (sequential to avoid memory spikes)
     processor = JSONProcessor()
     indexer = VectorStoreIndexer(embeddings_service, vector_store_service)
-    namespace = settings.pinecone_namespace or ""
+    namespace = ""
     
     for f in output_files:
         try:
@@ -123,7 +123,7 @@ async def process_parse(input_path: Path, storage):
             await indexer.index_documents(
                 [doc],
                 embedding_batch_size=settings.batch_size,
-                upsert_batch_size=settings.batch_size, # Replaced pinecone_batch_size
+                upsert_batch_size=settings.batch_size,
                 namespace=namespace,
                 max_workers=settings.max_workers
             )
@@ -162,7 +162,7 @@ async def process_fill(input_path: Path, storage):
                 logger.info(f"DEBUG: Parsed sheets from S3 metadata: {selected_sheets}")
                 if selected_sheets:
                     filter_dict = {'sheet_name': {'$in': selected_sheets}}
-                    logger.info(f"DEBUG: Created Pinecone filter: {filter_dict}")
+                    logger.info(f"DEBUG: Created vector filter: {filter_dict}")
         except Exception as e:
             logger.warning(f"Failed to read S3 metadata: {e}. Will search all sheets.")
     else:
@@ -272,7 +272,7 @@ async def process_fill(input_path: Path, storage):
         result = await pipeline.process_file(
             input_file=input_path,
             output_file=output_path,
-            namespace=settings.pinecone_namespace or "",
+            namespace="",
             workers=settings.max_workers,
             filter_dict=filter_dict
         )

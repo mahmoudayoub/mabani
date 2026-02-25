@@ -22,7 +22,7 @@ OPENAI_CHAT_MODEL = os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini')
 
 # Initialize clients lazily
 _openai_client = None
-_pinecone_client = None
+_vector_store = None
 
 
 def get_openai_client():
@@ -38,26 +38,20 @@ def get_openai_client():
 
 
 def get_opensearch_client():
-    global _pinecone_client
-    if _pinecone_client is None:
+    global _vector_store
+    if _vector_store is None:
         from almabani.core.vector_store import VectorStoreService
         
-        # In Lambda env for chat, we get endpoint from env var directly
-        endpoint = os.environ.get('OPENSEARCH_ENDPOINT')
-        if not endpoint:
-            # Fallback for local testing if needed
-            from almabani.config.settings import get_settings
-            settings = get_settings()
-            endpoint = settings.opensearch_endpoint
-            
+        # In Lambda env for chat, we get bucket name from env var directly
+        bucket_name = os.environ.get('S3_VECTORS_BUCKET', 'almabani-vectors')
         region = os.environ.get('AWS_REGION', 'eu-west-1')
         
-        _pinecone_client = VectorStoreService(
-            endpoint=endpoint,
+        _vector_store = VectorStoreService(
+            bucket_name=bucket_name,
             region=region,
-            index_name='almabani' # Base index name
+            index_name='almabani'
         )
-    return _pinecone_client
+    return _vector_store
 
 
 def cors_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -184,7 +178,7 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
 
 
 def search_opensearch(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
-    """Search OpenSearch index for candidates."""
+    """Search vector store for candidates."""
     import asyncio
     vector_store = get_opensearch_client()
     

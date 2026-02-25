@@ -244,8 +244,8 @@ async def api_index():
         # Create or connect to index
         if create_new:
             await vector_store_service.create_index(
-                dimension=settings.pinecone_dimension,
-                metric=settings.pinecone_metric
+                dimension=settings.s3_vectors_dimension,
+                metric='cosine'
             )
         else:
             vector_store_service.get_index()
@@ -262,7 +262,7 @@ async def api_index():
         result = await indexer.index_documents(
             documents,
             embedding_batch_size=settings.batch_size,
-            upsert_batch_size=settings.batch_size, # Replaced pinecone_batch_size
+            upsert_batch_size=settings.batch_size,
             namespace=namespace,
             max_workers=settings.max_workers
         )
@@ -328,7 +328,7 @@ async def api_fill():
         settings, openai_async, embeddings_service, vector_store_service = get_services()
         
         # Apply defaults
-        namespace = namespace if namespace else (settings.pinecone_namespace or "")
+        namespace = namespace if namespace else ""
         threshold = threshold if threshold else settings.similarity_threshold
         top_k = top_k if top_k else settings.top_k
         

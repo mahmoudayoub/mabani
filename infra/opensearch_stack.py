@@ -89,7 +89,8 @@ class OpenSearchStack(Stack):
         self.collection = aoss.CfnCollection(
             self, "VectorSearchCollection",
             name=collection_name,
-            type="VECTORSEARCH"
+            type="VECTORSEARCH",
+            standby_replicas="DISABLED"
         )
 
         # Ensure policies are created before the collection

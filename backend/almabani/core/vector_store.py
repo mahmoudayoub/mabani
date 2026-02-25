@@ -1,7 +1,7 @@
 """
-Vector store service using OpenSearch Serverless.
+Vector store service using Amazon S3 Vectors.
 Handles index management, uploading, and querying.
-Matches the original Pinecone interface for backward compatibility.
+Replaces the previous OpenSearch Serverless implementation for cost savings.
 """
 import asyncio
 import logging
@@ -10,50 +10,43 @@ import unicodedata
 from typing import List, Dict, Any, Optional
 
 import boto3
-from opensearchpy import AsyncOpenSearch, RequestsHttpConnection, AWSV4SignerAuth
-from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStoreService:
-    """Manage OpenSearch Serverless vector store operations."""
+    """Manage S3 Vectors vector store operations."""
     
     def __init__(
         self,
-        endpoint: str,
-        region: str = 'eu-west-1', # Default to regional setup
+        bucket_name: str,
+        region: str = 'eu-west-1',
         index_name: str = 'almabani'
     ):
         """
         Initialize vector store service.
         
         Args:
-            endpoint: OpenSearch collection endpoint (e.g., https://xyz.region.aoss.amazonaws.com)
+            bucket_name: S3 Vectors bucket name
             region: AWS region
-            index_name: Name of the index to use/create
+            index_name: Name of the vector index
         """
-        if not endpoint:
-            raise ValueError("Must provide OpenSearch endpoint")
+        if not bucket_name:
+            raise ValueError("Must provide S3 Vectors bucket name")
             
-        # Clean up endpoint if it has no protocol
-        if not endpoint.startswith('http'):
-            endpoint = f"https://{endpoint}"
-            
-        self.endpoint = endpoint
+        self.bucket_name = bucket_name
         self.region = region
         self.index_name = index_name
-        self.client = None
+        self._client = None
         
-        logger.info(f"Initialized OpenSearch vector store service")
-        logger.info(f"Endpoint: {endpoint}, Index: {index_name}")
+        logger.info(f"Initialized S3 Vectors store service")
+        logger.info(f"Bucket: {bucket_name}, Index: {index_name}")
     
     @staticmethod
     def sanitize_id(id_str: str) -> str:
         """
-        Sanitize document ID.
-        OpenSearch is more permissive than Pinecone, but keeping this
-        for backward compatibility.
+        Sanitize document ID / vector key.
+        S3 Vectors keys must be unique within an index.
         """
         normalized = unicodedata.normalize('NFKD', id_str)
         ascii_str = ''.join(c for c in normalized if not unicodedata.combining(c))
@@ -62,32 +55,19 @@ class VectorStoreService:
         ascii_str = re.sub(r'_+', '_', ascii_str)
         return ascii_str
         
-    def get_client(self) -> AsyncOpenSearch:
-        """Initialize the OpenSearch client with AWS Auth."""
-        if self.client is not None:
-            return self.client
-            
-        credentials = boto3.Session().get_credentials()
-        # Ensure we use the proper service name 'aoss' for Serverless OpenSearch
-        auth = AWSV4SignerAuth(credentials, self.region, "aoss")
-        
-        self.client = AsyncOpenSearch(
-            hosts=[self.endpoint],
-            http_auth=auth,
-            use_ssl=True,
-            verify_certs=True,
-            connection_class=RequestsHttpConnection,
-            pool_maxsize=20
-        )
-        return self.client
-        
+    def get_client(self):
+        """Get the S3 Vectors boto3 client."""
+        if self._client is not None:
+            return self._client
+        self._client = boto3.client('s3vectors', region_name=self.region)
+        return self._client
+    
     def _get_target_index(self, namespace: str) -> str:
         """
-        Map Pinecone namespace to OpenSearch index name.
+        Map namespace to index name.
         If namespace is provided, append it to the base index name.
         """
         if namespace:
-            # OpenSearch index names must be lowercase and have no spaces
             clean_ns = namespace.lower().replace(" ", "-")
             return f"{self.index_name}-{clean_ns}"
         return self.index_name
@@ -100,54 +80,52 @@ class VectorStoreService:
         region: Optional[str] = None
     ):
         """
-        Create a new OpenSearch index with kNN mapping.
+        Create a new S3 Vectors index.
+        Will also create the vector bucket if it doesn't exist.
         """
         client = self.get_client()
         
-        # In this implementation, we map Pinecone 'namespaces' to actual indices 
-        # when upload/search happens, but we create the default/base index here.
-        index_name = self.index_name
+        # 1. Create the vector bucket (idempotent)
+        try:
+            await asyncio.to_thread(
+                client.create_vector_bucket,
+                vectorBucketName=self.bucket_name
+            )
+            logger.info(f"Vector bucket '{self.bucket_name}' created (or already exists)")
+        except client.exceptions.ConflictException:
+            logger.info(f"Vector bucket '{self.bucket_name}' already exists")
+        except Exception as e:
+            if 'ConflictException' in str(type(e).__name__) or 'already exists' in str(e).lower():
+                logger.info(f"Vector bucket '{self.bucket_name}' already exists")
+            else:
+                raise
         
-        exists = await client.indices.exists(index=index_name)
-        if exists:
-            logger.info(f"Index '{index_name}' already exists")
-            stats = await client.count(index=index_name)
-            logger.info(f"Current index stats: {stats.get('count', 0)} vectors")
-            return
+        # 2. Create the vector index
+        # Map metric name
+        distance_metric = 'cosine'
+        if metric == 'euclidean' or metric == 'l2':
+            distance_metric = 'euclidean'
             
-        logger.info(f"Creating new index '{index_name}'...")
-        logger.info(f"Dimension: {dimension}, Metric: {metric}")
-        
-        # Map metric parameter (Pinecone 'cosine' -> OS 'cosinesimil')
-        space_type = 'cosinesimil'
-        if metric == 'euclidean':
-            space_type = 'l2'
-        elif metric == 'dotproduct':
-            space_type = 'innerproduct'
-            
-        # Define settings and mapping for kNN
-        body = {
-            "settings": {
-                "index.knn": True
-            },
-            "mappings": {
-                "properties": {
-                    "embedding": {
-                        "type": "knn_vector",
-                        "dimension": dimension,
-                        "method": {
-                            "engine": "faiss",
-                            "name": "hnsw",
-                            "space_type": space_type
-                        }
-                    },
-                    "text": { "type": "text" }
+        try:
+            await asyncio.to_thread(
+                client.create_index,
+                vectorBucketName=self.bucket_name,
+                indexName=self.index_name,
+                dimension=dimension,
+                distanceMetric=distance_metric,
+                dataType='float32',
+                metadataConfiguration={
+                    'nonFilterableMetadataKeys': ['text', 'original_id', 'pinecone_namespace']
                 }
-            }
-        }
-        
-        await client.indices.create(index=index_name, body=body)
-        logger.info(f"Index '{index_name}' created successfully")
+            )
+            logger.info(f"Index '{self.index_name}' created successfully")
+        except client.exceptions.ConflictException:
+            logger.info(f"Index '{self.index_name}' already exists")
+        except Exception as e:
+            if 'ConflictException' in str(type(e).__name__) or 'already exists' in str(e).lower():
+                logger.info(f"Index '{self.index_name}' already exists")
+            else:
+                raise
     
     def prepare_vectors(
         self,
@@ -157,7 +135,7 @@ class VectorStoreService:
         text_field: str = 'text',
         metadata_field: str = 'metadata'
     ) -> List[tuple]:
-        """Keep identical exact signature as Pinecone implementation."""
+        """Keep identical exact signature as previous implementation."""
         vectors = []
         for item in items:
             original_id = str(item.get(id_field, ''))
@@ -184,104 +162,113 @@ class VectorStoreService:
     async def upload_vectors(
         self,
         items: List[Dict[str, Any]],
-        batch_size: int = 300,
+        batch_size: int = 50,
         namespace: str = '',
         max_workers: int = 200
     ) -> Dict[str, Any]:
         """
-        Upload documents to OpenSearch Serverless using the bulk API.
+        Upload documents to S3 Vectors using put_vectors.
+        S3 Vectors put_vectors has a limit on payload size,
+        so we batch into smaller chunks.
         """
         client = self.get_client()
         target_index = self._get_target_index(namespace)
         
-        # Ensure index exists before uploading (for namespaces acting as indexes)
+        # Ensure index exists for namespaces
         if target_index != self.index_name:
-            if not await client.indices.exists(index=target_index):
-                logger.info(f"[async] Auto-creating sub-index/namespace: {target_index}")
-                await self._create_sub_index(client, target_index)
+            await self._ensure_index(target_index)
 
         logger.info(f"[async] Preparing {len(items)} vectors for upload...")
         vectors = self.prepare_vectors(items)
-        logger.info(f"[async] Uploading {len(vectors)} vectors to OpenSearch ({target_index})...")
+        logger.info(f"[async] Uploading {len(vectors)} vectors to S3 Vectors ({target_index})...")
         
-        from opensearchpy.helpers.async_actions import async_bulk
+        success_count = 0
         
-        # Format for OpenSearch bulk API
-        actions = []
-        for vec_id, embedding, metadata in vectors:
-            doc = metadata.copy()
-            doc['embedding'] = embedding
+        for i in range(0, len(vectors), batch_size):
+            batch = vectors[i:i + batch_size]
             
-            action = {
-                "_index": target_index,
-                "_id": vec_id,
-                "_source": doc
-            }
-            actions.append(action)
+            s3_vectors = []
+            for vec_id, embedding, metadata in batch:
+                s3_vectors.append({
+                    'key': vec_id,
+                    'data': {'float32': embedding},
+                    'metadata': metadata
+                })
             
-        success, _ = await async_bulk(client, actions, chunk_size=batch_size)
+            try:
+                await asyncio.to_thread(
+                    client.put_vectors,
+                    vectorBucketName=self.bucket_name,
+                    indexName=target_index,
+                    vectors=s3_vectors
+                )
+                success_count += len(batch)
+            except Exception as e:
+                logger.error(f"Error uploading batch {i//batch_size}: {e}")
         
-        # Wait a moment for Near-Real-Time indexing to settle
-        await asyncio.sleep(2)
-        
-        stats = await client.count(index=target_index)
         result = {
-            'uploaded_count': success,
-            'total_vectors_in_index': stats.get('count', 0),
+            'uploaded_count': success_count,
+            'total_vectors_in_index': success_count,
             'index_name': self.index_name,
             'namespace': namespace
         }
         
-        logger.info(f"[async] Upload complete! {success} vectors uploaded")
-        logger.info(f"[async] Total vectors in index: {result['total_vectors_in_index']}")
+        logger.info(f"[async] Upload complete! {success_count} vectors uploaded")
         return result
-        
-    async def _create_sub_index(self, client, target_index: str, dimension: int = 1536):
-        """Helper to create sub-indexes with the proper mapping on demand."""
-        try:
-            body = {
-                "settings": {"index.knn": True},
-                "mappings": {
-                    "properties": {
-                        "embedding": {
-                            "type": "knn_vector",
-                            "dimension": dimension,
-                            "method": {
-                                "engine": "faiss",
-                                "name": "hnsw",
-                                "space_type": "cosinesimil"
-                            }
-                        },
-                        "text": { "type": "text" }
-                    }
-                }
-            }
-            await client.indices.create(index=target_index, body=body)
-        except Exception as e:
-            logger.warning(f"Error creating sub-index (might already exist): {e}")
     
-    def _convert_pinecone_filter(self, filter_dict: Dict[str, Any]) -> Dict[str, Any]:
+    async def _ensure_index(self, target_index: str, dimension: int = 1536):
+        """Helper to create sub-indexes on demand."""
+        client = self.get_client()
+        try:
+            await asyncio.to_thread(
+                client.create_index,
+                vectorBucketName=self.bucket_name,
+                indexName=target_index,
+                dimension=dimension,
+                distanceMetric='cosine',
+                dataType='float32',
+                metadataConfiguration={
+                    'nonFilterableMetadataKeys': ['text', 'original_id', 'pinecone_namespace']
+                }
+            )
+            logger.info(f"Sub-index '{target_index}' created")
+        except Exception as e:
+            if 'ConflictException' in str(type(e).__name__) or 'already exists' in str(e).lower():
+                pass  # Already exists, fine
+            else:
+                logger.warning(f"Error creating sub-index (might already exist): {e}")
+    
+    def _convert_pinecone_filter(self, filter_dict: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Convert Pinecone mongo-like filter syntax to OpenSearch query DSL.
-        Example Pinecone: {"sheet_name": {"$in": ["MEP", "Civil"]}}
-        Equivalent OS: {"terms": {"sheet_name": ["MEP", "Civil"]}}
+        Convert Pinecone mongo-like filter syntax to S3 Vectors filter format.
+        
+        S3 Vectors filter syntax: 
+        - {"key": {"$eq": "value"}} 
+        - {"$and": [{"key1": {"$eq": "val1"}}, {"key2": {"$eq": "val2"}}]}
+        - {"key": {"$in": ["val1", "val2"]}}
+        
+        Pinecone syntax is similar, so mostly pass-through, but we normalize.
         """
         if not filter_dict:
-            return {}
+            return None
             
-        must_clauses = []
+        # S3 Vectors supports similar filter syntax to Pinecone
+        # The $in, $eq operators are directly compatible
+        # We wrap multiple conditions in $and
+        conditions = []
         for field, condition in filter_dict.items():
             if isinstance(condition, dict):
-                for op, val in condition.items():
-                    if op == "$in":
-                        must_clauses.append({"terms": {field: val}})
-                    elif op == "$eq":
-                        must_clauses.append({"term": {field: val}})
-            elif isinstance(condition, str) or isinstance(condition, int):
+                # Already in operator format: {"$in": [...]} or {"$eq": "..."}
+                conditions.append({field: condition})
+            elif isinstance(condition, (str, int, float, bool)):
                 # Implicit equality
-                must_clauses.append({"term": {field: condition}})
+                conditions.append({field: {"$eq": condition}})
                 
-        return {"bool": {"must": must_clauses}} if must_clauses else {}
+        if len(conditions) == 1:
+            return conditions[0]
+        elif len(conditions) > 1:
+            return {"$and": conditions}
+        return None
     
     async def search(
         self,
@@ -292,52 +279,35 @@ class VectorStoreService:
         include_metadata: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Search for similar vectors in OpenSearch.
-        Matches Pinecone's exact return dictionary structure.
+        Search for similar vectors using S3 Vectors query_vectors.
+        Returns results matching the previous interface.
         """
         client = self.get_client()
         target_index = self._get_target_index(namespace)
         
         try:
-            # Check if index exists to prevent 404 errors during search
-            if not await client.indices.exists(index=target_index):
-                logger.warning(f"Cannot search: Index {target_index} does not exist yet")
-                return []
-                
-            query = {
-                "size": top_k,
-                "_source": include_metadata,
-                "query": {
-                    "knn": {
-                        "embedding": {
-                            "vector": query_embedding,
-                            "k": top_k
-                        }
-                    }
-                }
+            kwargs = {
+                'vectorBucketName': self.bucket_name,
+                'indexName': target_index,
+                'topK': top_k,
+                'queryVector': {'float32': query_embedding},
+                'returnMetadata': include_metadata,
+                'returnDistance': True
             }
             
-            # Apply metadata filtering if provided
-            os_filter = self._convert_pinecone_filter(filter_dict)
-            if os_filter:
-                query["query"]["knn"]["embedding"]["filter"] = os_filter
+            # Apply metadata filter
+            s3_filter = self._convert_pinecone_filter(filter_dict)
+            if s3_filter:
+                kwargs['filter'] = s3_filter
                 
-            response = await client.search(index=target_index, body=query)
+            response = await asyncio.to_thread(client.query_vectors, **kwargs)
             
             matches = []
-            hits = response.get('hits', {}).get('hits', [])
-            
-            for hit in hits:
-                source = hit.get('_source', {})
-                # OS returns score differently (typically 1.0 + something, we extract original metric)
-                # But we just pass the raw score it gives us.
-                
-                # Separate system fields from metadata
-                metadata = {k: v for k, v in source.items() if k != 'embedding'}
-                
+            for vec in response.get('vectors', []):
+                metadata = vec.get('metadata', {}) or {}
                 matches.append({
-                    'id': hit.get('_id'),
-                    'score': hit.get('_score', 0.0),
+                    'id': vec.get('key', ''),
+                    'score': 1.0 - vec.get('distance', 1.0),  # Convert distance to similarity score
                     'text': metadata.get('text', ''),
                     'metadata': metadata
                 })
@@ -348,12 +318,97 @@ class VectorStoreService:
             logger.error(f"Error executing search against {target_index}: {str(e)}")
             return []
     
+    async def delete_by_metadata(
+        self,
+        filter_dict: Dict[str, Any],
+        namespace: str = ''
+    ) -> int:
+        """
+        Delete vectors matching a metadata filter.
+        S3 Vectors doesn't support delete_by_query, so we:
+        1. Query to find matching vector keys  
+        2. Delete by keys
+        """
+        client = self.get_client()
+        target_index = self._get_target_index(namespace)
+        
+        # Use a dummy zero vector for the query - we just want to find matching keys
+        # We'll use list_vectors with pagination instead if possible
+        deleted_count = 0
+        
+        try:
+            # List all vectors and filter manually, or query with a large topK
+            # S3 Vectors list_vectors + get_vectors approach
+            paginator = client.get_paginator('list_vectors')
+            keys_to_delete = []
+            
+            for page in paginator.paginate(
+                vectorBucketName=self.bucket_name,
+                indexName=target_index
+            ):
+                for vec in page.get('vectors', []):
+                    vec_key = vec.get('key', '')
+                    keys_to_delete.append(vec_key)
+            
+            # Now get metadata for each batch to filter
+            batch_size = 100
+            matching_keys = []
+            
+            for i in range(0, len(keys_to_delete), batch_size):
+                batch_keys = keys_to_delete[i:i + batch_size]
+                get_resp = await asyncio.to_thread(
+                    client.get_vectors,
+                    vectorBucketName=self.bucket_name,
+                    indexName=target_index,
+                    keys=batch_keys,
+                    returnMetadata=True
+                )
+                
+                for vec in get_resp.get('vectors', []):
+                    metadata = vec.get('metadata', {}) or {}
+                    # Check if this vector matches the filter
+                    if self._metadata_matches_filter(metadata, filter_dict):
+                        matching_keys.append(vec.get('key'))
+            
+            # Delete matching vectors in batches
+            for i in range(0, len(matching_keys), batch_size):
+                batch = matching_keys[i:i + batch_size]
+                await asyncio.to_thread(
+                    client.delete_vectors,
+                    vectorBucketName=self.bucket_name,
+                    indexName=target_index,
+                    keys=batch
+                )
+                deleted_count += len(batch)
+                
+            logger.info(f"Deleted {deleted_count} vectors matching filter from {target_index}")
+            
+        except Exception as e:
+            logger.error(f"Error deleting by metadata: {e}")
+        
+        return deleted_count
+    
+    def _metadata_matches_filter(self, metadata: Dict, filter_dict: Dict) -> bool:
+        """Check if vector metadata matches a Pinecone-style filter."""
+        for field, condition in filter_dict.items():
+            value = metadata.get(field)
+            if isinstance(condition, dict):
+                for op, expected in condition.items():
+                    if op == '$eq' and value != expected:
+                        return False
+                    elif op == '$in' and value not in expected:
+                        return False
+                    elif op == '$ne' and value == expected:
+                        return False
+            elif value != condition:
+                return False
+        return True
+    
     def delete_namespace(self, namespace: str):
-        """Delete all vectors in a namespace."""
+        """Delete all vectors in a namespace (= delete the sub-index)."""
         logger.warning(f"Deleting namespace '{namespace}'...")
         target_index = self._get_target_index(namespace)
         
-        # We need to run sync from async (or just wrap in a loop to match original sync signature)
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -365,19 +420,36 @@ class VectorStoreService:
             
     async def _delete_namespace_async(self, target_index: str, namespace: str):
         client = self.get_client()
-        exists = await client.indices.exists(index=target_index)
-        if not exists:
-            return
-            
+        
         if target_index != self.index_name:
-            # If it's a dedicated sub-index, just delete the index
-            await client.indices.delete(index=target_index)
+            # Delete the entire sub-index
+            try:
+                await asyncio.to_thread(
+                    client.delete_index,
+                    vectorBucketName=self.bucket_name,
+                    indexName=target_index
+                )
+            except Exception as e:
+                logger.warning(f"Error deleting index {target_index}: {e}")
         else:
-            # If it's the main index (empty namespace), delete all docs
-            await client.delete_by_query(
-                index=target_index,
-                body={"query": {"match_all": {}}}
-            )
+            # Delete all vectors in the main index via list+delete
+            try:
+                paginator = client.get_paginator('list_vectors')
+                for page in paginator.paginate(
+                    vectorBucketName=self.bucket_name,
+                    indexName=target_index
+                ):
+                    keys = [v['key'] for v in page.get('vectors', [])]
+                    if keys:
+                        await asyncio.to_thread(
+                            client.delete_vectors,
+                            vectorBucketName=self.bucket_name,
+                            indexName=target_index,
+                            keys=keys
+                        )
+            except Exception as e:
+                logger.warning(f"Error clearing index {target_index}: {e}")
+                
         logger.info(f"Namespace '{namespace}' deleted")
     
     def delete_index(self):
@@ -395,10 +467,15 @@ class VectorStoreService:
             
     async def _delete_index_async(self):
         client = self.get_client()
-        exists = await client.indices.exists(index=self.index_name)
-        if exists:
-            await client.indices.delete(index=self.index_name)
-        self.client = None
+        try:
+            await asyncio.to_thread(
+                client.delete_index,
+                vectorBucketName=self.bucket_name,
+                indexName=self.index_name
+            )
+        except Exception as e:
+            logger.warning(f"Error deleting index: {e}")
+        self._client = None
         logger.info(f"Index '{self.index_name}' deleted")
     
     def get_stats(self, namespace: str = '') -> Dict[str, Any]:
@@ -407,15 +484,12 @@ class VectorStoreService:
         stats = {'total_vectors': 0, 'dimension': 0}
         
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We can't block easily here if returning a dict right away.
-                # Usually get_stats is called via CLI which isn't already running a loop 
-                # or from a sync endpoint.
-                pass 
-            else:
-                count_resp = loop.run_until_complete(self._get_stats_async(target_index))
-                stats['total_vectors'] = count_resp
+            client = self.get_client()
+            resp = client.get_index(
+                vectorBucketName=self.bucket_name,
+                indexName=target_index
+            )
+            stats['total_vectors'] = resp.get('index', {}).get('vectorCount', 0)
         except Exception as e:
             logger.error(f"Error getting stats: {e}")
         
@@ -425,10 +499,3 @@ class VectorStoreService:
             'index_name': self.index_name,
             'namespace': namespace
         }
-        
-    async def _get_stats_async(self, target_index: str) -> int:
-        client = self.get_client()
-        if await client.indices.exists(index=target_index):
-            resp = await client.count(index=target_index)
-            return resp.get('count', 0)
-        return 0

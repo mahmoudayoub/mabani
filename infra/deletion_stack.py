@@ -17,10 +17,8 @@ class DeletionStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, 
                  shared_bucket: s3.IBucket = None,
                  pricecode_bucket: s3.IBucket = None,
-                 opensearch_endpoint: str = None,
                  **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        self.opensearch_endpoint = opensearch_endpoint
 
         # 1. Access Shared Bucket
         if shared_bucket:
@@ -44,18 +42,22 @@ class DeletionStack(Stack):
         dependencies_layer = _lambda.LayerVersion(self, "DeletionDependenciesLayer",
             code=_lambda.Code.from_asset(layer_dir),
             compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
-            description="Dependencies for deletion lambda (pinecone-client, boto3)"
+            description="Dependencies for deletion lambda (boto3)"
         )
         
         deletion_lambda = _lambda.Function(self, "DeleteDatasheetLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_datasheet", 
-            code=_lambda.Code.from_asset(backend_dir),
+            code=_lambda.Code.from_asset(backend_dir, exclude=[
+                "*.pyc", "__pycache__", ".venv", "venv", "tests",
+                "data", "layers", "*.xlsx", "*.json", "scripts",
+                "app", ".env", "*.egg-info"
+            ]),
             layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
-                "OPENSEARCH_ENDPOINT": kwargs.get("opensearch_endpoint", "")
+                "S3_VECTORS_BUCKET": "almabani-vectors"
             },
             timeout=Duration.seconds(30)
         )
@@ -65,12 +67,16 @@ class DeletionStack(Stack):
         pc_deletion_lambda = _lambda.Function(self, "DeletePriceCodeLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_price_code_set",
-            code=_lambda.Code.from_asset(backend_dir),
+            code=_lambda.Code.from_asset(backend_dir, exclude=[
+                "*.pyc", "__pycache__", ".venv", "venv", "tests",
+                "data", "layers", "*.xlsx", "*.json", "scripts",
+                "app", ".env", "*.egg-info"
+            ]),
             layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
-                "OPENSEARCH_ENDPOINT": kwargs.get("opensearch_endpoint", "")
+                "S3_VECTORS_BUCKET": "almabani-vectors"
             },
             timeout=Duration.seconds(30)
         )
@@ -80,18 +86,18 @@ class DeletionStack(Stack):
         if pc_bucket:
             pc_bucket.grant_read_write(pc_deletion_lambda)
             
-        # Grant OpenSearch Serverless data API access
-        aoss_policy = iam.PolicyStatement(
-            actions=["aoss:APIAccessAll"],
+        # Grant S3 Vectors data API access
+        s3v_policy = iam.PolicyStatement(
+            actions=["s3vectors:*"],
             resources=["*"]
         )
-        deletion_lambda.add_to_role_policy(aoss_policy)
-        pc_deletion_lambda.add_to_role_policy(aoss_policy)
+        deletion_lambda.add_to_role_policy(s3v_policy)
+        pc_deletion_lambda.add_to_role_policy(s3v_policy)
         
         # 4. API Gateway
         api = apigw.RestApi(self, "DeletionApi",
             rest_api_name="Almabani Sheet Deletion",
-            description="API for deleting datasheets from Pinecone and Registry",
+            description="API for deleting datasheets and vectors",
             default_cors_preflight_options=apigw.CorsOptions(
                 allow_origins=apigw.Cors.ALL_ORIGINS,
                 allow_methods=apigw.Cors.ALL_METHODS

@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     
     Pydantic-settings automatically maps:
     - OPENAI_API_KEY env var -> openai_api_key field
-    - PINECONE_API_KEY env var -> pinecone_api_key field
+    - S3_VECTORS_BUCKET env var -> s3_vectors_bucket field
     etc. (case-insensitive matching)
     """
     
@@ -51,12 +51,10 @@ class Settings(BaseSettings):
     openai_max_retries: int = 3
     openai_timeout: int = 60
     
-    # ==================== OpenSearch Settings ====================
-    opensearch_endpoint: str
-    pinecone_index_name: str = 'almabani' # Keeping the name for backward compat as base index
-    pinecone_namespace: Optional[str] = None
-    pinecone_dimension: int = 1536
-    pinecone_metric: str = 'cosine'
+    # ==================== S3 Vectors Settings ====================
+    s3_vectors_bucket: str = 'almabani-vectors'
+    s3_vectors_index_name: str = 'almabani'
+    s3_vectors_dimension: int = 1536
     
     # ==================== Storage Settings ====================
     storage_type: str = 's3'  # 'local' or 's3'
@@ -70,7 +68,6 @@ class Settings(BaseSettings):
     # ==================== Processing Settings ====================
     batch_size: int = 500
     max_workers: int = 200
-    pinecone_batch_size: int = 300
     max_concurrent: int = 20  # Max concurrent matching tasks
     
     # ==================== Rate Limits ====================
@@ -148,13 +145,12 @@ def get_openai_client():
 
 
 def get_opensearch_client():
-    """Get configured OpenSearch client."""
+    """Get configured vector store client (S3 Vectors)."""
     from almabani.core.vector_store import VectorStoreService
     settings = get_settings()
-    # We return the VectorStoreService instance directly instead of a raw client
-    # because it encapsulates the AWS auth logic
+    # We return the VectorStoreService instance directly
     return VectorStoreService(
-        endpoint=settings.opensearch_endpoint,
+        bucket_name=settings.s3_vectors_bucket,
         region=settings.aws_region,
-        index_name=settings.pinecone_index_name
+        index_name=settings.s3_vectors_index_name
     )

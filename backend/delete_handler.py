@@ -40,37 +40,35 @@ def delete_datasheet(event, context):
         
     print(f"Deleting datasheet: {sheet_name}")
 
-    # 1. Delete from OpenSearch
-    endpoint = os.environ.get("OPENSEARCH_ENDPOINT")
+    # 1. Delete from S3 Vectors
+    bucket_name = os.environ.get("S3_VECTORS_BUCKET", "almabani-vectors")
     index_name = os.environ.get("OPENSEARCH_INDEX_NAME", "almabani")
     region = os.environ.get("AWS_REGION", "eu-west-1")
     
-    if endpoint:
+    if bucket_name:
         try:
             from almabani.core.vector_store import VectorStoreService
             import asyncio
             
-            # Use vector store service for standard connection handling
             vector_store = VectorStoreService(
-                endpoint=endpoint,
+                bucket_name=bucket_name,
                 region=region,
                 index_name=index_name
             )
-            client = vector_store.get_client()
             
-            # Execute deletion asynchronously
             async def run_delete():
-                query = {"query": {"term": {"sheet_name": sheet_name}}}
-                await client.delete_by_query(index=index_name, body=query)
+                await vector_store.delete_by_metadata(
+                    filter_dict={"sheet_name": {"$eq": sheet_name}}
+                )
                 
             loop = asyncio.get_event_loop()
             loop.run_until_complete(run_delete())
             print(f"Deleted vectors for sheet: {sheet_name} from index {index_name}")
         except Exception as e:
-            print(f"OpenSearch deletion failed: {e}")
+            print(f"Vector store deletion failed: {e}")
             return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})
     else:
-        print("Skipping OpenSearch deletion (missing endpoint)")
+        print("Skipping vector deletion (missing bucket name)")
             
     # 2. Update Registry in S3
     try:
@@ -132,35 +130,35 @@ def delete_price_code_set(event, context):
         
     print(f"Deleting Price Code Set: {set_name}")
 
-    # 1. Delete from OpenSearch
-    endpoint = os.environ.get("OPENSEARCH_ENDPOINT")
+    # 1. Delete from S3 Vectors
+    bucket_name = os.environ.get("S3_VECTORS_BUCKET", "almabani-vectors")
     index_name = os.environ.get("PRICECODE_INDEX_NAME", "almabani-pricecode")
     region = os.environ.get("AWS_REGION", "eu-west-1")
     
-    if endpoint:
+    if bucket_name:
         try:
             from almabani.core.vector_store import VectorStoreService
             import asyncio
             
             vector_store = VectorStoreService(
-                endpoint=endpoint,
+                bucket_name=bucket_name,
                 region=region,
                 index_name=index_name
             )
-            client = vector_store.get_client()
             
             async def run_delete():
-                query = {"query": {"term": {"source_file": set_name}}}
-                await client.delete_by_query(index=index_name, body=query)
+                await vector_store.delete_by_metadata(
+                    filter_dict={"source_file": {"$eq": set_name}}
+                )
                 
             loop = asyncio.get_event_loop()
             loop.run_until_complete(run_delete())
             print(f"Deleted vectors for set: {set_name} from index {index_name}")
         except Exception as e:
-            print(f"OpenSearch deletion failed: {e}")
+            print(f"Vector store deletion failed: {e}")
             return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})
     else:
-        print("Skipping OpenSearch deletion (missing endpoint)")
+        print("Skipping vector deletion (missing bucket name)")
             
     # 2. Update Registry in PRICECODE_BUCKET
     bucket = os.environ.get("PRICECODE_BUCKET")

@@ -38,10 +38,8 @@ class PriceCodeStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, 
                  shared_vpc: ec2.IVpc = None,
                  shared_bucket: s3.IBucket = None,
-                 opensearch_endpoint: str = None,
                  **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        self.opensearch_endpoint = opensearch_endpoint
 
         # 1. VPC - use shared or create new
         if shared_vpc:
@@ -115,7 +113,7 @@ class PriceCodeStack(Stack):
                 "STORAGE_TYPE": "s3",
                 "S3_BUCKET_NAME": bucket.bucket_name,
                 "AWS_REGION": self.region,
-                "OPENSEARCH_ENDPOINT": kwargs.get("opensearch_endpoint", ""),
+                "S3_VECTORS_BUCKET": "almabani-vectors",
                 # Price code settings (can override via env)
                 "PRICECODE_TOP_K": os.getenv("PRICECODE_TOP_K", "20"),
                 "PRICECODE_BATCH_SIZE": os.getenv("PRICECODE_BATCH_SIZE", "100"),
@@ -128,9 +126,9 @@ class PriceCodeStack(Stack):
         # Grant permissions
         bucket.grant_read_write(task_def.task_role)
         
-        # Grant OpenSearch Serverless data API access
+        # Grant S3 Vectors data API access
         task_def.task_role.add_to_policy(iam.PolicyStatement(
-            actions=["aoss:APIAccessAll"],
+            actions=["s3vectors:*"],
             resources=["*"]
         ))
 

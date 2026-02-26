@@ -18,7 +18,7 @@ from werkzeug.utils import secure_filename
 from openai import AsyncOpenAI
 
 # Almabani imports
-from almabani.config.settings import get_settings, get_openai_client, get_opensearch_client
+from almabani.config.settings import get_settings, get_openai_client, get_vector_store
 from almabani.config.logging_config import setup_logging
 from almabani.parsers.pipeline import ExcelToJsonPipeline
 from almabani.vectorstore.indexer import JSONProcessor, VectorStoreIndexer
@@ -66,7 +66,7 @@ def get_services():
         max_workers=settings.max_workers
     )
     
-    vector_store_service = get_opensearch_client()
+    vector_store_service = get_vector_store()
     
     return settings, openai_async, embeddings_service, vector_store_service
 
@@ -459,7 +459,7 @@ def settings_page():
     # Get index stats if possible
     index_stats = None
     try:
-        vector_store = get_opensearch_client()
+        vector_store = get_vector_store()
         index_stats = vector_store.get_stats()
     except Exception as e:
         logger.warning(f"Could not get index stats: {e}")
@@ -528,7 +528,7 @@ def list_json_files():
 def api_index_stats():
     """Get vector store index statistics."""
     try:
-        vector_store = get_opensearch_client()
+        vector_store = get_vector_store()
         stats = vector_store.get_stats()
         
         return jsonify({

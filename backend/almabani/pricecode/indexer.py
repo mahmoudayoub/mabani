@@ -1,7 +1,7 @@
 """
-Price Code Indexer - Index price codes from Excel files into Pinecone.
+Price Code Indexer - Index price codes from Excel files into S3 Vectors.
 
-Uses native async Pinecone operations.
+Uses async S3 Vectors operations.
 """
 
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class PriceCodeIndexer:
     """
-    Index price codes from Excel files into Pinecone vector store.
+    Index price codes from Excel files into S3 Vectors store.
     
     Each vector represents a price code with:
     - Embedding of the description
@@ -103,7 +103,7 @@ class PriceCodeIndexer:
         vector_store: Any = None
     ) -> int:
         """
-        Embed and upsert records to Pinecone using native async.
+        Embed and upsert records using async S3 Vectors.
         
         Returns: Number of vectors indexed
         """
@@ -128,28 +128,33 @@ class PriceCodeIndexer:
             all_embeddings.extend(embeddings)
             logger.info(f"Embedded batch {i//batch_size + 1}/{(len(texts) + batch_size - 1)//batch_size}")
         
-        # Prepare vectors for upsert
+        # Prepare vectors for upsert.
+        # Keep the same shape expected by VectorStoreService.prepare_vectors():
+        # id + text + embedding + metadata
         vectors = []
         for idx, (record, embedding) in enumerate(zip(records, all_embeddings)):
             # Use reference_row as the unique ID part (it's absolute Excel row)
             ref_row = record.get('reference_row', idx)
             vector_id = f"pc_{record['source_file']}_{record['category']}_{ref_row}"
-            # Sanitize ID for Pinecone
+            # Sanitize ID for S3 Vectors
             vector_id = vector_id.replace(' ', '_').replace('/', '_')[:512]
             
             vectors.append({
                 "id": vector_id,
+                "text": record["description"],
                 "embedding": embedding,
-                "price_code": record["price_code"],
-                "description": record["description"],
-                "category": record["category"],
-                "source_file": record["source_file"],
-                "reference_sheet": record.get("reference_sheet", ""),
-                "reference_category": record.get("reference_category", ""),
-                "reference_row": record.get("reference_row", 0)
+                "metadata": {
+                    "price_code": record["price_code"],
+                    "description": record["description"],
+                    "category": record["category"],
+                    "source_file": record["source_file"],
+                    "reference_sheet": record.get("reference_sheet", ""),
+                    "reference_category": record.get("reference_category", ""),
+                    "reference_row": record.get("reference_row", 0)
+                }
             })
         
-        # Upsert to OpenSearch using service wrapper
+        # Upsert to S3 Vectors using service wrapper
         if vector_store:
             result = await vector_store.upload_vectors(
                 items=vectors,

@@ -2,7 +2,7 @@
 Price Code Worker - Fargate worker for price code indexing and allocation.
 
 Modes:
-- INDEX: Index price codes from Excel files into Pinecone
+- INDEX: Index price codes from Excel files into vector store
 - ALLOCATE: Allocate price codes to BOQ items
 """
 
@@ -35,7 +35,7 @@ logger = logging.getLogger("pricecode_worker")
 
 def get_services():
     """Initialize all required services"""
-    from almabani.config.settings import get_opensearch_client
+    from almabani.config.settings import get_vector_store
     settings = get_settings()
     
     openai_async = AsyncOpenAI(
@@ -44,8 +44,7 @@ def get_services():
         max_retries=settings.openai_max_retries
     )
     
-    # get_opensearch_client now returns a fully configured VectorStoreService
-    vector_store_service = get_opensearch_client()
+    vector_store_service = get_vector_store()
     # Override index name for price code specific operations
     vector_store_service.index_name = os.getenv('PRICECODE_INDEX_NAME', 'almabani-pricecode')
     
@@ -60,7 +59,7 @@ def get_services():
 
 async def process_index(input_path: Path, storage):
     """
-    Index price codes from Excel file into Pinecone.
+    Index price codes from Excel file into vector store.
     """
     logger.info(f"Starting INDEX job for {input_path}")
     

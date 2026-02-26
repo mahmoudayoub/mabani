@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from almabani.core.storage import get_storage
 from almabani.parsers.pipeline import ExcelToJsonPipeline
 from almabani.rate_matcher.matcher import RateMatcher
-from almabani.config.settings import get_settings, get_openai_client, get_opensearch_client
+from almabani.config.settings import get_settings, get_openai_client, get_vector_store
 from almabani.core.embeddings import EmbeddingsService
 from almabani.core.vector_store import VectorStoreService
 from almabani.rate_matcher.pipeline import RateFillerPipeline
@@ -33,8 +33,7 @@ def get_services():
         max_retries=settings.openai_max_retries
     )
     
-    # get_opensearch_client returns a fully configured VectorStoreService (now using S3 Vectors)
-    vector_store_service = get_opensearch_client()
+    vector_store_service = get_vector_store()
     
     embeddings_service = EmbeddingsService(
         async_client=openai_async,

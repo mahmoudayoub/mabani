@@ -36,6 +36,12 @@ class ChatStack(Stack):
             compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
             description="Dependencies for Chat Lambda (openai, boto3)"
         )
+        aio_deps_layer = _lambda.LayerVersion(
+            self, "ChatAioDepsLayer",
+            code=_lambda.Code.from_asset(os.path.join(project_root, "infra", "layers", "deletion_dependencies")),
+            compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
+            description="Async AWS deps for Chat Lambda (aioboto3/aiobotocore)"
+        )
         
         # Chat Lambda Function
         chat_lambda = _lambda.Function(
@@ -48,7 +54,7 @@ class ChatStack(Stack):
             ]),
             timeout=Duration.seconds(120),  # 2 minutes for long LLM calls
             memory_size=1024,
-            layers=[deps_layer],
+            layers=[deps_layer, aio_deps_layer],
             environment={
                 "OPENAI_API_KEY": openai_api_key,
                 "S3_VECTORS_BUCKET": "almabani-vectors",

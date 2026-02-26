@@ -37,7 +37,7 @@ def get_openai_client():
     return _openai_client
 
 
-def get_opensearch_client():
+def get_vector_store():
     global _vector_store
     if _vector_store is None:
         from almabani.core.vector_store import VectorStoreService
@@ -177,10 +177,10 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
         return {"valid": True, "refined_query": message}
 
 
-def search_opensearch(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
+def search_vectors(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
     """Search vector store for candidates."""
     import asyncio
-    vector_store = get_opensearch_client()
+    vector_store = get_vector_store()
     
     # Set top_k based on type (price code needs more candidates)
     if top_k is None:
@@ -190,7 +190,7 @@ def search_opensearch(query: str, chat_type: str, top_k: int = None) -> List[Dic
     if chat_type == "pricecode":
         index_name = os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode')
     else:  # unitrate
-        index_name = os.environ.get('OPENSEARCH_INDEX_NAME', 'almabani')
+        index_name = os.environ.get('S3_VECTORS_INDEX_NAME', 'almabani')
         
     # Temporarily override index name for this search
     # (Since Lambda uses a single instance for warm starts)
@@ -584,7 +584,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Trigger lazy imports/loading
             try:
                 get_openai_client()
-                get_opensearch_client()
+                get_vector_store()
                 logger.info("Libraries warmed up.")
             except Exception as e:
                 logger.warning(f"Warmup library load warning: {e}")
@@ -636,8 +636,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         search_query = validation.get("refined_query", message)
         
-        # Stage 2: Search OpenSearch for candidates
-        candidates = search_opensearch(search_query, chat_type)
+        # Stage 2: Search vector store for candidates
+        candidates = search_vectors(search_query, chat_type)
         
         if not candidates:
              return {

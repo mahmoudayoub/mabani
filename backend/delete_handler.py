@@ -42,7 +42,7 @@ def delete_datasheet(event, context):
 
     # 1. Delete from S3 Vectors
     bucket_name = os.environ.get("S3_VECTORS_BUCKET", "almabani-vectors")
-    index_name = os.environ.get("OPENSEARCH_INDEX_NAME", "almabani")
+    index_name = os.environ.get("S3_VECTORS_INDEX_NAME", "almabani")
     region = os.environ.get("AWS_REGION", "eu-west-1")
     
     if bucket_name:

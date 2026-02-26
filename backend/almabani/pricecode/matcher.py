@@ -1,7 +1,7 @@
 """
 Price Code Matcher - One-shot matching of descriptions to price codes.
 
-Uses native async Pinecone operations.
+Uses async S3 Vectors operations.
 """
 
 import logging
@@ -52,7 +52,7 @@ class PriceCodeMatcher:
         Search for candidate price codes using native async vector similarity.
         
         Args:
-            filter_dict: Optional Pinecone filter
+            filter_dict: Optional metadata filter
             vector_store: Optional shared AsyncVectorStore instance
         
         Returns list of candidates with price_code, description, score
@@ -61,7 +61,7 @@ class PriceCodeMatcher:
         embeddings = await self.embeddings_service.generate_embeddings_batch([description])
         query_embedding = embeddings[0]
         
-        # Search Pinecone (reuse shared connection or create new one)
+        # Search vector store (reuse shared connection or create new one)
         if vector_store:
             matches = await vector_store.query(
                 vector=query_embedding,

@@ -99,7 +99,7 @@ class RateMatcher:
             item_code: Optional item code
             parent: Parent description (immediate level above)
             grandparent: Grandparent description (two levels above)
-            namespace: Pinecone namespace
+            namespace: Vector store namespace
             
         Returns:
             Dictionary with match results
@@ -719,7 +719,7 @@ async def process_items_parallel(
         rate_matcher: RateMatcher instance
         items: List of items to process
         max_workers: Number of parallel workers (concurrency limit)
-        namespace: Pinecone namespace
+        namespace: Vector store namespace
         
     Returns:
         List of results

@@ -12,7 +12,7 @@ from rich import print as rprint
 import logging
 from openai import AsyncOpenAI
 
-from almabani.config.settings import get_settings, get_openai_client, get_opensearch_client
+from almabani.config.settings import get_settings, get_openai_client, get_vector_store
 from almabani.config.logging_config import setup_logging
 from almabani.parsers.pipeline import ExcelToJsonPipeline
 from almabani.vectorstore.indexer import JSONProcessor, VectorStoreIndexer
@@ -71,9 +71,9 @@ def parse(
 @app.command()
 def index(
     input_path: Path = typer.Argument(..., help="JSON file or directory to index"),
-    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Pinecone namespace"),
+    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Vector store namespace"),
     batch_size: Optional[int] = typer.Option(None, "--batch-size", "-b", help="Embedding batch size"),
-    upsert_batch_size: Optional[int] = typer.Option(None, "--upsert-batch-size", "-u", help="Pinecone upsert batch size"),
+    upsert_batch_size: Optional[int] = typer.Option(None, "--upsert-batch-size", "-u", help="Vector upsert batch size"),
     create_index: bool = typer.Option(False, "--create", "-c", help="Create index if doesn't exist"),
     workers: Optional[int] = typer.Option(None, "--workers", "-w", help="Number of parallel workers"),
     log_file: Optional[Path] = typer.Option(None, "--log", "-l", help="Log file path")
@@ -99,12 +99,11 @@ def index(
             timeout=settings.openai_timeout,
             max_retries=settings.openai_max_retries
         )
-        pinecone_client = get_pinecone_client()
         
         # Apply defaults from settings when CLI values are not provided
-        namespace = namespace if namespace is not None else (settings.pinecone_namespace or "")
+        namespace = namespace or ""
         batch_size = batch_size if batch_size is not None else settings.batch_size
-        upsert_batch_size = upsert_batch_size if upsert_batch_size is not None else settings.batch_size # Replaced pinecone_batch_size
+        upsert_batch_size = upsert_batch_size if upsert_batch_size is not None else settings.batch_size
         workers = workers if workers is not None else settings.max_workers
         
         # Create services
@@ -115,16 +114,15 @@ def index(
             max_workers=workers
         )
         
-        vector_store_service = get_opensearch_client()
+        vector_store_service = get_vector_store()
         
         # Create or connect to index
         if create_index:
             asyncio.run(vector_store_service.create_index(
-                dimension=settings.pinecone_dimension,
-                metric=settings.pinecone_metric
+                dimension=settings.s3_vectors_dimension
             ))
         else:
-            vector_store_service.get_client() # Will initialize the connection
+            vector_store_service.get_client()
         
         # Process JSON files
         processor = JSONProcessor()
@@ -163,7 +161,7 @@ def fill(
     input_file: Path = typer.Argument(..., help="Excel BOQ file to fill"),
     sheet_name: Optional[str] = typer.Argument(None, help="Sheet name to process (defaults to first sheet)"),
     output_file: Optional[Path] = typer.Option(None, "--output", "-o", help="Output Excel file"),
-    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Pinecone namespace"),
+    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Vector store namespace"),
     threshold: Optional[float] = typer.Option(None, "--threshold", "-t", help="Similarity threshold"),
     top_k: Optional[int] = typer.Option(None, "--top-k", "-k", help="Number of candidates"),
     workers: Optional[int] = typer.Option(None, "--workers", "-w", help="Number of parallel workers"),
@@ -191,10 +189,9 @@ def fill(
             timeout=settings.openai_timeout,
             max_retries=settings.openai_max_retries
         )
-        pinecone_client = get_pinecone_client()
         
         # Create services
-        namespace = namespace if namespace is not None else (settings.pinecone_namespace or "")
+        namespace = namespace or ""
         threshold = threshold if threshold is not None else settings.similarity_threshold
         top_k = top_k if top_k is not None else settings.top_k
         workers = workers if workers is not None else settings.max_workers
@@ -205,7 +202,7 @@ def fill(
             max_workers=workers
         )
         
-        vector_store_service = get_opensearch_client()
+        vector_store_service = get_vector_store()
         
         # Create rate matcher
         rate_matcher = RateMatcher(
@@ -251,7 +248,7 @@ def fill(
 @app.command()
 def query(
     search_text: str = typer.Argument(..., help="Text to search for"),
-    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Pinecone namespace"),
+    namespace: Optional[str] = typer.Option(None, "--namespace", "-n", help="Vector store namespace"),
     top_k: Optional[int] = typer.Option(None, "--top-k", "-k", help="Number of results"),
     threshold: Optional[float] = typer.Option(None, "--threshold", "-t", help="Minimum similarity score")
 ):
@@ -272,9 +269,8 @@ def query(
             timeout=settings.openai_timeout,
             max_retries=settings.openai_max_retries
         )
-        pinecone_client = get_pinecone_client()
         
-        namespace = namespace if namespace is not None else (settings.pinecone_namespace or "")
+        namespace = namespace or ""
         top_k = top_k if top_k is not None else settings.top_k
         threshold = threshold if threshold is not None else settings.similarity_threshold
         
@@ -284,7 +280,7 @@ def query(
             model=settings.openai_embedding_model
         )
         
-        vector_store_service = get_opensearch_client()
+        vector_store_service = get_vector_store()
         
         async def run_query():
             query_embedding = await embeddings_service.generate_embedding(search_text)
@@ -323,34 +319,28 @@ def query(
 def delete_index(
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt")
 ):
-    """🗑️  Delete the entire Pinecone index."""
+    """🗑️  Delete the vector store index."""
     settings = get_settings()
+    index_name = settings.s3_vectors_index_name
     
     console.print(Panel.fit(
         f"[bold red]⚠️  WARNING: DELETE INDEX[/bold red]\n"
-        f"Index: {settings.pinecone_index_name}\n"
+        f"Index: {index_name}\n"
         f"This will permanently delete ALL vectors!",
         border_style="red"
     ))
     
     if not force:
-        response = typer.confirm(f"\nDelete index '{settings.pinecone_index_name}'?", default=False)
+        response = typer.confirm(f"\nDelete index '{index_name}'?", default=False)
         if not response:
             console.print("[yellow]❌ Cancelled by user[/yellow]")
             raise typer.Exit(0)
     
     try:
-        pc = get_pinecone_client()
-        existing_indexes = pc.list_indexes()
-        index_names = [idx.name for idx in existing_indexes]
-        
-        if settings.pinecone_index_name in index_names:
-            console.print(f"\n[red]🗑️  Deleting index '{settings.pinecone_index_name}'...[/red]")
-            pc.delete_index(settings.pinecone_index_name)
-            console.print(f"[green]✓ Index '{settings.pinecone_index_name}' deleted successfully![/green]")
-            console.print("\n[yellow]Run 'almabani index' to rebuild the vector database[/yellow]")
-        else:
-            console.print(f"[yellow]ℹ️  Index '{settings.pinecone_index_name}' does not exist[/yellow]")
+        vector_store = get_vector_store()
+        vector_store.delete_index()
+        console.print(f"[green]✓ Index '{index_name}' deleted successfully![/green]")
+        console.print("\n[yellow]Run 'almabani index' to rebuild the vector database[/yellow]")
         
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")
@@ -364,11 +354,12 @@ def delete_sheet(
 ):
     """🗑️  Delete all vectors from a specific sheet."""
     settings = get_settings()
+    index_name = settings.s3_vectors_index_name
     
     console.print(Panel.fit(
         f"[bold yellow]⚠️  WARNING: DELETE SHEET[/bold yellow]\n"
         f"Sheet: {sheet_name}\n"
-        f"Index: {settings.pinecone_index_name}\n"
+        f"Index: {index_name}\n"
         f"This will delete all vectors from this sheet!",
         border_style="yellow"
     ))
@@ -380,34 +371,12 @@ def delete_sheet(
             raise typer.Exit(0)
     
     try:
-        pc = get_pinecone_client()
-        index = pc.Index(settings.pinecone_index_name)
+        vector_store = get_vector_store()
+        deleted_count = asyncio.run(vector_store.delete_by_metadata(
+            filter_dict={"sheet_name": {"$eq": sheet_name}}
+        ))
         
-        console.print(f"\n[cyan]Finding vectors for sheet '{sheet_name}'...[/cyan]")
-        total_for_sheet = None
-        stats_supported = True
-        try:
-            stats = index.describe_index_stats(filter={"sheet_name": {"$eq": sheet_name}})
-            total_for_sheet = stats.get('namespaces', {}).get('', {}).get('vector_count', 0)
-        except Exception:
-            stats_supported = False
-            console.print("[yellow]ℹ️  This index cannot report counts by metadata filter; proceeding without a pre-check.[/yellow]")
-        
-        if stats_supported and total_for_sheet == 0:
-            console.print(f"[yellow]ℹ️  No vectors found for sheet '{sheet_name}'. Nothing to delete.[/yellow]")
-            raise typer.Exit(0)
-        
-        try:
-            index.delete(filter={"sheet_name": {"$eq": sheet_name}})
-        except Exception as del_err:
-            console.print(f"[red]✗ Delete failed:[/red] {del_err}")
-            raise typer.Exit(1)
-        
-        if stats_supported and total_for_sheet is not None:
-            console.print(f"[green]✓ Deleted {total_for_sheet} vector(s) from sheet '{sheet_name}'.[/green]")
-        else:
-            console.print(f"[green]✓ Delete request sent for sheet '{sheet_name}'.[/green] [yellow](Count verification not supported by this index type.)[/yellow]")
-        
+        console.print(f"[green]✓ Deleted {deleted_count} vector(s) from sheet '{sheet_name}'.[/green]")
         console.print(f"\n[yellow]Run 'almabani index' with the sheet's JSON to re-index it[/yellow]")
         
     except Exception as e:

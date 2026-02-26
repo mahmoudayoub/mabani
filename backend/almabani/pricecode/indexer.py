@@ -8,7 +8,7 @@ import logging
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import os
+from almabani.core.async_vector_store import get_async_vector_store
 
 logger = logging.getLogger(__name__)
 

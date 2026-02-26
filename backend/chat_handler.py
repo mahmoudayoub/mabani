@@ -22,7 +22,7 @@ OPENAI_CHAT_MODEL = os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini')
 
 # Initialize clients lazily
 _openai_client = None
-_vector_store = None
+_vector_stores = {}
 
 
 def get_openai_client():
@@ -37,21 +37,24 @@ def get_openai_client():
     return _openai_client
 
 
-def get_vector_store():
-    global _vector_store
-    if _vector_store is None:
+def get_vector_store(index_name: Optional[str] = None):
+    global _vector_stores
+    if index_name is None:
+        index_name = os.environ.get('S3_VECTORS_INDEX_NAME', 'almabani')
+
+    if index_name not in _vector_stores:
         from almabani.core.vector_store import VectorStoreService
         
         # In Lambda env for chat, we get bucket name from env var directly
         bucket_name = os.environ.get('S3_VECTORS_BUCKET', 'almabani-vectors')
         region = os.environ.get('AWS_REGION', 'eu-west-1')
         
-        _vector_store = VectorStoreService(
+        _vector_stores[index_name] = VectorStoreService(
             bucket_name=bucket_name,
             region=region,
-            index_name='almabani'
+            index_name=index_name
         )
-    return _vector_store
+    return _vector_stores[index_name]
 
 
 def cors_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -180,7 +183,6 @@ def validate_construction_query(message: str) -> Dict[str, Any]:
 def search_vectors(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
     """Search vector store for candidates."""
     import asyncio
-    vector_store = get_vector_store()
     
     # Set top_k based on type (price code needs more candidates)
     if top_k is None:
@@ -191,42 +193,35 @@ def search_vectors(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
         index_name = os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode')
     else:  # unitrate
         index_name = os.environ.get('S3_VECTORS_INDEX_NAME', 'almabani')
-        
-    # Temporarily override index name for this search
-    # (Since Lambda uses a single instance for warm starts)
-    original_index = vector_store.index_name
-    vector_store.index_name = index_name
+
+    vector_store = get_vector_store(index_name=index_name)
     
     embedding = create_embedding(query)
     
-    try:
-        # VectorStoreService.search is async, but Lambda handler is sync
-        loop = asyncio.get_event_loop()
-        matches = loop.run_until_complete(
-            vector_store.search(
-                query_embedding=embedding,
-                top_k=top_k,
-                include_metadata=True
-            )
+    # VectorStoreService.search is async, but Lambda handler is sync
+    matches = asyncio.run(
+        vector_store.search(
+            query_embedding=embedding,
+            top_k=top_k,
+            include_metadata=True
         )
-        # Convert List[Dict] to objects so the rest of the code works unchanged
-        # The existing code expects a class/dict with a `metadata` attribute/key
-        class MatchObj:
-            def __init__(self, m):
-                self.metadata = m.get('metadata', {})
-                self.score = m.get('score', 0)
-                
-            def get(self, key, default=None):
-                if key == 'metadata':
-                    return self.metadata
-                if key == 'score':
-                    return self.score
-                return default
-                
-        return [MatchObj(m) for m in matches]
-    finally:
-        # Restore original index name
-        vector_store.index_name = original_index
+    )
+
+    # Convert List[Dict] to objects so the rest of the code works unchanged
+    # The existing code expects a class/dict with a `metadata` attribute/key
+    class MatchObj:
+        def __init__(self, m):
+            self.metadata = m.get('metadata', {})
+            self.score = m.get('score', 0)
+            
+        def get(self, key, default=None):
+            if key == 'metadata':
+                return self.metadata
+            if key == 'score':
+                return self.score
+            return default
+            
+    return [MatchObj(m) for m in matches]
 
 
 # =============================================================================

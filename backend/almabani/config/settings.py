@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # ==================== Storage Settings ====================
     storage_type: str = 's3'  # 'local' or 's3'
     s3_bucket_name: Optional[str] = None
-    aws_region: str = 'us-east-1'
+    aws_region: str = 'eu-west-1'
     
     # ==================== Vector Search Settings ====================
     similarity_threshold: float = 0.5
@@ -144,11 +144,10 @@ def get_openai_client():
     )
 
 
-def get_opensearch_client():
+def get_vector_store():
     """Get configured vector store client (S3 Vectors)."""
     from almabani.core.vector_store import VectorStoreService
     settings = get_settings()
-    # We return the VectorStoreService instance directly
     return VectorStoreService(
         bucket_name=settings.s3_vectors_bucket,
         region=settings.aws_region,

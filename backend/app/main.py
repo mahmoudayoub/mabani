@@ -248,7 +248,7 @@ async def api_index():
                 metric='cosine'
             )
         else:
-            vector_store_service.get_index()
+            await vector_store_service.ensure_index_exists(namespace=namespace)
         
         # Process JSON files
         processor = JSONProcessor()

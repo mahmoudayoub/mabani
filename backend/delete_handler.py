@@ -1,5 +1,6 @@
 
 import os
+import asyncio
 import boto3
 import json
 from urllib.parse import unquote
@@ -48,7 +49,6 @@ def delete_datasheet(event, context):
     if bucket_name:
         try:
             from almabani.core.vector_store import VectorStoreService
-            import asyncio
             
             vector_store = VectorStoreService(
                 bucket_name=bucket_name,
@@ -61,8 +61,7 @@ def delete_datasheet(event, context):
                     filter_dict={"sheet_name": {"$eq": sheet_name}}
                 )
                 
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(run_delete())
+            asyncio.run(run_delete())
             print(f"Deleted vectors for sheet: {sheet_name} from index {index_name}")
         except Exception as e:
             print(f"Vector store deletion failed: {e}")
@@ -138,7 +137,6 @@ def delete_price_code_set(event, context):
     if bucket_name:
         try:
             from almabani.core.vector_store import VectorStoreService
-            import asyncio
             
             vector_store = VectorStoreService(
                 bucket_name=bucket_name,
@@ -151,8 +149,7 @@ def delete_price_code_set(event, context):
                     filter_dict={"source_file": {"$eq": set_name}}
                 )
                 
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(run_delete())
+            asyncio.run(run_delete())
             print(f"Deleted vectors for set: {set_name} from index {index_name}")
         except Exception as e:
             print(f"Vector store deletion failed: {e}")

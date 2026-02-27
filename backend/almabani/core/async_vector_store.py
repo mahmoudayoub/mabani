@@ -57,11 +57,14 @@ async def get_async_vector_store(index_name: str = None):
         async with get_async_vector_store() as vs:
             results = await vs.query(vector=embedding, top_k=20)
     """
-    bucket_name = os.environ.get('S3_VECTORS_BUCKET', 'almabani-vectors')
-    region = os.environ.get('AWS_REGION', 'eu-west-1')
+    from almabani.config.settings import get_settings
+    settings = get_settings()
+
+    bucket_name = os.environ.get('S3_VECTORS_BUCKET', settings.s3_vectors_bucket)
+    region = os.environ.get('AWS_REGION', settings.aws_region)
     
     if index_name is None:
-        index_name = os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode')
+        index_name = os.environ.get('PRICECODE_INDEX_NAME', settings.pricecode_index_name)
     
     service = VectorStoreService(
         bucket_name=bucket_name,

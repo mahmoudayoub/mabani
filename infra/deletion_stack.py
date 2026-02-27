@@ -57,7 +57,9 @@ class DeletionStack(Stack):
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
-                "S3_VECTORS_BUCKET": "almabani-vectors"
+                "S3_VECTORS_BUCKET": "almabani-vectors",
+                "S3_VECTORS_INDEX_NAME": os.getenv("S3_VECTORS_INDEX_NAME", "almabani"),
+                "PRICECODE_INDEX_NAME": os.getenv("PRICECODE_INDEX_NAME", "almabani-pricecode")
             },
             timeout=Duration.seconds(30)
         )
@@ -76,7 +78,9 @@ class DeletionStack(Stack):
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
-                "S3_VECTORS_BUCKET": "almabani-vectors"
+                "S3_VECTORS_BUCKET": "almabani-vectors",
+                "S3_VECTORS_INDEX_NAME": os.getenv("S3_VECTORS_INDEX_NAME", "almabani"),
+                "PRICECODE_INDEX_NAME": os.getenv("PRICECODE_INDEX_NAME", "almabani-pricecode")
             },
             timeout=Duration.seconds(30)
         )

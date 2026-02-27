@@ -186,7 +186,7 @@ def search_vectors(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
     
     # Set top_k based on type (price code needs more candidates)
     if top_k is None:
-        top_k = 150 if chat_type == "pricecode" else 10
+        top_k = 99 if chat_type == "pricecode" else 10
     
     # Select index based on type
     if chat_type == "pricecode":

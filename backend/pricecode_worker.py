@@ -35,7 +35,6 @@ logger = logging.getLogger("pricecode_worker")
 
 def get_services():
     """Initialize all required services"""
-    from almabani.config.settings import get_vector_store
     settings = get_settings()
     
     openai_async = AsyncOpenAI(
@@ -44,17 +43,13 @@ def get_services():
         max_retries=settings.openai_max_retries
     )
     
-    vector_store_service = get_vector_store()
-    # Override index name for price code specific operations
-    vector_store_service.index_name = os.getenv('PRICECODE_INDEX_NAME', 'almabani-pricecode')
-    
     embeddings_service = EmbeddingsService(
         async_client=openai_async,
         model=settings.openai_embedding_model,
         max_workers=settings.max_workers
     )
     
-    return settings, openai_async, embeddings_service, vector_store_service
+    return settings, openai_async, embeddings_service
 
 
 async def process_index(input_path: Path, storage):
@@ -63,7 +58,7 @@ async def process_index(input_path: Path, storage):
     """
     logger.info(f"Starting INDEX job for {input_path}")
     
-    settings, _, embeddings_service, _ = get_services()
+    settings, _, embeddings_service = get_services()
     
     indexer = PriceCodeIndexer(
         embeddings_service=embeddings_service
@@ -121,7 +116,7 @@ async def process_allocate(input_path: Path, storage):
     """
     logger.info(f"Starting ALLOCATE job for {input_path}")
     
-    settings, openai_async, embeddings_service, vector_store_service = get_services()
+    settings, openai_async, embeddings_service = get_services()
     bucket_name = os.getenv('S3_BUCKET_NAME')
     
     # Create estimate file
@@ -181,23 +176,42 @@ async def process_allocate(input_path: Path, storage):
     
     pipeline = PriceCodePipeline(matcher)
     
-    # Read source_files filter from S3 metadata
-    source_files = None
-    s3_key = os.getenv('S3_KEY')
-    if s3_key and bucket_name:
-        try:
-            s3 = boto3.client('s3')
-            head = s3.head_object(Bucket=bucket_name, Key=s3_key)
-            metadata = head.get('Metadata', {})
-            source_files_str = metadata.get('source-files', '')
-            if source_files_str:
-                source_files = [s.strip() for s in source_files_str.split(',') if s.strip()]
-                logger.info(f"Filtering by source files from metadata: {source_files}")
-        except Exception as e:
-            logger.warning(f"Failed to read S3 metadata: {e}")
-    
     # Process file
     try:
+        # Read source_files filter from S3 metadata (required - fail fast if invalid/missing)
+        source_files = None
+        s3_key = os.getenv('S3_KEY')
+        if not s3_key or not bucket_name:
+            raise RuntimeError(
+                "Missing required S3 context for source-file filtering. "
+                f"S3_KEY set={bool(s3_key)}, S3_BUCKET_NAME set={bool(bucket_name)}"
+            )
+
+        s3 = boto3.client('s3')
+        try:
+            head = s3.head_object(Bucket=bucket_name, Key=s3_key)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to read S3 object metadata for filter extraction: s3://{bucket_name}/{s3_key}"
+            ) from e
+
+        metadata = head.get('Metadata', {}) or {}
+        source_files_str = str(metadata.get('source-files', '')).strip()
+        if not source_files_str:
+            raise RuntimeError(
+                "Required S3 metadata 'source-files' is missing or empty. "
+                "Refusing unfiltered price-code search."
+            )
+
+        source_files = [s.strip() for s in source_files_str.split(',') if s.strip()]
+        if not source_files:
+            raise RuntimeError(
+                "S3 metadata 'source-files' was provided but produced no valid source files. "
+                "Refusing unfiltered price-code search."
+            )
+
+        logger.info(f"Filtering by source files from metadata: {source_files}")
+
         output_filename = f"{input_path.stem}_pricecode.xlsx"
         output_path = input_path.parent / output_filename
         

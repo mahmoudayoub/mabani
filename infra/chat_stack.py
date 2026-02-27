@@ -58,6 +58,8 @@ class ChatStack(Stack):
             environment={
                 "OPENAI_API_KEY": openai_api_key,
                 "S3_VECTORS_BUCKET": "almabani-vectors",
+                "S3_VECTORS_INDEX_NAME": os.environ.get('S3_VECTORS_INDEX_NAME', 'almabani'),
+                "PRICECODE_INDEX_NAME": os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode'),
                 "OPENAI_CHAT_MODEL": os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
             }
         )

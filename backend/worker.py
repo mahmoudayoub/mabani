@@ -142,30 +142,44 @@ async def process_fill(input_path: Path, storage):
     
     settings, openai_async, embeddings_service, vector_store_service = get_services()
     
-    # Read S3 metadata to get sheet selection
+    # Read S3 metadata to get sheet selection (required - fail fast if invalid/missing)
     s3_key = os.getenv('S3_KEY')
     bucket_name = os.getenv('S3_BUCKET_NAME')
-    filter_dict = None
-    
-    if s3_key and bucket_name:
-        try:
-            s3 = boto3.client('s3')
-            head = s3.head_object(Bucket=bucket_name, Key=s3_key)
-            metadata = head.get('Metadata', {})
-            sheet_names_str = metadata.get('sheet-names', '')
-            
-            logger.info(f"DEBUG: S3 metadata sheet-names: '{sheet_names_str}'")
-            
-            if sheet_names_str:
-                selected_sheets = [s.strip() for s in sheet_names_str.split(',') if s.strip()]
-                logger.info(f"DEBUG: Parsed sheets from S3 metadata: {selected_sheets}")
-                if selected_sheets:
-                    filter_dict = {'sheet_name': {'$in': selected_sheets}}
-                    logger.info(f"DEBUG: Created vector filter: {filter_dict}")
-        except Exception as e:
-            logger.warning(f"Failed to read S3 metadata: {e}. Will search all sheets.")
-    else:
-        logger.info("DEBUG: No S3_KEY or S3_BUCKET_NAME, will search ALL sheets (no filter)")
+    if not s3_key or not bucket_name:
+        raise RuntimeError(
+            "Missing required S3 context for sheet filtering. "
+            f"S3_KEY set={bool(s3_key)}, S3_BUCKET_NAME set={bool(bucket_name)}"
+        )
+
+    s3 = boto3.client('s3')
+    try:
+        head = s3.head_object(Bucket=bucket_name, Key=s3_key)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to read S3 object metadata for filter extraction: s3://{bucket_name}/{s3_key}"
+        ) from e
+
+    metadata = head.get('Metadata', {}) or {}
+    sheet_names_str = str(metadata.get('sheet-names', '')).strip()
+
+    logger.info(f"DEBUG: S3 metadata sheet-names: '{sheet_names_str}'")
+
+    if not sheet_names_str:
+        raise RuntimeError(
+            "Required S3 metadata 'sheet-names' is missing or empty. "
+            "Refusing unfiltered unit-rate search."
+        )
+
+    selected_sheets = [s.strip() for s in sheet_names_str.split(',') if s.strip()]
+    if not selected_sheets:
+        raise RuntimeError(
+            "S3 metadata 'sheet-names' was provided but produced no valid sheet names. "
+            "Refusing unfiltered unit-rate search."
+        )
+
+    logger.info(f"DEBUG: Parsed sheets from S3 metadata: {selected_sheets}")
+    filter_dict = {'sheet_name': {'$in': selected_sheets}}
+    logger.info(f"DEBUG: Created vector filter: {filter_dict}")
     
     rate_matcher = RateMatcher(
         async_openai_client=openai_async,

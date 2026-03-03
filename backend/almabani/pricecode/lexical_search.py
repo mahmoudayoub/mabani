@@ -1719,7 +1719,7 @@ class LexicalMatcher:
             _pc = clean_text(ref["price_code"])
             _pc_parts = _pc.split()
             if len(_pc_parts) >= 3 and _pc_parts[2] == "00":
-                final *= 0.65  # penalise generic subcategory
+                final *= 0.75  # penalise generic subcategory
 
             # ── Scope scoring from hierarchy context ────────────────────
             # When parent/grandparent clearly indicates the scope of work
@@ -1735,7 +1735,7 @@ class LexicalMatcher:
                     if ref_scope == expected_scope:
                         final *= 1.25          # matching scope boost
                     else:
-                        final *= 0.75          # wrong scope penalty
+                        final *= 0.85          # wrong scope penalty (soft)
 
             reranked.append({
                 "ref_id": ref_id,

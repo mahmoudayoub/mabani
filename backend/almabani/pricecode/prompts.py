@@ -39,24 +39,24 @@ Perform a logical evaluation to find the best match.
    - Note: Candidate units are not explicitly listed; infer from context (cables → m, concrete → m3, etc.).
    - If the candidate clearly implies an incompatible unit, reject it.
 
-4. SCOPE CHECK — USE THE HIERARCHY:
+4. SCOPE CHECK — USE THE HIERARCHY (CRITICAL):
    - The target's Hierarchy tells you the SCOPE (what work is being priced).
+   - Each candidate line now includes a [Scope X: meaning] tag — USE IT.
    - Read the hierarchy carefully:
-     * "Supply ready mix concrete" → the target is SUPPLY of concrete material (not placing/installation).
-     * "High yield steel bar reinforcement" → the target is REINFORCEMENT, not concrete.
-     * "Supply and installation of formwork/shuttering" → the target is FORMWORK (supply + install).
-   - Many candidates share the same element (raft, column, wall) but differ in SCOPE VARIANT (last letter of price code):
-     * Codes ending in A = Concrete Only
-     * Codes ending in B = With Reinforcement Only
-     * Codes ending in C = With Formwork Only
-     * Codes ending in D = Concrete + Reinforcement
-     * Codes ending in E = Supply Only (material supply, no installation)
-     * Codes ending in F = Supply + Installation (full scope)
-   - MATCH THE SCOPE to the hierarchy context:
-     * If hierarchy says "Supply ready mix concrete" → pick a Supply-related scope (E or A), NOT an installation scope.
-     * If hierarchy says "Supply and installation" → pick a full-scope variant (F or D).
-     * If hierarchy says "reinforcement" → pick the reinforcement variant (B).
-     * If hierarchy says "formwork/shuttering" → pick a formwork variant (C).
+     * "Supply ready mix concrete" → SUPPLY of concrete material → pick Scope E (Supply Only). NOT Scope A.
+     * "Pour concrete…include labour and all necessary material" → FULL scope → pick Scope F (Supply+Install). NOT Scope A or D.
+     * "High yield steel bar reinforcement" → the target is REINFORCEMENT → pick Scope B.
+     * "Erection / removal of formwork / shuttering" → the target is FORMWORK → pick Scope C.
+     * "Supply and installation" → FULL scope → pick Scope F (Supply+Install).
+   - SCOPE LETTER MEANINGS (last letter of the price code suffix):
+     * A = Concrete Only (placing/curing concrete, NO material supply)
+     * B = With Reinforcement Only
+     * C = With Formwork Only
+     * D = Concrete + Reinforcement
+     * E = Supply Only (material supply, no installation/placing)
+     * F = Supply + Installation (full scope)
+   - MANDATORY: When the hierarchy says "Supply" (without "install"/"pour"), you MUST pick a candidate with Scope E. Do NOT pick Scope A.
+   - MANDATORY: When the hierarchy says "Pour…labour…material" or "Supply and install", you MUST pick Scope F.
 
 5. SUBCATEGORY SPECIFICITY:
    - Codes with subcategory "00" (e.g., C 31 00 xxx) are generic templates.

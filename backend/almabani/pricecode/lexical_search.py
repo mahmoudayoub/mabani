@@ -273,6 +273,82 @@ def _infer_ref_unit_family(ref_text: str) -> Optional[str]:
     return None
 
 
+# ═════════════════════════════════════════════════════════════════════════
+# Scope detection from hierarchy context
+# ═════════════════════════════════════════════════════════════════════════
+
+_RE_SUPPLY_AND_INSTALL = re.compile(
+    r"\bsupply\s+(?:and|&)\s+install", re.I
+)
+_RE_POUR_WITH_LABOUR = re.compile(
+    r"\bpour\b", re.I
+)
+_RE_LABOUR_OR_MATERIAL = re.compile(
+    r"\blabour\b|\ball\s+necessary\s+material", re.I
+)
+_RE_SUPPLY_ONLY = re.compile(
+    r"\bsupply\b", re.I
+)
+_RE_NO_INSTALL = re.compile(
+    r"\binstall|\bpour\b|\berect|\bplace\b|\blay(?:ing)?\b", re.I
+)
+_RE_REINFORCEMENT = re.compile(
+    r"\breinforcement\b|\breinforcing\b|\brebar\b|\bsteel\s+bar\b", re.I
+)
+
+
+def _detect_expected_scope(parent: str, grandparent: str) -> Optional[str]:
+    """Detect expected scope letter from hierarchy context.
+
+    Only returns a scope when the evidence is strong and universal.
+    Focuses on Supply-only (E) vs Supply+Install (F) detection which
+    are the most common scope errors and have consistent meaning across
+    all disciplines.  Concrete-specific scopes (A/B/C/D) are NOT
+    detected here because their meaning is category-dependent.
+
+    Works on the RAW parent/grandparent text (before stopword removal)
+    so keywords like 'supply' and 'install' are visible.
+    """
+    # Use parent primarily; grandparent only as fallback context
+    ctx = f"{parent} ; {grandparent}"
+
+    # 1. "Supply and install…" → full scope F
+    #    Exception: "Supply and install reinforcing bars/reinforcement" is
+    #    specifically about rebar S+I — the right scope can be B or D,
+    #    not necessarily F.  Return None to let the LLM decide.
+    if _RE_SUPPLY_AND_INSTALL.search(ctx):
+        if not _RE_REINFORCEMENT.search(parent):
+            return "F"
+        return None
+
+    # 2. "Pour concrete…include labour / all necessary material" → F
+    if _RE_POUR_WITH_LABOUR.search(parent) and _RE_LABOUR_OR_MATERIAL.search(parent):
+        return "F"
+
+    # 3. "Supply" without install/pour → Supply Only = E
+    if _RE_SUPPLY_ONLY.search(parent):
+        if not _RE_NO_INSTALL.search(parent):
+            return "E"
+
+    return None
+
+
+def _extract_scope_letter(price_code: str) -> Optional[str]:
+    """Extract the scope letter (last char of the suffix) from a price code.
+
+    Price code format: ``[Disc] [Cat] [Subcat] [ElemGradeScope]``
+    e.g. ``C 31 13 CGA`` → scope ``A``.
+    """
+    parts = price_code.strip().split()
+    if len(parts) >= 4:
+        suffix = parts[3]
+        if len(suffix) >= 2:  # at least 2 chars (some codes have 2-char suffix)
+            last = suffix[-1].upper()
+            if last.isalpha():
+                return last
+    return None
+
+
 OBJECT_TOKENS: Set[str] = {
     "pipe", "conduit", "duct", "bank", "sign", "cable", "transformer",
     "light", "base", "joint", "slab", "pavement", "concrete", "manhole",
@@ -1505,6 +1581,8 @@ class LexicalMatcher:
         route_toks = alpha_dist | self._alpha_tokens(
             set(tokenize(" ; ".join([parent_str, gp_str])))
         )
+        # Scope detection from hierarchy context (pre-computed once)
+        expected_scope = _detect_expected_scope(parent_str, gp_str)
         # Sheet affinity: compute once, reuse for all candidates
         sheet_aff: Dict[str, float] = {}
         _sa_best_aff = 0.0
@@ -1641,7 +1719,23 @@ class LexicalMatcher:
             _pc = clean_text(ref["price_code"])
             _pc_parts = _pc.split()
             if len(_pc_parts) >= 3 and _pc_parts[2] == "00":
-                final *= 0.80  # penalise generic subcategory
+                final *= 0.65  # penalise generic subcategory
+
+            # ── Scope scoring from hierarchy context ────────────────────
+            # When parent/grandparent clearly indicates the scope of work
+            # (e.g. "Supply ready mix concrete" → Supply Only = E,
+            #  "Pour concrete…include labour" → Supply+Install = F),
+            # boost candidates with the matching scope letter and
+            # penalise those with a different scope.
+            # Only applied to Civil (C) discipline codes where the
+            # E/F scope letters have consistent meaning.
+            if expected_scope and _pc_parts and _pc_parts[0].upper() == "C":
+                ref_scope = _extract_scope_letter(_pc)
+                if ref_scope:
+                    if ref_scope == expected_scope:
+                        final *= 1.25          # matching scope boost
+                    else:
+                        final *= 0.75          # wrong scope penalty
 
             reranked.append({
                 "ref_id": ref_id,

@@ -17,6 +17,21 @@ from .lexical_search import LexicalMatcher
 _LLM_MAX_RETRIES = 3
 _LLM_BASE_DELAY = 1.0  # seconds; doubles each retry
 
+# Scope letter meanings appended to each candidate line so the LLM can
+# directly see what each scope variant represents.
+_SCOPE_LABELS_CIVIL_CONCRETE = {
+    "A": "Concrete Only",
+    "B": "+Reinforcement",
+    "C": "+Formwork",
+    "D": "Conc+Rebar",
+    "E": "Supply Only",
+    "F": "Supply+Install",
+}
+_SCOPE_LABELS_GENERIC = {
+    "E": "Supply Only",
+    "F": "Supply+Install",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,5 +223,25 @@ class PriceCodeMatcher:
             desc = cand.get("description", "")
             category = cand.get("category", "")
             tag = f" ({category})" if category else ""
-            lines.append(f"[{i}] [{code}]{tag} {desc}")
+
+            # ── Scope annotation ────────────────────────────────────────
+            # Parse price code suffix to extract the scope letter and
+            # append a human-readable label so the LLM explicitly sees
+            # what each scope variant means.
+            scope_tag = ""
+            parts = code.strip().split()
+            if len(parts) >= 4 and len(parts[3]) >= 2:
+                scope_letter = parts[3][-1].upper()
+                if scope_letter.isalpha():
+                    disc = parts[0].upper()
+                    cat = parts[1] if len(parts) >= 2 else ""
+                    # Civil concrete categories get detailed labels
+                    if disc == "C" and cat in ("31", "21", "11", "10"):
+                        label = _SCOPE_LABELS_CIVIL_CONCRETE.get(scope_letter)
+                    else:
+                        label = _SCOPE_LABELS_GENERIC.get(scope_letter)
+                    if label:
+                        scope_tag = f" [Scope {scope_letter}: {label}]"
+
+            lines.append(f"[{i}] [{code}]{scope_tag}{tag} {desc}")
         return "\n".join(lines)

@@ -59,13 +59,13 @@ class DeletionStack(Stack):
                 "PRICECODE_BUCKET": pc_bucket_name,
                 "S3_VECTORS_BUCKET": "almabani-vectors",
                 "S3_VECTORS_INDEX_NAME": os.getenv("S3_VECTORS_INDEX_NAME", "almabani"),
-                "PRICECODE_INDEX_NAME": os.getenv("PRICECODE_INDEX_NAME", "almabani-pricecode")
             },
             timeout=Duration.seconds(30)
         )
 
         # 2b. Price Code Deletion Lambda (Separate Function for specific handler)
-        # Using the SAME code asset but different handler
+        # Uses the SAME code asset but different handler.
+        # Needs longer timeout for SQLite download+prune+reupload.
         pc_deletion_lambda = _lambda.Function(self, "DeletePriceCodeLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_price_code_set",
@@ -78,11 +78,9 @@ class DeletionStack(Stack):
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
-                "S3_VECTORS_BUCKET": "almabani-vectors",
-                "S3_VECTORS_INDEX_NAME": os.getenv("S3_VECTORS_INDEX_NAME", "almabani"),
-                "PRICECODE_INDEX_NAME": os.getenv("PRICECODE_INDEX_NAME", "almabani-pricecode")
             },
-            timeout=Duration.seconds(30)
+            memory_size=512,
+            timeout=Duration.seconds(120)
         )
 
         # 3. Permissions

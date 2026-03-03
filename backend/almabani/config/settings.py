@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     pricecode_top_k: int = 150  # Price code uses more candidates
     pricecode_batch_size: int = 100
     pricecode_max_concurrent: int = 200
+    pricecode_max_candidates: int = 12  # Lexical candidates to send to LLM
+    pricecode_index_db: str = '/tmp/pricecode_index.db'  # SQLite index path
     
     # ==================== Logging Settings ====================
     log_level: str = 'INFO'

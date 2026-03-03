@@ -16,6 +16,7 @@ authors = [
 dependencies = [
     "pandas>=2.0.0",
     "openpyxl>=3.1.0",
+    "aiosqlite>=0.19.0",
     "openai>=1.0.0",
     "opensearch-py[async]>=2.5.0",
     "requests-aws4auth>=1.2.3",

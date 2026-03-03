@@ -5,6 +5,8 @@
 # Core Data Processing
 pandas>=2.0.0
 openpyxl>=3.1.0
+rapidfuzz>=3.0.0
+aiosqlite>=0.19.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 pyyaml>=6.0.0

@@ -110,7 +110,18 @@ def delete_datasheet(event, context):
 
 def delete_price_code_set(event, context):
     """
-    Delete a price code set (vectors + registry entry).
+    Delete a price code set from the SQLite lexical index + registry.
+
+    The price code pipeline uses a SQLite index stored at
+    ``metadata/pricecode_index.db`` in the PRICECODE_BUCKET.  Deleting a
+    set means:
+      1. Download the SQLite index from S3.
+      2. Remove all rows for the given source_file from ``refs``,
+         ``postings``, ``indexed_files``, and recompute ``df``.
+      3. Re-upload the pruned index.
+      4. Remove the source Excel from ``input/pricecode/index/``.
+      5. Update ``metadata/available_price_codes.json`` registry.
+
     Path params: set_name (mapped from /pricecode/sets/{set_name})
     """
     # Handle CORS preflight
@@ -119,75 +130,172 @@ def delete_price_code_set(event, context):
 
     path_params = event.get("pathParameters", {}) or {}
     set_name = path_params.get("set_name")
-    
+
     # URL decode
     if set_name:
         set_name = unquote(set_name)
-    
+
     if not set_name:
         return create_response(400, {"error": "Missing set name"})
-        
+
     print(f"Deleting Price Code Set: {set_name}")
 
-    # 1. Delete from S3 Vectors
-    bucket_name = os.environ.get("S3_VECTORS_BUCKET", "almabani-vectors")
-    index_name = os.environ.get("PRICECODE_INDEX_NAME", "almabani-pricecode")
-    region = os.environ.get("AWS_REGION", "eu-west-1")
-    
-    if bucket_name:
-        try:
-            from almabani.core.vector_store import VectorStoreService
-            
-            vector_store = VectorStoreService(
-                bucket_name=bucket_name,
-                region=region,
-                index_name=index_name
-            )
-            
-            async def run_delete():
-                await vector_store.delete_by_metadata(
-                    filter_dict={"source_file": {"$eq": set_name}}
-                )
-                
-            asyncio.run(run_delete())
-            print(f"Deleted vectors for set: {set_name} from index {index_name}")
-        except Exception as e:
-            print(f"Vector store deletion failed: {e}")
-            return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})
-    else:
-        print("Skipping vector deletion (missing bucket name)")
-            
-    # 2. Update Registry in PRICECODE_BUCKET
     bucket = os.environ.get("PRICECODE_BUCKET")
-    if bucket:
-        try:
-            registry_key = "metadata/available_price_codes.json"
-            
-            # Load existing
-            try:
-                obj = s3_client.get_object(Bucket=bucket, Key=registry_key)
-                data = json.loads(obj['Body'].read())
-                codes = data.get("price_codes", [])
-            except s3_client.exceptions.NoSuchKey:
-                codes = []
-            except Exception as e:
-                print(f"Error reading registry: {e}")
-                codes = []
-                
-            if set_name in codes:
-                codes.remove(set_name)
-                s3_client.put_object(
-                    Bucket=bucket,
-                    Key=registry_key,
-                    Body=json.dumps({"price_codes": codes}),
-                    ContentType="application/json"
-                )
-                print(f"Removed {set_name} from registry")
-            else:
-                print(f"Set {set_name} not found in registry")
-        except Exception as e:
-            return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
-    else:
+    if not bucket:
         return create_response(500, {"error": "PRICECODE_BUCKET env var not set"})
-            
+
+    # ── 1. Remove rows from SQLite index ────────────────────────────────
+    db_s3_key = "metadata/pricecode_index.db"
+    db_local = "/tmp/pricecode_index.db"
+    try:
+        s3_client.download_file(bucket, db_s3_key, db_local)
+        print(f"Downloaded index from s3://{bucket}/{db_s3_key}")
+    except s3_client.exceptions.ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey"):
+            print("No existing index – nothing to prune")
+        else:
+            print(f"Failed to download index: {e}")
+            return create_response(500, {"error": f"Failed to download index: {str(e)}"})
+        db_local = None
+
+    if db_local:
+        import sqlite3
+        try:
+            conn = sqlite3.connect(db_local)
+            # Find ref_ids belonging to this source_file
+            ref_ids = [
+                r[0] for r in conn.execute(
+                    "SELECT ref_id FROM refs WHERE source_file = ?", (set_name,)
+                ).fetchall()
+            ]
+            before_count = conn.execute("SELECT COUNT(*) FROM refs").fetchone()[0]
+
+            if ref_ids:
+                # Delete postings for those ref_ids
+                # Use batches to avoid SQLite variable limit
+                BATCH = 500
+                for i in range(0, len(ref_ids), BATCH):
+                    batch = ref_ids[i:i + BATCH]
+                    ph = ",".join("?" for _ in batch)
+                    conn.execute(f"DELETE FROM postings WHERE ref_id IN ({ph})", batch)
+
+                # Delete refs
+                conn.execute("DELETE FROM refs WHERE source_file = ?", (set_name,))
+
+                # Delete from indexed_files
+                conn.execute("DELETE FROM indexed_files WHERE source_file = ?", (set_name,))
+
+                # Recompute df (document frequency) from remaining postings
+                conn.execute("DELETE FROM df")
+                conn.execute(
+                    "INSERT INTO df (token, df) "
+                    "SELECT token, COUNT(DISTINCT ref_id) FROM postings GROUP BY token"
+                )
+
+                # Recompute sheet_tokens signatures
+                try:
+                    conn.execute("DELETE FROM sheet_tokens")
+                    # Recompute per-sheet token signatures
+                    import math
+                    stc = {}  # sheet -> {token: count}
+                    sheet_sizes = {}
+                    for _sheet, _tok, _cnt in conn.execute(
+                        "SELECT r.sheet_name, p.token, COUNT(*) "
+                        "FROM postings p JOIN refs r ON p.ref_id = r.ref_id "
+                        "GROUP BY r.sheet_name, p.token"
+                    ):
+                        stc.setdefault(_sheet, {})[_tok] = _cnt
+                        sheet_sizes[_sheet] = sheet_sizes.get(_sheet, 0) + _cnt
+                    num_sheets = max(len(stc), 1)
+                    tok_sheet_cnt = {}
+                    for _sheet, _toks in stc.items():
+                        for _tok in _toks:
+                            tok_sheet_cnt[_tok] = tok_sheet_cnt.get(_tok, 0) + 1
+                    sig_buf = []
+                    for _sheet, _toks in stc.items():
+                        _sz = max(sheet_sizes.get(_sheet, 1), 1)
+                        scored = []
+                        for _tok, _cnt in _toks.items():
+                            _tf = _cnt / _sz
+                            _idf = math.log(num_sheets / max(tok_sheet_cnt.get(_tok, 1), 1)) + 1.0
+                            scored.append((_tok, _tf * _idf))
+                        scored.sort(key=lambda x: x[1], reverse=True)
+                        for _tok, _sc in scored[:50]:
+                            sig_buf.append((_sheet, _tok, _sc))
+                    conn.executemany("INSERT INTO sheet_tokens VALUES (?,?,?)", sig_buf)
+                except Exception as e:
+                    print(f"Warning: sheet_tokens recompute failed (non-fatal): {e}")
+
+                # Update ref_count in meta
+                after_count = conn.execute("SELECT COUNT(*) FROM refs").fetchone()[0]
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                    ("ref_count", str(after_count)),
+                )
+                conn.commit()
+                print(f"Pruned index: {before_count} -> {after_count} refs "
+                      f"(removed {len(ref_ids)} rows for '{set_name}')")
+
+                # VACUUM to reclaim space
+                conn.execute("VACUUM")
+            else:
+                after_count = before_count
+                print(f"Source file '{set_name}' not found in index (0 rows matched)")
+
+            conn.close()
+
+            # Re-upload pruned index
+            if ref_ids:
+                s3_client.upload_file(db_local, bucket, db_s3_key)
+                print(f"Re-uploaded pruned index to s3://{bucket}/{db_s3_key}")
+
+        except Exception as e:
+            print(f"SQLite prune failed: {e}")
+            return create_response(500, {"error": f"Failed to prune index: {str(e)}"})
+
+    # ── 2. Delete source Excel from S3 ──────────────────────────────────
+    # The INDEX job stores reference files under input/pricecode/index/
+    try:
+        prefix = f"input/pricecode/index/"
+        paginator = s3_client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                stem = os.path.splitext(os.path.basename(key))[0]
+                if stem == set_name or stem == f"ref_{set_name}":
+                    s3_client.delete_object(Bucket=bucket, Key=key)
+                    print(f"Deleted source file: s3://{bucket}/{key}")
+    except Exception as e:
+        print(f"Warning: failed to delete source Excel: {e}")
+
+    # ── 3. Update registry ──────────────────────────────────────────────
+    try:
+        registry_key = "metadata/available_price_codes.json"
+
+        # Load existing
+        try:
+            obj = s3_client.get_object(Bucket=bucket, Key=registry_key)
+            data = json.loads(obj['Body'].read())
+            codes = data.get("price_codes", [])
+        except s3_client.exceptions.NoSuchKey:
+            codes = []
+        except Exception as e:
+            print(f"Error reading registry: {e}")
+            codes = []
+
+        if set_name in codes:
+            codes.remove(set_name)
+            s3_client.put_object(
+                Bucket=bucket,
+                Key=registry_key,
+                Body=json.dumps({"price_codes": codes}),
+                ContentType="application/json"
+            )
+            print(f"Removed {set_name} from registry")
+        else:
+            print(f"Set {set_name} not found in registry")
+    except Exception as e:
+        return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
+
     return create_response(200, {"message": f"Set {set_name} deleted successfully"})

@@ -18,6 +18,7 @@ setup(
     install_requires=[
         "pandas>=2.0.0",
         "openpyxl>=3.1.0",
+        "aiosqlite>=0.19.0",
         "openai>=1.0.0",
         "boto3>=1.35.0",
         "aioboto3>=13.0.0",

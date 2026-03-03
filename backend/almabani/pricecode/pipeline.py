@@ -365,7 +365,6 @@ class PriceCodePipeline:
         self,
         input_file: Path,
         output_file: Optional[Path] = None,
-        namespace: str = "",
         source_files: Optional[List[str]] = None,
         max_concurrent: int = None
     ) -> Dict[str, Any]:
@@ -529,40 +528,106 @@ class PriceCodePipeline:
         matched_count = 0
         not_matched_count = 0
         
-        semaphore = asyncio.Semaphore(max_concurrent)
-        
-        # Build filter if source_files specified
-        filter_dict = None
+        # ── Thread-pool (search) + async I/O (LLM) concurrency ───────
+        # Search runs in a thread pool.  rapidfuzz releases the GIL so
+        # threads run truly parallel across all CPU cores.
+        # The semaphore gates only LLM calls (the rate-limited resource).
+        from concurrent.futures import ThreadPoolExecutor
+        import os as _os
+        SEARCH_THREADS = int(_os.environ.get("SEARCH_THREADS", 8))
+        _thread_pool = ThreadPoolExecutor(max_workers=SEARCH_THREADS,
+                                          thread_name_prefix="search")
+        _llm_sem = asyncio.Semaphore(max_concurrent)
+        _loop = asyncio.get_running_loop()
+
         if source_files:
-            filter_dict = {"source_file": {"$in": source_files}}
-            logger.info(f"Filtering by source files: {source_files}")
-        
-        from almabani.core.async_vector_store import get_async_vector_store
-        
-        async def process_item(item, vs):
-            async with semaphore:
-                # Pass structured context to matcher
-                result = await self.matcher.match(
-                    description=item.get('description', ''),
-                    namespace=namespace,
-                    filter_dict=filter_dict,
-                    vector_store=vs,
-                    # New context fields
-                    parent=item.get('parent'),
-                    grandparent=item.get('grandparent'),
-                    unit=item.get('unit'),
-                    item_code=item.get('item_code'),
-                    category_path=item.get('category_path')
+            logger.info(f"Source files filter: {source_files}")
+
+        logger.info(
+            f"Concurrency: search_threads={SEARCH_THREADS}, "
+            f"llm_concurrent={max_concurrent}"
+        )
+
+        # ── Dedup cache: identical (description, unit) → reuse result ───
+        _match_cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        _cache_hits = 0
+
+        _items_completed = 0
+        _items_total = len(items)
+
+        async def process_item(item):
+            nonlocal _cache_hits, _items_completed
+            cache_key = (
+                item.get('description', '').strip().lower(),
+                (item.get('unit') or '').strip().lower(),
+            )
+            if cache_key in _match_cache:
+                _cache_hits += 1
+                _items_completed += 1
+                return item, _match_cache[cache_key]
+
+            import time as _time
+            _t0 = _time.perf_counter()
+
+            item_dict = {
+                "description": item.get('description', ''),
+                "parent": item.get('parent'),
+                "grandparent": item.get('grandparent'),
+                "unit": item.get('unit'),
+                "item_code": item.get('item_code'),
+                "category_path": item.get('category_path'),
+            }
+
+            # ── Search in thread pool (CPU-bound, no semaphore) ────────
+            # Thread pool naturally limits concurrency; rapidfuzz releases
+            # the GIL so threads run on separate cores.
+            candidates = await _loop.run_in_executor(
+                _thread_pool,
+                self.matcher.lexical_matcher.search_sync,
+                item_dict,
+            )
+            _t_search = _time.perf_counter()
+
+            if not candidates:
+                result = {"matched": False, "reason": "No candidates found"}
+            else:
+                # ── LLM judge (I/O-bound, semaphore gates rate limit) ────
+                async with _llm_sem:
+                    result = await self.matcher.llm_match(
+                        description=item.get('description', ''),
+                        candidates=candidates,
+                        parent=item.get('parent'),
+                        grandparent=item.get('grandparent'),
+                        unit=item.get('unit'),
+                        item_code=item.get('item_code'),
+                        category_path=item.get('category_path'),
+                    )
+
+            _match_cache[cache_key] = result
+            _items_completed += 1
+            _elapsed_item = _time.perf_counter() - _t0
+            _search_ms = (_t_search - _t0) * 1000
+            _llm_ms = (_time.perf_counter() - _t_search) * 1000
+            # Log progress every 10 items
+            if _items_completed % 10 == 0 or _items_completed == _items_total:
+                _wall = (datetime.now() - start_time).total_seconds()
+                logger.info(
+                    f"[progress] {_items_completed}/{_items_total} done "
+                    f"({_wall:.0f}s wall, item={_elapsed_item:.1f}s "
+                    f"[search={_search_ms:.0f}ms llm={_llm_ms:.0f}ms], "
+                    f"matched={result.get('matched', False)})"
                 )
-                return item, result
-        
-        # Use shared vector store connection for all items
-        results = []
-        async with get_async_vector_store() as vector_store:
-            tasks = [process_item(item, vector_store) for item in items]
-            results = await asyncio.gather(*tasks)
+            return item, result
+
+        tasks = [process_item(item) for item in items]
+        results = await asyncio.gather(*tasks)
+        _thread_pool.shutdown(wait=False)
         
         elapsed = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Matching done: {len(items)} items, {_cache_hits} cache hits "
+            f"({len(_match_cache)} unique queries) in {elapsed:.1f}s"
+        )
         
         # Build report dictionary first so it can be passed to write_results
         error_count = sum(1 for _, res in results if str(res.get('reason', '')).startswith('LLM error'))

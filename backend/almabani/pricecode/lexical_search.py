@@ -1819,6 +1819,30 @@ class LexicalMatcher:
             ref_disc = clean_text(ref["discipline"])
             ref_sheet = clean_text(ref["sheet_name"])
             ref_sheet_low = ref_sheet.lower()
+
+            # ── Infer discipline for "unknown" refs ──────────────────
+            # Specialised source files (e.g. C_Concrete, M_Masonry)
+            # were indexed without a discipline tag.  Infer from the
+            # source-file / sheet name so they participate in
+            # discipline routing instead of being penalised.
+            if ref_disc == "unknown":
+                _src_low = clean_text(ref["source_file"]).lower()
+                _infer_ctx = _src_low + " " + ref_sheet_low
+                if any(kw in _infer_ctx for kw in (
+                    "concrete", "masonry", "civil", "earthwork",
+                    "finish", "metal", "thermal", "opening",
+                    "roadwork", "utilit",
+                )):
+                    ref_disc = "civil"
+                elif any(kw in _infer_ctx for kw in (
+                    "electrical", "communic", "security",
+                )):
+                    ref_disc = "electrical"
+                elif any(kw in _infer_ctx for kw in (
+                    "mechanical", "plumbing", "hvac", "fire",
+                )):
+                    ref_disc = "mechanical"
+
             if guessed_disc:
                 if guessed_disc == ref_disc:
                     final *= 1.15            # same discipline boost
@@ -1904,7 +1928,7 @@ class LexicalMatcher:
                 if _compact:
                     _subcat = _compact[2]  # subcat from compact format
             if _subcat == "00":
-                final *= 0.75  # penalise generic subcategory
+                final *= 0.60  # penalise generic subcategory (prefer specific)
 
             # ── Scope scoring from hierarchy context ────────────────────
             # When parent/grandparent clearly indicates the scope of work

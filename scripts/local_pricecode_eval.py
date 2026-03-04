@@ -43,9 +43,9 @@ LOCAL_DB_PATH = "/tmp/pricecode_index.db"
 TOP_K = 20  # number of candidates to write per item (match production max_candidates)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-INPUT_FILE = BASE_DIR / "Astoria trial 1 (Copy).xlsx"
-GT_FILE = BASE_DIR / "Astoria trial 1 (Copy)_pricecode (1).xlsx"
-OUTPUT_FILE = BASE_DIR / "Astoria trial 1 (Copy)_search_top5.xlsx"
+INPUT_FILE = BASE_DIR / "Astoria-Mechanical Commented.xlsx"
+GT_FILE = BASE_DIR / "Astoria-Mechanical Commented_pricecode.xlsx"  # may not exist
+OUTPUT_FILE = BASE_DIR / "Astoria-Mechanical Commented_search_top20.xlsx"
 
 
 # ─── Step 1: Download DB from S3 ──────────────────────────────────────

@@ -185,6 +185,92 @@ AIRFIELD_HINTS: Set[str] = {
     "guidance", "sign", "signage", "light",
 }
 
+# ── Shared discipline-inference rules ───────────────────────────────────
+# Used at *index time* (from the file name) and at *search time* (from
+# source_file + sheet_name) so a single consistent list drives both.
+# Each entry is (substring, discipline).  The list is evaluated top-down;
+# the first matching substring wins.  Put more specific patterns before
+# broader ones to avoid false positives (e.g. "firefight" before "fire").
+_DISC_INFER_RULES: List[Tuple[str, str]] = [
+    # ── Electrical (narrow terms first) ──
+    ("electrical",       "electrical"),
+    ("communic",         "electrical"),
+    ("security",         "electrical"),
+    ("transport",        "electrical"),   # a_Transportation sheets
+    ("cctv",             "electrical"),
+    ("fire alarm",       "electrical"),   # fire-alarm is Div 28 (elec)
+    ("low current",      "electrical"),
+    # ── Mechanical (check before civil — "fire" is broad) ──
+    ("mechanical",       "mechanical"),
+    ("plumbing",         "mechanical"),
+    ("hvac",             "mechanical"),
+    ("firefight",        "mechanical"),   # Mech - Firefighting
+    ("fire suppress",    "mechanical"),
+    ("fire protect",     "mechanical"),
+    ("sprinkler",        "mechanical"),
+    ("district cool",    "mechanical"),
+    ("chiller",          "mechanical"),
+    ("ventilat",         "mechanical"),
+    ("cooling",          "mechanical"),
+    ("heating",          "mechanical"),
+    ("fuel",             "mechanical"),   # fuel systems, LPG
+    ("lpg",              "mechanical"),
+    ("irrigation",       "mechanical"),
+    ("sewage",           "mechanical"),
+    ("potable",          "mechanical"),
+    ("sanitary",         "mechanical"),
+    ("storm network",    "mechanical"),
+    ("drainage network", "mechanical"),
+    ("piping",           "mechanical"),
+    # ── Civil (broadest — checked last as fallback) ──
+    ("civil",            "civil"),
+    ("concrete",         "civil"),
+    ("masonry",          "civil"),
+    ("earthwork",        "civil"),
+    ("finish",           "civil"),        # F_Finishes
+    ("metal",            "civil"),        # S_Metals
+    ("thermal",          "civil"),        # W_Thermal And Moisture
+    ("moisture",         "civil"),
+    ("waterproof",       "civil"),
+    ("opening",          "civil"),        # O_Openings
+    ("roadwork",         "civil"),        # Y_Roadworks
+    ("structural",       "civil"),
+    ("demolit",          "civil"),
+    ("excavat",          "civil"),
+    ("landscape",        "civil"),
+    ("paving",           "civil"),
+    ("pavement",         "civil"),
+    ("asphalt",          "civil"),
+    ("formwork",         "civil"),
+    ("reinforc",         "civil"),
+    ("rebar",            "civil"),
+    ("paint",            "civil"),
+    ("tile",             "civil"),        # tiling
+    ("door",             "civil"),
+    ("window",           "civil"),
+    ("roof",             "civil"),
+    ("fence",            "civil"),
+    ("piling",           "civil"),
+    ("pile",             "civil"),
+    ("foundation",       "civil"),
+    ("existing condition", "civil"),     # B_Existing Conditions
+    ("utilit",           "civil"),        # Z_Utilities (civil side)
+]
+
+
+def _infer_discipline_from_context(*texts: str) -> str:
+    """Return inferred discipline from one or more context strings.
+
+    Scans *texts* (lowercased, concatenated) against ``_DISC_INFER_RULES``.
+    Returns the discipline of the first matching keyword, or ``'unknown'``.
+    """
+    blob = " ".join(clean_text(t).lower().replace("_", " ") for t in texts if t)
+    for keyword, disc in _DISC_INFER_RULES:
+        if keyword in blob:
+            return disc
+    return "unknown"
+
+
 DOMAIN_ALIASES = [
     (re.compile(r"\bagl\b", re.I), "airfield lighting airfield signaling control equipment"),
     (re.compile(r"\bilcms\b", re.I), "airfield lighting control monitoring system"),
@@ -738,14 +824,13 @@ def is_generic_item(text: str) -> bool:
 
 
 def infer_discipline_from_filename(path: str) -> str:
-    name = os.path.basename(path).lower()
-    if "civil" in name:
-        return "civil"
-    if "elect" in name:
-        return "electrical"
-    if "mech" in name:
-        return "mechanical"
-    return "unknown"
+    """Infer discipline from a reference-file path.
+
+    Uses the shared ``_DISC_INFER_RULES`` mapping so index-time and
+    search-time inference stay consistent.
+    """
+    name = os.path.basename(path)
+    return _infer_discipline_from_context(name)
 
 
 def infer_discipline_from_query(*parts: str) -> Optional[str]:
@@ -1822,26 +1907,13 @@ class LexicalMatcher:
 
             # ── Infer discipline for "unknown" refs ──────────────────
             # Specialised source files (e.g. C_Concrete, M_Masonry)
-            # were indexed without a discipline tag.  Infer from the
-            # source-file / sheet name so they participate in
-            # discipline routing instead of being penalised.
+            # may have been indexed without a discipline tag.  Infer
+            # from source-file + sheet name via the shared rule table
+            # so they participate in discipline routing correctly.
             if ref_disc == "unknown":
-                _src_low = clean_text(ref["source_file"]).lower()
-                _infer_ctx = _src_low + " " + ref_sheet_low
-                if any(kw in _infer_ctx for kw in (
-                    "concrete", "masonry", "civil", "earthwork",
-                    "finish", "metal", "thermal", "opening",
-                    "roadwork", "utilit",
-                )):
-                    ref_disc = "civil"
-                elif any(kw in _infer_ctx for kw in (
-                    "electrical", "communic", "security",
-                )):
-                    ref_disc = "electrical"
-                elif any(kw in _infer_ctx for kw in (
-                    "mechanical", "plumbing", "hvac", "fire",
-                )):
-                    ref_disc = "mechanical"
+                ref_disc = _infer_discipline_from_context(
+                    ref["source_file"], ref_sheet
+                )
 
             if guessed_disc:
                 if guessed_disc == ref_disc:

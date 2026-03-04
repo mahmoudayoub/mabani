@@ -9,6 +9,7 @@ Flow:
 import asyncio
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from .prompts import PRICECODE_MATCH_SYSTEM, PRICECODE_MATCH_USER
@@ -28,8 +29,21 @@ _SCOPE_LABELS_CIVIL_CONCRETE = {
     "F": "Supply+Install",
 }
 _SCOPE_LABELS_GENERIC = {
+    "A": "Base/Standard",
+    "B": "Variant B",
+    "C": "Variant C",
+    "D": "Variant D",
     "E": "Supply Only",
     "F": "Supply+Install",
+    "G": "Variant G",
+    "H": "Variant H",
+    "I": "Variant I",
+    "J": "Variant J",
+}
+
+_DISC_LABELS = {
+    "C": "Civil", "P": "Plumbing", "H": "HVAC",
+    "F": "Fire", "Z": "Utilities", "E": "Electrical",
 }
 
 logger = logging.getLogger(__name__)
@@ -218,6 +232,10 @@ class PriceCodeMatcher:
     @staticmethod
     def _build_candidates_text(candidates: List[Dict[str, Any]]) -> str:
         lines: List[str] = []
+        # Compact code regex: e.g. p1316ACC, h3713B01
+        _compact_re = re.compile(
+            r'^[A-Za-z](\d{2})(\d{2})([A-Za-z])([A-Za-z0-9])([A-Za-z0-9])$'
+        )
         for i, cand in enumerate(candidates, 1):
             code = cand.get("price_code", "NO_CODE")
             desc = cand.get("description", "")
@@ -230,18 +248,35 @@ class PriceCodeMatcher:
             # what each scope variant means.
             scope_tag = ""
             parts = code.strip().split()
-            if len(parts) >= 4 and len(parts[3]) >= 2:
-                scope_letter = parts[3][-1].upper()
-                if scope_letter.isalpha():
-                    disc = parts[0].upper()
-                    cat = parts[1] if len(parts) >= 2 else ""
-                    # Civil concrete categories get detailed labels
-                    if disc == "C" and cat in ("31", "21", "11", "10"):
-                        label = _SCOPE_LABELS_CIVIL_CONCRETE.get(scope_letter)
-                    else:
-                        label = _SCOPE_LABELS_GENERIC.get(scope_letter)
-                    if label:
-                        scope_tag = f" [Scope {scope_letter}: {label}]"
+            disc_letter = ""
+            cat_str = ""
+            scope_letter = None
 
-            lines.append(f"[{i}] [{code}]{scope_tag}{tag} {desc}")
+            if len(parts) >= 4 and len(parts[3]) >= 2:
+                # Spaced format: C 31 13 CGA
+                disc_letter = parts[0].upper()
+                cat_str = parts[1] if len(parts) >= 2 else ""
+                scope_letter = parts[3][-1].upper()
+            else:
+                # Try compact format: p1316ACC
+                cm = _compact_re.match(code.strip())
+                if cm:
+                    disc_letter = code.strip()[0].upper()
+                    cat_str = cm.group(1)
+                    scope_letter = cm.group(5).upper()
+
+            if scope_letter and scope_letter.isalpha():
+                if disc_letter == "C" and cat_str in ("31", "21", "11", "10"):
+                    label = _SCOPE_LABELS_CIVIL_CONCRETE.get(scope_letter)
+                else:
+                    label = _SCOPE_LABELS_GENERIC.get(scope_letter)
+                if label:
+                    scope_tag = f" [Scope {scope_letter}: {label}]"
+
+            # ── Discipline annotation ───────────────────────────────────
+            disc_tag = ""
+            if disc_letter in _DISC_LABELS:
+                disc_tag = f" [Disc: {_DISC_LABELS[disc_letter]}]"
+
+            lines.append(f"[{i}] [{code}]{disc_tag}{scope_tag}{tag} {desc}")
         return "\n".join(lines)

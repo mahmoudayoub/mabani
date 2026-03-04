@@ -112,6 +112,30 @@ SYNONYM_GROUPS: List[List[str]] = [
     ["mesh"],
     ["roof", "roofing"],
     ["insulation", "insulated"],
+    # Fire protection
+    ["extinguisher"],
+    ["hose"],
+    ["nozzle"],
+    ["detector"],
+    ["damper"],
+    # HVAC duct
+    ["grille", "grilles"],
+    ["diffuser", "diffusers"],
+    ["attenuator"],
+    ["louvre", "louver"],
+    # Pumps
+    ["pump", "pumps"],
+    ["motor"],
+    ["compressor"],
+    # General MEP
+    ["meter"],
+    ["gauge"],
+    ["sensor"],
+    ["thermostat"],
+    ["controller"],
+    ["strainer"],
+    ["expansion"],
+    ["hanger", "support"],
 ]
 
 _SYNONYM_MAP: Dict[str, str] = {}
@@ -222,6 +246,37 @@ DOMAIN_ALIASES = [
     (re.compile(r"\blow\s+smoke\s+zero\s+halogen", re.I), "lsoh lszh"),
     (re.compile(r"\bwire\s+mesh", re.I), "mesh welded"),
     (re.compile(r"\bwelded\s+mesh", re.I), "mesh wire"),
+    # ── Fire protection / suppression recall ──
+    (re.compile(r"\bclean\s+agent", re.I), "fire suppression gas system fm200 novec"),
+    (re.compile(r"\bfm-?200\b", re.I), "clean agent fire suppression gas system"),
+    (re.compile(r"\bnovec\b", re.I), "clean agent fire suppression gas system"),
+    (re.compile(r"\binert\s+gas", re.I), "clean agent fire suppression system"),
+    (re.compile(r"\bfire\s+extinguisher", re.I), "portable extinguisher dry chemical co2"),
+    (re.compile(r"\bfire\s+blanket", re.I), "fire blanket safety equipment"),
+    (re.compile(r"\bfire\s+hose\s+cabinet", re.I), "fhc fire hose cabinet reel"),
+    (re.compile(r"\bfhc\b", re.I), "fire hose cabinet"),
+    # ── HVAC duct / accessories recall ──
+    (re.compile(r"\bflexible\s+duct", re.I), "flex duct connection"),
+    (re.compile(r"\bflex\s+duct", re.I), "flexible duct connection"),
+    (re.compile(r"\bcircular\s+duct", re.I), "round duct spiral duct"),
+    (re.compile(r"\brectangular\s+duct", re.I), "rect duct galvanized sheet metal"),
+    (re.compile(r"\bfire\s+damper", re.I), "fire rated damper volume control"),
+    (re.compile(r"\bvolume\s+control\s+damper", re.I), "vcd damper"),
+    (re.compile(r"\bvcd\b", re.I), "volume control damper"),
+    (re.compile(r"\bvav\b", re.I), "variable air volume box"),
+    (re.compile(r"\bsound\s+attenuator", re.I), "silencer acoustic attenuator"),
+    (re.compile(r"\bsilencer\b", re.I), "sound attenuator acoustic"),
+    # ── Pumps / mechanical equipment recall ──
+    (re.compile(r"\bsubmersible\s+pump", re.I), "sump pump drainage pump"),
+    (re.compile(r"\bbooster\s+pump", re.I), "pressure pump booster set"),
+    (re.compile(r"\bcentrifugal\s+pump", re.I), "inline pump circulation pump"),
+    (re.compile(r"\bheat\s+exchanger", re.I), "plate heat exchanger phe calorifier"),
+    (re.compile(r"\bcalorifier", re.I), "heat exchanger hot water cylinder"),
+    (re.compile(r"\bexpansion\s+(?:tank|vessel)", re.I), "expansion vessel pressure tank"),
+    # ── Gas / LPG recall ──
+    (re.compile(r"\blpg\b", re.I), "liquefied petroleum gas fuel"),
+    (re.compile(r"\bnatural\s+gas", re.I), "gas piping fuel"),
+    (re.compile(r"\bgas\s+detection", re.I), "gas detector sensor leak"),
 ]
 
 # ── Unit compatibility map ──────────────────────────────────────────────
@@ -333,19 +388,101 @@ def _detect_expected_scope(parent: str, grandparent: str) -> Optional[str]:
     return None
 
 
+# ═════════════════════════════════════════════════════════════════════════
+# MEP sub-discipline routing
+# ═════════════════════════════════════════════════════════════════════════
+
+# Maps hierarchy keywords → expected price-code prefix letter.
+# Within the broad "mechanical" discipline, plumbing (p), HVAC (h),
+# fire protection (f), and utilities (Z) share identical physical
+# materials (pipes, valves, insulation).  These hints let the search
+# engine boost candidates from the correct sub-discipline.
+# Only unambiguous, standard construction terminology is used to
+# avoid overfitting to any specific project.
+_MEP_PREFIX_HINTS: List[Tuple[re.Pattern, str]] = [
+    # Plumbing (p) — building water / drainage piping
+    (re.compile(r"\bplumbing\b", re.I), "p"),
+    (re.compile(r"\bsanitary\b", re.I), "p"),
+    (re.compile(r"\bdomestic\s+(?:hot\s+|cold\s+)?water\b", re.I), "p"),
+    (re.compile(r"\bpotable\s+water\b", re.I), "p"),
+    (re.compile(r"\bsewage\b", re.I), "p"),
+    (re.compile(r"\bsoil\s+(?:and|&)\s*waste\b", re.I), "p"),
+    (re.compile(r"\bwater\s+heater\b", re.I), "p"),
+    # HVAC (h) — heating, ventilation, air conditioning
+    (re.compile(r"\bhvac\b", re.I), "h"),
+    (re.compile(r"\bchilled\s+water\b", re.I), "h"),
+    (re.compile(r"\bair\s+condition", re.I), "h"),
+    (re.compile(r"\bventilation\b", re.I), "h"),
+    (re.compile(r"\bdistrict\s+cooling\b", re.I), "h"),
+    (re.compile(r"\bcondensate\b", re.I), "h"),
+    (re.compile(r"\brefrigerant\b", re.I), "h"),
+    # Fire protection (f) — suppression, sprinklers
+    (re.compile(r"\bfire\s+(?:protect|suppress|fight)", re.I), "f"),
+    (re.compile(r"\bfire\s+hose\b", re.I), "f"),
+    (re.compile(r"\bsprinkler\b", re.I), "f"),
+    # Utilities / External (Z)
+    (re.compile(r"\butilit(?:y|ies)\b", re.I), "Z"),
+    (re.compile(r"\birrigation\b", re.I), "Z"),
+]
+
+
+def _detect_mep_prefix(parent: str, grandparent: str) -> Optional[str]:
+    """Detect expected MEP price-code prefix letter from hierarchy context.
+
+    Scans parent and grandparent text for standard construction keywords
+    that unambiguously identify the MEP sub-discipline.  Returns the
+    prefix letter (p/h/f/Z) if the evidence is clear, or None if
+    ambiguous / unknown.  First match wins, so more-specific patterns
+    should appear before less-specific ones.
+    """
+    ctx = f"{grandparent} {parent}"
+    for pattern, prefix in _MEP_PREFIX_HINTS:
+        if pattern.search(ctx):
+            return prefix
+    return None
+
+
+# Compact code regex: e.g. p1316ACC, h3713B01, Z1411AAA
+_COMPACT_CODE_RE = re.compile(
+    r'^[A-Za-z]\d{4}([A-Za-z][A-Za-z0-9]{1,2})$'
+)
+
+
 def _extract_scope_letter(price_code: str) -> Optional[str]:
     """Extract the scope letter (last char of the suffix) from a price code.
 
-    Price code format: ``[Disc] [Cat] [Subcat] [ElemGradeScope]``
-    e.g. ``C 31 13 CGA`` → scope ``A``.
+    Supports both spaced format ``C 31 13 CGA`` → ``A``
+    and compact format ``p1316ACC`` → ``C``.
     """
-    parts = price_code.strip().split()
+    code = price_code.strip()
+    # Spaced format: [Disc] [Cat] [Subcat] [ElemGradeScope]
+    parts = code.split()
     if len(parts) >= 4:
         suffix = parts[3]
-        if len(suffix) >= 2:  # at least 2 chars (some codes have 2-char suffix)
+        if len(suffix) >= 2:
             last = suffix[-1].upper()
             if last.isalpha():
                 return last
+    # Compact format: X9999XYZ
+    m = _COMPACT_CODE_RE.match(code)
+    if m:
+        suffix = m.group(1)
+        last = suffix[-1].upper()
+        if last.isalpha():
+            return last
+    return None
+
+
+def _parse_compact_code(price_code: str):
+    """Parse a compact code into (disc, cat, subcat, suffix) or None.
+
+    ``p1316ACC`` → ('p', '13', '16', 'ACC')
+    ``h3713B01`` → ('h', '37', '13', 'B01')
+    """
+    code = price_code.strip()
+    m = re.match(r'^([A-Za-z])(\d{2})(\d{2})([A-Za-z][A-Za-z0-9]{1,2})$', code)
+    if m:
+        return m.group(1), m.group(2), m.group(3), m.group(4)
     return None
 
 
@@ -441,14 +578,20 @@ def normalize_text(text: str) -> str:
         r"\bd\s*[-:/]?\s*(\d{2,4})\b(?=[^\n,;]{0,24}\b(?:pipe|rcp|culvert|storm|sewer|drain))",
         lambda m: f"dn{m.group(1)}", text,
     )
+    # ── Fix: DN ↔ DIA equivalence ──────────────────────────────────
+    # BOQ says "50 mm diameter" → dia50; Reference says "DN50" → dn50.
+    # They mean the same pipe size.  Emit BOTH tokens so TF-IDF matches.
     text = re.sub(r"\b(\d+)\s*mm\s*(?:dia|diameter)\b",
-                  lambda m: f"dia{m.group(1)} {m.group(1)}mm diameter", text)
+                  lambda m: f"dia{m.group(1)} dn{m.group(1)} {m.group(1)}mm diameter", text)
     text = re.sub(r"\b(?:dia|diameter)\s*[:\-]?\s*(\d+)\s*mm\b",
-                  lambda m: f"dia{m.group(1)} {m.group(1)}mm diameter", text)
+                  lambda m: f"dia{m.group(1)} dn{m.group(1)} {m.group(1)}mm diameter", text)
     text = re.sub(r"\b(\d+)\s*cm\s*(?:dia|diameter)\b",
-                  lambda m: f"dia{int(m.group(1))*10} {int(m.group(1))*10}mm diameter", text)
+                  lambda m: f"dia{int(m.group(1))*10} dn{int(m.group(1))*10} {int(m.group(1))*10}mm diameter", text)
     text = re.sub(r"\b(?:dia|diameter)\s*[:\-]?\s*(\d+)\s*cm\b",
-                  lambda m: f"dia{int(m.group(1))*10} {int(m.group(1))*10}mm diameter", text)
+                  lambda m: f"dia{int(m.group(1))*10} dn{int(m.group(1))*10} {int(m.group(1))*10}mm diameter", text)
+    # Also: dn{N} → emit dia{N} (for refs that say DN50, match queries that say diameter)
+    text = re.sub(r"\bdn(\d{2,4})\b",
+                  lambda m: f"dn{m.group(1)} dia{m.group(1)}", text)
     text = re.sub(r"\b(\d+)\s*mm2\b", r"\1mm2", text)
     text = re.sub(r"\b(\d+)\s*mm²\b", r"\1mm2", text)
     text = re.sub(r"\b(\d+)\s*sq\.?\s*mm\b", r"\1mm2", text)
@@ -474,6 +617,21 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"\bditches\b", "ditch", text)
     text = re.sub(r"\bchannels\b", "channel", text)
     text = re.sub(r"\bblinding\b", "concrete blinding", text)
+
+    # ── Fix: Joined dimension tokenization ─────────────────────────
+    # BOQ says "1300 x 550 mm" → tokens: "1300", "550mm" (separated)
+    # Reference says "1300x550mm" → token: "1300x550" (joined)
+    # Generate both joined and separated forms so TF-IDF can match.
+    # Pattern: W x H [mm] — generate WxH joined token
+    def _emit_joined_dims(m):
+        w, h = m.group(1), m.group(2)
+        unit_suffix = m.group(3) or ""
+        joined = f"{w}x{h}"
+        return f"{m.group(0)} {joined}"
+    text = re.sub(
+        r"\b(\d{2,5})\s*x\s*(\d{2,5})(\s*mm)?\b",
+        _emit_joined_dims, text
+    )
 
     text = re.sub(r"[^a-z0-9;/\-\+\.\sx]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
@@ -1339,7 +1497,7 @@ class LexicalMatcher:
     # Tuning knobs (class-level defaults)
     HARD_POSTINGS_LIMIT = 50000
     MAX_QUERY_TERMS = 22
-    INITIAL_POOL_LIMIT = 1500
+    INITIAL_POOL_LIMIT = 3000
     RELATIVE_CUTOFF = 0.50
     MIN_ABS_SCORE = 1.60
     MIN_OVERLAP_TOKENS = 1
@@ -1583,6 +1741,11 @@ class LexicalMatcher:
         )
         # Scope detection from hierarchy context (pre-computed once)
         expected_scope = _detect_expected_scope(parent_str, gp_str)
+        # MEP sub-discipline prefix (p/h/f/Z) from hierarchy keywords
+        expected_mep_prefix = (
+            _detect_mep_prefix(parent_str, gp_str)
+            if guessed_disc == "mechanical" else None
+        )
         # Sheet affinity: compute once, reuse for all candidates
         sheet_aff: Dict[str, float] = {}
         _sa_best_aff = 0.0
@@ -1664,6 +1827,20 @@ class LexicalMatcher:
                 else:
                     final *= 0.70            # normal cross-discipline penalty
 
+            # ── MEP sub-discipline routing ──────────────────────────────
+            # Within "mechanical", the price-code prefix (p/h/f/Z)
+            # identifies the sub-discipline.  Identical physical items
+            # (pipes, valves, insulation) exist across sub-disciplines,
+            # so we boost matching and penalize mismatching prefixes.
+            if expected_mep_prefix:
+                _ref_pc_raw = clean_text(ref["price_code"])
+                _ref_prefix = _ref_pc_raw[0].upper() if _ref_pc_raw else ""
+                if _ref_prefix and _ref_prefix.isalpha():
+                    if _ref_prefix == expected_mep_prefix.upper():
+                        final *= 1.15       # matching sub-discipline
+                    elif _ref_prefix in ("P", "H", "F", "Z"):
+                        final *= 0.65       # wrong MEP sub-discipline
+
             # Airfield routing
             if is_airfield:
                 if ref_disc == "electrical":
@@ -1718,7 +1895,15 @@ class LexicalMatcher:
             # should be preferred when both exist.
             _pc = clean_text(ref["price_code"])
             _pc_parts = _pc.split()
-            if len(_pc_parts) >= 3 and _pc_parts[2] == "00":
+            # Subcategory "00" penalty — works for both spaced and compact
+            _subcat = None
+            if len(_pc_parts) >= 3:
+                _subcat = _pc_parts[2]
+            else:
+                _compact = _parse_compact_code(_pc)
+                if _compact:
+                    _subcat = _compact[2]  # subcat from compact format
+            if _subcat == "00":
                 final *= 0.75  # penalise generic subcategory
 
             # ── Scope scoring from hierarchy context ────────────────────
@@ -1727,15 +1912,29 @@ class LexicalMatcher:
             #  "Pour concrete…include labour" → Supply+Install = F),
             # boost candidates with the matching scope letter and
             # penalise those with a different scope.
-            # Only applied to Civil (C) discipline codes where the
-            # E/F scope letters have consistent meaning.
-            if expected_scope and _pc_parts and _pc_parts[0].upper() == "C":
+            # Applied to both spaced and compact codes.
+            if expected_scope:
                 ref_scope = _extract_scope_letter(_pc)
                 if ref_scope:
-                    if ref_scope == expected_scope:
-                        final *= 1.25          # matching scope boost
+                    if expected_scope in ("E", "F"):
+                        # E (Supply Only) and F (Supply+Install) are
+                        # universal across all disciplines.
+                        if ref_scope == expected_scope:
+                            final *= 1.25      # matching scope boost
+                        elif ref_scope in ("E", "F"):
+                            final *= 0.80      # wrong supply scope
                     else:
-                        final *= 0.85          # wrong scope penalty (soft)
+                        # Concrete-specific scopes (A/B/C/D) — Civil only
+                        _scope_disc = _pc_parts[0].upper() if _pc_parts else ""
+                        if not _scope_disc:
+                            _cp = _parse_compact_code(_pc)
+                            if _cp:
+                                _scope_disc = _cp[0].upper()
+                        if _scope_disc == "C":
+                            if ref_scope == expected_scope:
+                                final *= 1.25  # matching scope boost
+                            else:
+                                final *= 0.85  # wrong scope (soft)
 
             reranked.append({
                 "ref_id": ref_id,

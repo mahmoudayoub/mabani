@@ -32,7 +32,7 @@ from openpyxl import load_workbook
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "lexical_v2"
+SCHEMA_VERSION = "lexical_v3"
 
 # ═════════════════════════════════════════════════════════════════════════
 # Constants
@@ -591,6 +591,40 @@ def _parse_compact_code(price_code: str):
     return None
 
 
+# ── Code prefix extraction ──────────────────────────────────────────
+# The code prefix identifies the "family" of a code: all codes sharing
+# the same prefix describe the same type of work but differ in
+# variant dimensions (V1/V2/V3 = size, material, rating, scope, etc.).
+#
+# Spaced:  "C 31 13 CGA"  → prefix "C 31 13"
+# Compact: "Z1411ABC"     → prefix "Z1411"
+# Compact: "p1316ACC"     → prefix "p1316"
+
+_PREFIX_SPACED_RE = re.compile(
+    r'^([A-Za-z]\s+\d+\s+\d+)\s+[A-Za-z]'
+)
+_PREFIX_COMPACT_RE = re.compile(
+    r'^([A-Za-z]\d{2,4})[A-Za-z]'
+)
+
+
+def extract_code_prefix(price_code: str) -> str:
+    """Extract the family-level prefix from a price code.
+
+    Returns the prefix string, or the full code if no pattern matches.
+    """
+    code = clean_text(price_code)
+    if not code:
+        return ""
+    m = _PREFIX_SPACED_RE.match(code)
+    if m:
+        return m.group(1)
+    m = _PREFIX_COMPACT_RE.match(code)
+    if m:
+        return m.group(1)
+    return code
+
+
 OBJECT_TOKENS: Set[str] = {
     "pipe", "conduit", "duct", "bank", "sign", "cable", "transformer",
     "light", "base", "joint", "slab", "pavement", "concrete", "manhole",
@@ -872,11 +906,202 @@ def _canon_dim(parts: Sequence[str]) -> str:
     return "x".join(nums)
 
 
+# ── Categorical spec vocabularies ────────────────────────────────────────
+# These map normalised keywords found in BOQ or price-code descriptions
+# to canonical tags used for matching.  Order matters: longer patterns
+# must come first so greedy matching picks the most specific.
+
+_PIPE_MAT_PATTERNS: List[Tuple[str, str]] = [
+    # Plastics
+    (r"\bhdpe\b", "HDPE"), (r"\bpe\s*-?\s*x\b|\bpex\b", "PEX"),
+    (r"\bpp\s*-?\s*rct\b", "PPRCT"), (r"\bppr\b|\bpp\s*-?\s*r\b", "PPR"),
+    (r"\bupvc\b|\bu\s*-?pvc\b", "UPVC"), (r"\bpvc\b", "PVC"),
+    (r"\bgrp\b|\bfrp\b", "GRP"), (r"\bcpvc\b", "CPVC"),
+    (r"\babs\b", "ABS"),
+    # Metals
+    (r"\bdi\b|\bductile\s*iron\b", "DI"), (r"\bci\b|\bcast\s*iron\b", "CI"),
+    (r"\bgalvan[iz]+ed\s*steel\b|\bgs\b|\bgalv\.?\s*steel\b", "GS"),
+    (r"\bblack\s*steel\b|\bbs\b(?=\s+pipe|\s+bend|\s+tee)", "BS"),
+    (r"\bcarbon\s*steel\b|\bcs\b(?=\s+pipe|\s+bend|\s+tee|\s+\w*valve)", "CS"),
+    (r"\bstainless\s*steel\b|\bss\b(?=\s+pipe)", "SS"),
+    (r"\bcopper\b(?=\s+(?:pipe|tube|tubing))|\bcu\b(?=\s+pipe)", "COPPER"),
+    # Concrete pipes – require pipe/culvert context to avoid matching
+    # generic "reinforced concrete" in building BOQs.
+    (r"\brc\b(?=\s+pipe)|\breinforced\s+concrete\s+pipe", "RC"),
+    (r"\bvc\b(?=\s+pipe)|\bvitrified\s*clay\b", "VC"),
+]
+_PIPE_MAT_RE = [(re.compile(p, re.I), tag) for p, tag in _PIPE_MAT_PATTERNS]
+
+_VALVE_TYPE_PATTERNS: List[Tuple[str, str]] = [
+    (r"\bgate\s*valve\b", "GATE"), (r"\bcheck\s*valve\b|\bnon[- ]return\s*valve\b", "CHECK"),
+    (r"\bbutterfly\s*valve\b", "BUTTERFLY"), (r"\bball\s*valve\b", "BALL"),
+    (r"\bglobe\s*valve\b", "GLOBE"),
+    (r"\bwashout\s*valve\b|\bwash[- ]?out\b", "WASHOUT"),
+    (r"\bair\s*(?:release\s*)?valve\b|\bair\s*valve\b", "AIRVALVE"),
+    (r"\bpressure\s*reduc\w*\s*valve\b|\bprv\b", "PRV"),
+    (r"\bsolenoid\s*valve\b", "SOLENOID"),
+    (r"\bautomatic\s*vent\w*\s*valve\b", "AUTOVENT"),
+    (r"\brelief\s*valve\b|\bsafety\s*valve\b", "RELIEF"),
+    (r"\bstrainer\b", "STRAINER"),
+]
+_VALVE_TYPE_RE = [(re.compile(p, re.I), tag) for p, tag in _VALVE_TYPE_PATTERNS]
+
+_FITTING_TYPE_PATTERNS: List[Tuple[str, str]] = [
+    (r"\bbends?\b|\belbows?\b", "BEND"), (r"\btees?\b", "TEE"),
+    (r"\breducers?\b|\breducing\b", "REDUCER"), (r"\bcouplings?\b", "COUPLING"),
+    (r"\bflanges?\b", "FLANGE"), (r"\bunions?\b", "UNION"),
+    (r"\badaptors?\b|\badapters?\b", "ADAPTOR"),
+]
+_FITTING_TYPE_RE = [(re.compile(p, re.I), tag) for p, tag in _FITTING_TYPE_PATTERNS]
+
+_CONCRETE_ELEM_PATTERNS: List[Tuple[str, str]] = [
+    (r"\bisolated\s*foot\w*\b", "ISOFOOT"), (r"\bstrip\s*foot\w*\b", "STRIPFOOT"),
+    (r"\brafts?\b", "RAFT"), (r"\bpile\s*caps?\b", "PILECAP"), (r"\bpiles?\b", "PILE"),
+    (r"\btie\s*beams?\b", "TIEBEAM"), (r"\bdrop\s*(?:beams?|panels?)\b", "DROPBEAM"),
+    (r"\bground\s*beams?\b|\bgrade\s*beams?\b", "GRADEBEAM"),
+    (r"\bshear\s*walls?\b", "SHEARWALL"), (r"\bretaining\s*walls?\b", "RETWALL"),
+    (r"\bslabs?\s*on\s*grade\b|\bsog\b", "SOG"),
+    (r"\bsuspended\s*slabs?\b", "SUSPSLAB"), (r"\bflat\s*slabs?\b", "FLATSLAB"),
+    (r"\bslabs?\b", "SLAB"), (r"\bcolumns?\s*necks?\b", "COLNECK"),
+    (r"\bcolumns?\b", "COLUMN"), (r"\bbeams?\b", "BEAM"),
+    (r"\bstairs?\b|\bsteps?\b", "STAIR"), (r"\bparapets?\b", "PARAPET"),
+    (r"\bkerbs?\b|\bcurbs?\b", "KERB"), (r"\bblinding\b", "BLINDING"),
+    (r"\bpedestals?\b", "PEDESTAL"), (r"\bramps?\b", "RAMP"),
+    (r"\bupstand\s*walls?\b", "UPSTAND"), (r"\bbasement\s*walls?\b", "BSMTWALL"),
+    (r"\bneck\s*(?:columns?|walls?)\b", "COLNECK"),
+    (r"\bwalls?\b", "WALL"), (r"\bfoot\w*\b", "FOOTING"),
+    (r"\btransfer\s*beams?\b", "TRANSBEAM"),
+]
+_CONCRETE_ELEM_RE = [(re.compile(p, re.I), tag) for p, tag in _CONCRETE_ELEM_PATTERNS]
+
+_CONCRETE_SCOPE_PATTERNS: List[Tuple[str, str]] = [
+    (r"\bformwork\s*(?:and|&|\+)\s*reinfo?rce?ment\b|\breinfo?rce?ment\s*(?:and|&|\+)\s*formwork\b", "FORM+REBAR"),
+    (r"\bconcrete\s*only\b", "CONC_ONLY"),
+    (r"\breinfo?rce?ment\s*only\b|\brebar\s*only\b", "REBAR_ONLY"),
+    (r"\bformwork\s*only\b|\bshutter\w*\s*only\b", "FORM_ONLY"),
+    (r"\bwith\s+reinfo?rce?ment\b|\bincl\w*\s*rebar\b", "WITH_REBAR"),
+    (r"\bwith\s+formwork\b|\bincl\w*\s*formwork\b", "WITH_FORM"),
+]
+_CONCRETE_SCOPE_RE = [(re.compile(p, re.I), tag) for p, tag in _CONCRETE_SCOPE_PATTERNS]
+
+_STEEL_SECTION_PATTERNS: List[Tuple[str, str]] = [
+    (r"\bi\s*/\s*h\b|\bih\b|\bi[- ]?section\b|\bh[- ]?section\b|\brolled\s*section\b", "IH"),
+    (r"\brhs\b|\brectangular\s*hollow\b", "RHS"),
+    (r"\bshs\b|\bsquare\s*hollow\b", "SHS"),
+    (r"\bchs\b|\bcircular\s*hollow\b", "CHS"),
+    (r"\bangle\b(?!.*\bdeg)", "ANGLE"), (r"\bflat\s*bar\b", "FLATBAR"),
+    (r"\bplate\b", "PLATE"), (r"\bchannel\b", "CHANNEL"),
+]
+_STEEL_SECTION_RE = [(re.compile(p, re.I), tag) for p, tag in _STEEL_SECTION_PATTERNS]
+
+_COATING_PATTERNS: List[Tuple[str, str]] = [
+    (r"\bhot[- ]?dip\s*galv\w*\b|\bhdg\b", "GALV"),
+    (r"\bgalvan\w*\b", "GALV"),
+    (r"\bintumescent\b", "INTUMESCENT"), (r"\bcementitious\s*fire\w*\b", "CEMENTITIOUS"),
+    (r"\bshop\s*paint\w*\b", "SHOPPAINT"),
+    (r"\bepoxy\s*coat\w*\b|\bepoxy[- ]coated\b", "EPOXYCOAT"),
+    (r"\baess\b|\barchitecturally\s*exposed\b", "AESS"),
+    (r"\bpowder\s*coat\w*\b", "POWDERCOAT"),
+]
+_COATING_RE = [(re.compile(p, re.I), tag) for p, tag in _COATING_PATTERNS]
+
+_INSUL_MAT_PATTERNS: List[Tuple[str, str]] = [
+    (r"\belastomeric\b|\barnaflex\b|\bkaiflex\b", "ELASTOMERIC"),
+    (r"\bfiberg?lass\b|\bglass\s*wool\b", "FIBERGLASS"),
+    (r"\bmineral\s*wool\b|\brock\s*wool\b", "MINERALWOOL"),
+    (r"\bpir\b|\bpolyisocyanurate\b", "PIR"),
+    (r"\bpuf\b|\bpolyurethane\s*foam\b|\bpu\s*foam\b", "PUF"),
+    (r"\bxps\b|\bextruded\s*polystyrene\b", "XPS"),
+    (r"\beps\b|\bexpanded\s*polystyrene\b", "EPS"),
+    (r"\bphenolic\b", "PHENOLIC"),
+]
+_INSUL_MAT_RE = [(re.compile(p, re.I), tag) for p, tag in _INSUL_MAT_PATTERNS]
+
+_CABLE_INSUL_PATTERNS: List[Tuple[str, str]] = [
+    (r"\bfr[- ]?xlpe\b", "FR-XLPE"), (r"\bxlpe\b", "XLPE"),
+    (r"\bepr\b", "EPR"), (r"\blszh\b|\bls0h\b|\blsoh\b", "LSZH"),
+    (r"\bswa\b", "SWA"), (r"\bawa\b", "AWA"),
+    (r"\bpvc\b(?=.*cable|.*\bconductor|.*\bwire)", "PVC"),
+    (r"\bmica\b", "MICA"),
+]
+_CABLE_INSUL_RE = [(re.compile(p, re.I), tag) for p, tag in _CABLE_INSUL_PATTERNS]
+
+
+def _extract_categorical(text_lower: str) -> Dict[str, Tuple[str, ...]]:
+    """Extract categorical (non-numeric) specs from lowered text."""
+    def _match_all(patterns, txt):
+        found = []
+        for rgx, tag in patterns:
+            if rgx.search(txt):
+                found.append(tag)
+        return tuple(sorted(set(found)))
+
+    result: Dict[str, Tuple[str, ...]] = {}
+    result["pipe_mat"]       = _match_all(_PIPE_MAT_RE, text_lower)
+    result["valve_type"]     = _match_all(_VALVE_TYPE_RE, text_lower)
+    result["fitting_type"]   = _match_all(_FITTING_TYPE_RE, text_lower)
+    result["concrete_elem"]  = _match_all(_CONCRETE_ELEM_RE, text_lower)
+    result["concrete_scope"] = _match_all(_CONCRETE_SCOPE_RE, text_lower)
+    result["steel_section"]  = _match_all(_STEEL_SECTION_RE, text_lower)
+    result["coating"]        = _match_all(_COATING_RE, text_lower)
+    result["insul_mat"]      = _match_all(_INSUL_MAT_RE, text_lower)
+    result["cable_insul"]    = _match_all(_CABLE_INSUL_RE, text_lower)
+
+    # Schedule (SCH 40, SCH 80, SDR values)
+    sch_vals: Set[str] = set()
+    for m in re.finditer(r"\bsch(?:edule)?[. ]*?(\d{2,3})\b", text_lower):
+        sch_vals.add(f"SCH{m.group(1)}")
+    for m in re.finditer(r"\bsdr\s*[- ]?\s*(\d{1,2}(?:\.\d+)?)\b", text_lower):
+        sch_vals.add(f"SDR{m.group(1)}")
+    result["schedule"] = tuple(sorted(sch_vals))
+
+    # Pipe grade (PE 80, PE 100, Class C/III/IV/V, K7/K9, SS/ES/EES, ERW/Seamless)
+    grade_vals: Set[str] = set()
+    for m in re.finditer(r"\bpe\s*[-]?\s*(80|100)\b", text_lower):
+        grade_vals.add(f"PE{m.group(1)}")
+    for m in re.finditer(r"\bcl(?:ass)?\s+([ivxlc]+|\d{1,3})\b", text_lower):
+        grade_vals.add(f"CL{m.group(1).upper()}")
+    for m in re.finditer(r"\bk\s*[-]?\s*(\d{1,2})\b", text_lower):
+        grade_vals.add(f"K{m.group(1)}")
+    for m in re.finditer(r"\b(erw|seamless)\b", text_lower):
+        grade_vals.add(m.group(1).upper())
+    result["pipe_grade"] = tuple(sorted(grade_vals))
+
+    # Stiffness class (SN2500, SN5000, SN10000)
+    sn_vals: Set[str] = set()
+    for m in re.finditer(r"\bsn\s*[-]?\s*(\d{3,5})\b", text_lower):
+        sn_vals.add(f"SN{m.group(1)}")
+    result["stiffness"] = tuple(sorted(sn_vals))
+
+    # Bend angle
+    angle_vals: Set[str] = set()
+    for m in re.finditer(r"\b(11|22|30|45|60|90)\s*(?:deg|°|degree)\b", text_lower):
+        angle_vals.add(m.group(1))
+    # Also match "11 deg" pattern in price-code descriptions
+    for m in re.finditer(r"\b(11|22|30|45|60|90)\s+deg\b", text_lower):
+        angle_vals.add(m.group(1))
+    result["bend_angle"] = tuple(sorted(angle_vals))
+
+    # STC sound rating
+    stc_vals: Set[str] = set()
+    for m in re.finditer(r"\bstc\s*[-]?\s*(\d{2,3})\s*(?:db)?\b", text_lower):
+        stc_vals.add(m.group(1))
+    result["stc"] = tuple(sorted(stc_vals))
+
+    return result
+
+
 def extract_specs(text: str) -> Dict[str, Tuple[str, ...]]:
     raw = clean_text(text)
     empty: Dict[str, Tuple[str, ...]] = {
         "dn": (), "dia": (), "mm": (), "mpa": (), "kv": (),
         "dims": (), "mm2": (), "cores": (),
+        "thk": (), "fire": (), "pn": (),
+        "pipe_mat": (), "valve_type": (), "fitting_type": (),
+        "concrete_elem": (), "concrete_scope": (),
+        "steel_section": (), "coating": (), "insul_mat": (), "cable_insul": (),
+        "schedule": (), "pipe_grade": (), "stiffness": (), "bend_angle": (),
+        "stc": (),
     }
     if not raw:
         return empty
@@ -892,7 +1117,7 @@ def extract_specs(text: str) -> Dict[str, Tuple[str, ...]]:
         or re.search(r"\b\d{1,2}c\b|\b\d+mm2\b", n)
     )
     concrete_ctx = bool(re.search(
-        r"\b(concrete|blinding|footing|foundation|slab|column|pedestal|grout|mortar|plaster|shotcrete|screed)\b", low))
+        r"\b(concrete|blinding|footing|foundation|slab|column|pedestal|grout|mortar|plaster|shotcrete|screed|raft|beam|stair|wall|formwork|shutter|rebar|reinforcement|in[- ]?situ)\b", low))
     steel_ctx = bool(re.search(r"\b(rebar|reinforcement|steel|bar\b|yield|fy)\b", low))
 
     # DN values
@@ -941,6 +1166,18 @@ def extract_specs(text: str) -> Dict[str, Tuple[str, ...]]:
         if f < 100 and (concrete_ctx or not steel_ctx):
             mpa.add(val)
 
+    # Concrete grade designation: "C32/40", "C12/15", "C40", "C 40", "Grade C40"
+    # The second number in C32/40 is the cylinder strength in MPa.
+    # Single-number forms like "C40" also indicate MPa directly.
+    for m in re.finditer(r"\bc\s*(\d{1,2})\s*/\s*(\d{1,2})\b", low):
+        cyl = int(m.group(2))
+        if 10 <= cyl <= 80:
+            mpa.add(str(cyl))
+    for m in re.finditer(r"(?:\bgrade\s+)?\bc\s*-?\s*(\d{2})\b(?!\s*/\s*\d)", low):
+        val = int(m.group(1))
+        if 10 <= val <= 80 and concrete_ctx:
+            mpa.add(str(val))
+
     # kV
     kv: Set[str] = set(_canon_num(x) for x in re.findall(r"\b(\d+(?:\.\d+)?)kv\b", n))
     for a, b in re.findall(r"\b(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*kv\b", low, flags=re.I):
@@ -977,6 +1214,41 @@ def extract_specs(text: str) -> Dict[str, Tuple[str, ...]]:
         for c in re.findall(r"\b(\d{1,2})\s*[x*]\s*\d+(?:/\d+)?\s*(?:mm2|mm²|sqmm|sq\.?\s*mm|mm\^2)\b", low, flags=re.I):
             core_vals.add(str(int(c)))
 
+    # ── Thickness (masonry, insulation, cladding) ────────────────────
+    thk_vals: Set[str] = set()
+    # "Th=100mm", "Th.=200mm", "thickness 150 mm", "150mm thick"
+    for m in re.finditer(r"\bth(?:ickness)?\s*[=.:]*\s*(\d{2,4})\s*mm\b", low):
+        thk_vals.add(str(int(m.group(1))))
+    for m in re.finditer(r"\b(\d{2,4})\s*mm\s*(?:thick|thk)\b", low):
+        thk_vals.add(str(int(m.group(1))))
+
+    # ── Fire rating (minutes) ────────────────────────────────────────
+    fire_vals: Set[str] = set()
+    # "fire rated 60 min", "FRL 120/120/120", "60min fire", "FR 90"
+    for m in re.finditer(r"\bfire\s*(?:rated?|rating)?\s*(\d{2,3})\s*min", low):
+        fire_vals.add(str(int(m.group(1))))
+    for m in re.finditer(r"\b(\d{2,3})\s*min(?:ute)?s?\s*(?:fire|frl|fr)\b", low):
+        fire_vals.add(str(int(m.group(1))))
+    for m in re.finditer(r"\bfrl\s*(\d{2,3})(?:/\d+)*\b", low):
+        fire_vals.add(str(int(m.group(1))))
+    for m in re.finditer(r"\bfr\s*[-:]?\s*(\d{2,3})\b", low):
+        fire_vals.add(str(int(m.group(1))))
+
+    # ── Pressure class / PN rating ───────────────────────────────────
+    pn_vals: Set[str] = set()
+    # "PN10", "PN 16", "Class C", "Class 150", "K9"
+    for m in re.finditer(r"\bpn\s*[-:]?\s*(\d{1,3})\b", low):
+        pn_vals.add(f"PN{m.group(1)}")
+    for m in re.finditer(r"\bclass\s+(\w{1,4})\b", low):
+        pn_vals.add(f"CL{m.group(1).upper()}")
+    for m in re.finditer(r"\bk\s*[-:]?\s*(\d{1,2})\b", low):
+        # K-class for ductile iron (K7, K9, K12)
+        if 5 <= int(m.group(1)) <= 14:
+            pn_vals.add(f"K{m.group(1)}")
+
+    # ── Categorical specs ───────────────────────────────────────
+    cat = _extract_categorical(low)
+
     return {
         "dn":    tuple(sorted(dn_vals,   key=lambda x: (len(x), x))),
         "dia":   tuple(sorted(dia_vals,  key=lambda x: (len(x), x))),
@@ -986,6 +1258,10 @@ def extract_specs(text: str) -> Dict[str, Tuple[str, ...]]:
         "dims":  tuple(sorted(dims)),
         "mm2":   tuple(sorted(mm2_vals,  key=lambda x: (int(x), x))),
         "cores": tuple(sorted(core_vals, key=lambda x: (int(x), x))),
+        "thk":   tuple(sorted(thk_vals,  key=lambda x: (int(x), x))),
+        "fire":  tuple(sorted(fire_vals, key=lambda x: (int(x), x))),
+        "pn":    tuple(sorted(pn_vals)),
+        **cat,
     }
 
 
@@ -1178,6 +1454,11 @@ def iter_ref_rows(path: str) -> Iterator[
     source_file = raw_stem[4:] if raw_stem.startswith("ref_") else raw_stem
     wb = safe_load_workbook(path, read_only=True, data_only=True)
 
+    # Regex to strip electrical variant letter annotations like "(A)",
+    # "(B)", "(a)" from descriptions.  These are redundant with the
+    # suffix letters in the price code and clutter LLM input.
+    _ELEC_ANNOTATION_RE = re.compile(r"\s*\([A-Za-z]\)")
+
     for ws in wb.worksheets:
         row_iter = ws.iter_rows(values_only=True)
         buffer: List[Tuple[int, Tuple[object, ...]]] = []
@@ -1215,6 +1496,10 @@ def iter_ref_rows(path: str) -> Iterator[
             prefixed = " ; ".join(prefix_parts + [desc]) if prefix_parts else desc
             if _is_bad_ref_header_row(price_code, prefixed):
                 return None
+            # Strip electrical variant annotations like "(A)", "(B)"
+            # which are redundant with the price code suffix letters.
+            if discipline == "E_Electrical":
+                prefixed = _ELEC_ANNOTATION_RE.sub("", prefixed)
             segs = split_hierarchy(prefixed)
             leaf = segs[-1] if segs else prefixed
             specs = extract_specs(prefixed)
@@ -1254,7 +1539,9 @@ CREATE TABLE IF NOT EXISTS refs (
     norm_text     TEXT,
     norm_leaf     TEXT,
     dn_csv  TEXT, dia_csv  TEXT, mm_csv  TEXT, mpa_csv TEXT,
-    kv_csv  TEXT, dims_csv TEXT, mm2_csv TEXT, core_csv TEXT
+    kv_csv  TEXT, dims_csv TEXT, mm2_csv TEXT, core_csv TEXT,
+    thk_csv TEXT, fire_csv TEXT, pn_csv TEXT,
+    code_prefix TEXT
 );
 CREATE TABLE IF NOT EXISTS postings (
     token  TEXT,
@@ -1263,6 +1550,7 @@ CREATE TABLE IF NOT EXISTS postings (
 CREATE INDEX IF NOT EXISTS idx_postings_token     ON postings(token);
 CREATE INDEX IF NOT EXISTS idx_postings_token_ref ON postings(token, ref_id);
 CREATE INDEX IF NOT EXISTS idx_refs_source_file   ON refs(source_file);
+CREATE INDEX IF NOT EXISTS idx_refs_code_prefix   ON refs(code_prefix);
 CREATE TABLE IF NOT EXISTS df (
     token TEXT PRIMARY KEY,
     df    INTEGER
@@ -1464,6 +1752,12 @@ def build_index(
             for discipline, source_file, sheet, pc, prefixed, leaf, specs, toks in iter_ref_rows(path):
                 segs = split_hierarchy(prefixed)
                 family_parts = list(segs[:3]) if segs else [sheet]
+                # For compact codes (e.g. p1316ACC), extract section+
+                # subsection from the code itself to give a more meaningful
+                # family_key than just the sheet name.
+                _compact_fk = re.match(r'^[A-Za-z](\d{2})(\d{2})', (pc or "").strip())
+                if _compact_fk and len(segs) <= 1:
+                    family_parts = [f"sec{_compact_fk.group(1)}", f"sub{_compact_fk.group(2)}"]
                 family_key = " | ".join([discipline, sheet] + family_parts)
                 insert_buf.append((
                     ref_id, discipline, source_file, sheet, pc,
@@ -1473,6 +1767,9 @@ def build_index(
                     ",".join(specs["mm"]),  ",".join(specs["mpa"]),
                     ",".join(specs["kv"]),  ",".join(specs["dims"]),
                     ",".join(specs["mm2"]), ",".join(specs["cores"]),
+                    ",".join(specs["thk"]), ",".join(specs["fire"]),
+                    ",".join(specs["pn"]),
+                    extract_code_prefix(pc),
                 ))
                 for tok in toks:
                     posting_buf.append((tok, ref_id))
@@ -1481,7 +1778,7 @@ def build_index(
 
                 if len(insert_buf) >= 5000:
                     cur.executemany(
-                        "INSERT INTO refs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO refs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         insert_buf,
                     )
                     cur.executemany("INSERT INTO postings VALUES (?,?)", posting_buf)
@@ -1496,7 +1793,7 @@ def build_index(
             )
 
         if insert_buf:
-            cur.executemany("INSERT INTO refs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", insert_buf)
+            cur.executemany("INSERT INTO refs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", insert_buf)
             cur.executemany("INSERT INTO postings VALUES (?,?)", posting_buf)
 
         # Full df table replacement (includes prior + new counts)
@@ -1635,6 +1932,7 @@ class LexicalMatcher:
         self.sheet_discipline: Dict[str, str] = data["sheet_discipline"]
         self._postings: Dict[str, List[int]] = data["postings"]
         self._refs: Dict[int, Dict[str, Any]] = data["refs"]
+        self._prefix_groups: Dict[str, List[int]] = data.get("prefix_groups", {})
 
         logger.info(
             f"LexicalMatcher ready (in-memory): {self.ref_count:,} refs, "
@@ -1642,7 +1940,26 @@ class LexicalMatcher:
             f"{len(self._postings):,} posting lists, "
             f"max_candidates={max_candidates}"
         )
+        # Cache for on-the-fly categorical spec extraction from ref descriptions.
+        # Populated lazily during reranking; avoids adding columns to the DB.
+        self._ref_cat_cache: Dict[int, Dict[str, Tuple[str, ...]]] = {}
         return self
+
+    # ── On-the-fly categorical spec extraction ──────────────────────────
+    def _get_ref_cat_specs(self, ref_id: int) -> Dict[str, Tuple[str, ...]]:
+        """Extract categorical specs from a ref's description, with caching."""
+        cached = self._ref_cat_cache.get(ref_id)
+        if cached is not None:
+            return cached
+        ref = self._refs.get(ref_id)
+        if ref is None:
+            return {}
+        # Use prefixed_description for richer context (includes hierarchy)
+        desc = ref.get("prefixed_description", "") or ref.get("description", "") or ""
+        low = desc.lower()
+        cat = _extract_categorical(low)
+        self._ref_cat_cache[ref_id] = cat
+        return cat
 
     # ── bulk loader (runs in a thread) ──────────────────────────────────
 
@@ -1720,7 +2037,7 @@ class LexicalMatcher:
         cursor = conn.execute("SELECT * FROM refs")
         col_names = [desc[0] for desc in cursor.description]
         # Columns with few unique values → intern
-        intern_cols = {"discipline", "source_file", "sheet_name"}
+        intern_cols = {"discipline", "source_file", "sheet_name", "code_prefix"}
         for row in cursor:
             d: Dict[str, Any] = {}
             for col, val in zip(col_names, row):
@@ -1730,10 +2047,24 @@ class LexicalMatcher:
                     d[col] = val
             refs[int(d["ref_id"])] = d
 
+        # ── Prefix groups: code_prefix → [ref_id, …] ───────────────
+        # Enables prefix-expansion during search: if TF-IDF finds any
+        # code from a prefix group, all siblings can be injected cheaply.
+        prefix_groups: Dict[str, List[int]] = defaultdict(list)
+        for rid, ref in refs.items():
+            pfx = ref.get("code_prefix", "")
+            if not pfx:
+                # Compute on the fly for legacy v2 indexes lacking the column
+                pfx = extract_code_prefix(ref.get("price_code", ""))
+            if pfx:
+                prefix_groups[pfx].append(rid)
+        prefix_groups = dict(prefix_groups)  # shed defaultdict overhead
+
         conn.close()
         logger.info(
             f"Index loaded: {len(refs):,} refs, "
-            f"{len(postings):,} posting lists, {sum(len(v) for v in postings.values()):,} entries"
+            f"{len(postings):,} posting lists, {sum(len(v) for v in postings.values()):,} entries, "
+            f"{len(prefix_groups):,} prefix groups"
         )
 
         return {
@@ -1745,6 +2076,7 @@ class LexicalMatcher:
             "sheet_discipline": sheet_discipline,
             "postings": postings,
             "refs": refs,
+            "prefix_groups": prefix_groups,
         }
 
     # ── public API ──────────────────────────────────────────────────────
@@ -1933,11 +2265,12 @@ class LexicalMatcher:
                         _seg_ratio = len(_seg_overlap) / max(1, len(_ctx_alpha))
                         if _seg_ratio >= 0.3:
                             final *= 1.0 + 0.35 * _seg_ratio  # up to ~1.35×
-                        elif _seg_ratio == 0.0 and not short:
-                            # No intermediate segment matches BOQ context
-                            # at all — mild penalty (only for non-thin items
-                            # where context is trustworthy)
-                            final *= 0.92
+                        # NOTE: no penalty for _seg_ratio==0 — vocabulary
+                        # between BOQ parents and rate-book hierarchy
+                        # segments differs across disciplines (e.g. mech
+                        # BOQ says "Soil pipe work" but ref intermediate
+                        # says "Facility Sanitary Sewerage").  Absence of
+                        # match is not evidence of wrong candidate.
 
             # Token overlap bonuses
             if distinctive:
@@ -1945,10 +2278,15 @@ class LexicalMatcher:
             if alpha_dist:
                 final += 1.1 * (len(alpha_overlap) / max(1, len(alpha_dist)))
 
-            # Spec scoring
+            # Spec scoring (additive)
             final += self._spec_score(
                 ctx_specs, ref, has_object_support=obj_overlap or bool(alpha_overlap)
             )
+
+            # Spec matching (multiplicative) – key variant-differentiating
+            # specs like mpa, concrete_elem, pipe_mat scale the entire
+            # score so that matching specs dominate the ranking.
+            final *= self._spec_multiplier(desc_specs, ctx_specs, ref)
 
             # Discipline routing  (multiplicative – much stronger signal)
             # Fix 3b: Strengthen cross-discipline penalty when the
@@ -2034,16 +2372,18 @@ class LexicalMatcher:
                     else:
                         final *= 0.85          # weak match
 
-            # Unit compatibility scoring
+            # Unit compatibility scoring – multiplicative to strongly
+            # separate volume (m3=concrete) from area (m2=formwork) from
+            # weight (t=reinforcement) etc.
             if boq_unit_fam:
                 ref_unit_fam = _infer_ref_unit_family(
                     clean_text(ref["prefixed_description"])
                 )
                 if ref_unit_fam:
                     if ref_unit_fam == boq_unit_fam:
-                        final += 0.65  # reward matching unit family
+                        final *= 1.15  # reward matching unit family
                     else:
-                        final -= 0.45  # penalise mismatch
+                        final *= 0.45  # heavy penalty for unit mismatch
 
             # Penalize numeric-only attraction without semantic support
             if ctx_specs and not alpha_overlap and not obj_overlap:
@@ -2124,6 +2464,121 @@ class LexicalMatcher:
                 f"total={(_t_rerank-_t_start)*1000:.0f}ms -> 0 results"
             )
             return []
+
+        # ── 3b. Prefix-aware sibling expansion ──────────────────────────
+        # The breakdown structure shows that codes sharing the same prefix
+        # (Trade+Section+Family) describe the SAME work type but differ
+        # in V1/V2/V3 (size, material, rating, scope).  When TF-IDF finds
+        # codes from a prefix group, the correct VARIANT might be missing
+        # because its spec tokens scored lower than generic tokens.
+        #
+        # Fix: for each top-scoring prefix group, inject ALL its siblings
+        # that weren't in the initial pool, then quick-score them with
+        # spec matching + discipline routing so the right variant surfaces.
+        _existing_ids = {r["ref_id"] for r in reranked}
+        if self._prefix_groups:
+            reranked.sort(key=lambda x: float(x["score"]), reverse=True)
+            # Collect top prefix groups from the best-scoring candidates
+            _seen_prefixes: Dict[str, float] = {}
+            MAX_EXPAND_PREFIXES = 8
+            for r in reranked:
+                pfx = extract_code_prefix(r["price_code"])
+                if pfx and pfx not in _seen_prefixes:
+                    _seen_prefixes[pfx] = float(r["score"])
+                    if len(_seen_prefixes) >= MAX_EXPAND_PREFIXES:
+                        break
+
+            _expansion_count = 0
+            MAX_SIBLINGS_PER_PREFIX = 200  # cap to avoid blowup on huge groups
+            for pfx, best_pfx_score in _seen_prefixes.items():
+                sibling_ids = self._prefix_groups.get(pfx, [])
+                # Skip overly large prefix groups — they're too generic
+                # to benefit from full expansion (e.g. s 13 00 = 96K codes)
+                if len(sibling_ids) > 5000:
+                    continue
+                _pfx_added = 0
+                for sid in sibling_ids:
+                    if _pfx_added >= MAX_SIBLINGS_PER_PREFIX:
+                        break
+                    if sid in _existing_ids:
+                        continue
+                    if self._valid_ref_ids is not None and sid not in self._valid_ref_ids:
+                        continue
+                    sref = self._refs.get(sid)
+                    if sref is None:
+                        continue
+                    # Hard spec filter
+                    if not self._passes_hard_spec_filters(desc_specs, sref):
+                        continue
+
+                    # Quick score: start from a fraction of the best sibling
+                    # score, then apply spec scoring + discipline routing.
+                    sib_score = best_pfx_score * 0.85
+
+                    sib_score += self._spec_score(
+                        ctx_specs, sref,
+                        has_object_support=True,  # siblings inherit relevance
+                    )
+                    # Multiplicative spec matching for siblings too
+                    sib_score *= self._spec_multiplier(desc_specs, ctx_specs, sref)
+
+                    # Discipline routing
+                    sib_disc = clean_text(sref["discipline"])
+                    if sib_disc == "unknown":
+                        sib_disc = _infer_discipline_from_context(
+                            sref["source_file"], sref.get("sheet_name", "")
+                        )
+                    if guessed_disc:
+                        if guessed_disc == sib_disc:
+                            sib_score *= 1.15
+                        elif short:
+                            sib_score *= 0.40
+                        else:
+                            sib_score *= 0.70
+
+                    # Scope scoring
+                    if expected_scope:
+                        sib_pc = clean_text(sref["price_code"])
+                        sib_scope = _extract_scope_letter(sib_pc)
+                        if sib_scope:
+                            if expected_scope in ("E", "F"):
+                                if sib_scope == expected_scope:
+                                    sib_score *= 1.25
+                                elif sib_scope in ("E", "F"):
+                                    sib_score *= 0.80
+
+                    # Unit compatibility for siblings
+                    if boq_unit_fam:
+                        sib_unit_fam = _infer_ref_unit_family(
+                            clean_text(sref["prefixed_description"])
+                        )
+                        if sib_unit_fam:
+                            if sib_unit_fam == boq_unit_fam:
+                                sib_score *= 1.15
+                            else:
+                                sib_score *= 0.45
+
+                    reranked.append({
+                        "ref_id": sid,
+                        "score": round(sib_score, 4),
+                        "overlap_count": 2,  # minimum to pass filter
+                        "alpha_overlap_count": 1,
+                        "discipline": sib_disc,
+                        "source_file": clean_text(sref["source_file"]),
+                        "sheet_name": clean_text(sref.get("sheet_name", "")),
+                        "price_code": clean_text(sref["price_code"]),
+                        "description": clean_text(sref["prefixed_description"]),
+                        "leaf_description": clean_text(sref.get("leaf_description", "")),
+                    })
+                    _existing_ids.add(sid)
+                    _expansion_count += 1
+                    _pfx_added += 1
+
+            if _expansion_count:
+                logger.debug(
+                    f"Prefix expansion: +{_expansion_count} siblings from "
+                    f"{len(_seen_prefixes)} prefix groups"
+                )
 
         # ── 4. Filter & cap ─────────────────────────────────────────────
         reranked.sort(key=lambda x: float(x["score"]), reverse=True)
@@ -2332,6 +2787,13 @@ class LexicalMatcher:
         *,
         has_object_support: bool,
     ) -> float:
+        """Additive spec score for all specs.
+
+        Key differentiating specs are ALSO scored multiplicatively in
+        _spec_multiplier.  The additive part provides a baseline signal
+        that helps break ties, while the multiplicative part compounds
+        across specs for strong differentiation.
+        """
         score = 0.0
         scale = 1.0 if has_object_support else 0.25
         pen_scale = 1.0 if has_object_support else 0.55
@@ -2348,6 +2810,9 @@ class LexicalMatcher:
             "dims":  (1.8, self._csv_to_set(ref["dims_csv"])),
             "mm2":   (2.0, self._csv_to_set(ref["mm2_csv"])),
             "cores": (1.2, self._csv_to_set(ref["core_csv"])),
+            "thk":   (2.0, self._csv_to_set(ref.get("thk_csv", ""))),
+            "fire":  (2.5, self._csv_to_set(ref.get("fire_csv", ""))),
+            "pn":    (2.2, self._csv_to_set(ref.get("pn_csv", ""))),
         }
         for key, (bonus, rvals) in spec_map.items():
             qvals = set(qspecs.get(key, ()))
@@ -2356,7 +2821,109 @@ class LexicalMatcher:
                     score += bonus * scale
                 else:
                     score -= bonus * 0.55 * pen_scale
+
+        # Secondary categorical specs (not in multiplier)
+        ref_id = ref.get("ref_id")
+        if ref_id is not None:
+            rcat = self._get_ref_cat_specs(ref_id)
+        else:
+            rcat = {}
+
+        # Categorical specs – additive supplement to multiplicative scoring.
+        _CAT_WEIGHTS = {
+            "pipe_mat":       (3.5, 2.5),
+            "valve_type":     (3.5, 2.5),
+            "fitting_type":   (2.5, 1.5),
+            "concrete_elem":  (3.0, 2.0),
+            "concrete_scope": (2.5, 1.5),
+            "steel_section":  (2.5, 1.5),
+            "coating":        (2.0, 1.0),
+            "insul_mat":      (2.0, 1.0),
+            "cable_insul":    (2.5, 1.5),
+            "schedule":       (2.2, 1.2),
+            "pipe_grade":     (2.5, 1.5),
+            "stiffness":      (2.0, 1.0),
+            "bend_angle":     (2.0, 1.0),
+            "stc":            (1.5, 0.8),
+        }
+        for key, (bonus, penalty) in _CAT_WEIGHTS.items():
+            qvals = set(qspecs.get(key, ()))
+            rvals = set(rcat.get(key, ()))
+            if qvals and rvals:
+                if qvals & rvals:
+                    score += bonus * scale
+                else:
+                    score -= penalty * pen_scale
+
         return score
+
+    def _spec_multiplier(
+        self,
+        desc_specs: Dict[str, Tuple[str, ...]],
+        ctx_specs: Dict[str, Tuple[str, ...]],
+        ref: sqlite3.Row,
+    ) -> float:
+        """Multiplicative spec scoring for key differentiating specs.
+
+        Uses desc_specs (description only) for DB-column numeric specs
+        so that a parent-level "C32/40" doesn't over-boost concrete refs
+        for formwork/rebar items.  Uses ctx_specs (full context) for
+        categorical specs where parent context is reliable (e.g.
+        concrete_elem from "Raft slab" description).
+        """
+        factor = 1.0
+
+        # ── DB-column numeric specs (from desc_specs only) ─────────────
+        _DB_SPEC = {
+            "mpa":   ("mpa_csv",  1.40, 0.50),
+            "dn":    ("dn_csv",   1.35, 0.45),
+            "dia":   ("dia_csv",  1.30, 0.50),
+            "kv":    ("kv_csv",   1.30, 0.50),
+            "mm2":   ("mm2_csv",  1.25, 0.55),
+            "cores": ("core_csv", 1.20, 0.60),
+            "pn":    ("pn_csv",   1.25, 0.55),
+        }
+        for key, (col, match_f, mismatch_f) in _DB_SPEC.items():
+            qvals = set(desc_specs.get(key, ()))
+            if not qvals:
+                continue
+            rvals = self._csv_to_set(ref.get(col, ""))
+            if key == "dia":
+                rvals = rvals | self._csv_to_set(ref.get("dn_csv", ""))
+            elif key == "dn":
+                rvals = rvals | self._csv_to_set(ref.get("dia_csv", ""))
+            if not rvals:
+                continue
+            if qvals & rvals:
+                factor *= match_f
+            else:
+                factor *= mismatch_f
+
+        # ── Categorical specs (from ctx_specs – parent context OK) ────
+        ref_id = ref.get("ref_id")
+        rcat = self._get_ref_cat_specs(ref_id) if ref_id is not None else {}
+
+        _CAT_SPEC = {
+            "concrete_elem":  (1.45, 0.70, 0.90),
+            "pipe_mat":       (1.40, 0.55, 1.00),
+            "valve_type":     (1.40, 0.55, 1.00),
+            "cable_insul":    (1.30, 0.60, 1.00),
+            "schedule":       (1.25, 0.65, 1.00),
+            "pipe_grade":     (1.30, 0.60, 1.00),
+        }
+        for key, (match_f, mismatch_f, missing_f) in _CAT_SPEC.items():
+            qvals = set(ctx_specs.get(key, ()))
+            if not qvals:
+                continue
+            rvals = set(rcat.get(key, ()))
+            if not rvals:
+                factor *= missing_f
+            elif qvals & rvals:
+                factor *= match_f
+            else:
+                factor *= mismatch_f
+
+        return factor
 
     def _passes_hard_spec_filters(
         self, qspecs: Dict[str, Tuple[str, ...]], ref: sqlite3.Row
@@ -2371,20 +2938,21 @@ class LexicalMatcher:
             ("kv",    "kv_csv",   False),
             ("mm2",   "mm2_csv",  True),   # subset check
             ("cores", "core_csv", False),
+            ("pn",    "pn_csv",   False),   # pressure class
         ]
         for key, col, is_subset in checks:
             qvals = set(qspecs.get(key, ()))
             if not qvals:
                 continue
-            rvals = self._csv_to_set(ref[col])
+            rvals = self._csv_to_set(ref.get(col, ""))
             # ── Fix 1: dia ↔ dn cross-reference ─────────────────────
             # BOQ "25 mm diameter" → dia=(25,) but rate-book stores
             # "DN25" → dn_csv=[25], dia_csv=[].  They mean the same
             # pipe size, so merge both columns before checking.
             if key == "dia":
-                rvals = rvals | self._csv_to_set(ref["dn_csv"])
+                rvals = rvals | self._csv_to_set(ref.get("dn_csv", ""))
             elif key == "dn":
-                rvals = rvals | self._csv_to_set(ref["dia_csv"])
+                rvals = rvals | self._csv_to_set(ref.get("dia_csv", ""))
             if not rvals:
                 return False
             if is_subset:
@@ -2393,6 +2961,27 @@ class LexicalMatcher:
             else:
                 if not (qvals & rvals):
                     return False
+
+        # ── Hard categorical spec filters (on-the-fly) ─────────────────
+        # Pipe material and valve type are unambiguous differentiators:
+        #   BOQ says "HDPE pipe" → must NOT match DI/uPVC/CS refs.
+        #   BOQ says "gate valve" → must NOT match butterfly/check refs.
+        # We only reject when BOTH query and ref have values (avoids
+        # false-rejection when the ref description is too generic).
+        ref_id = ref.get("ref_id")
+        if ref_id is not None:
+            rcat = self._get_ref_cat_specs(ref_id)
+            _HARD_CAT_KEYS = ("pipe_mat", "valve_type")
+            for key in _HARD_CAT_KEYS:
+                qvals = set(qspecs.get(key, ()))
+                if not qvals:
+                    continue
+                rvals = set(rcat.get(key, ()))
+                if not rvals:
+                    continue  # ref is generic (no material/type mentioned)
+                if not (qvals & rvals):
+                    return False  # definite mismatch
+
         return True
 
     def _fetch_ref_rows(
@@ -2401,149 +2990,187 @@ class LexicalMatcher:
         """Look up ref rows from the in-memory index (O(1) per id)."""
         return {rid: self._refs[rid] for rid in ref_ids if rid in self._refs}
 
+    # ── Civil-concrete sections where suffix = Elem/Grade/Scope ────────
+    _CONCRETE_SECTIONS: frozenset = frozenset({"31", "21", "11", "10"})
+
     def _diversity_dedup(
         self, filtered: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Deduplicate candidates to ensure diversity across element types.
+        """Deduplicate candidates ensuring diversity across variant dimensions.
 
-        Rate-book codes follow ``X YY ZZ [Elem][Grade][Scope]`` where
-        many codes share near-identical descriptions and TF-IDF scores:
-        - *Elem* (1st letter): structural element (A=Footing, C=Raft, …)
-        - *Grade* (2nd letter): concrete grade (A=C10, B=C15, …, G=C40)
-        - *Scope* (3rd letter): A=Concrete Only, B=+Reinforcement, etc.
+        Price codes follow ``[Disc][Section][Family] [V1][V2][V3]`` but the
+        meaning of V1/V2/V3 CHANGES per section:
 
-        Without dedup, a single element type can monopolise all slots
-        (e.g. 22 Raft Mpa-grades × 1 scope variant = 22 near-duplicates).
+        **Civil Concrete** (C prefix, sections 31/21/11/10):
+           V1=Element, V2=Grade, V3=Scope — original 3-level dedup is ideal.
 
-        Strategy – two-level diversity:
-        1.  *Element key* = ``sheet cat subcat elem`` (strip last 2 chars
-            of the letters field).  Select up to ``max_candidates``
-            unique element keys by highest score.
-        2.  Within each element key, pick the top 3 *grade stems* (strip
-            last char only) – enough variety for the LLM to reason about
-            concrete grade.
-        3.  For each selected grade stem, include ALL scope variants
-            (A/B/C/D) so the LLM can choose the correct scope.
+        **All other sections** (masonry, MEP, electrical):
+           V1/V2/V3 encode physical specs (material, size, thickness, rating).
+           Treating V1 alone as "element key" is wrong — e.g. masonry has
+           only 3 V1 values (height bands), so grouping by V1 would collapse
+           480 codes into 3 buckets.  Instead we group by the code *prefix*
+           (disc+section+family) to keep section diversity, then keep
+           more siblings per group so spec-relevant variants survive.
+
+        Strategy:
+        - Detect concrete vs non-concrete from the discipline letter + section.
+        - Concrete: 3-level dedup (element → grade → scope siblings).
+        - Non-concrete: 2-level dedup (prefix → top siblings by score).
+          A higher sibling cap lets the LLM see diverse spec variants.
         """
         if not filtered:
             return []
 
         _CODE_RE = re.compile(
-            r'^([A-Za-z]\s+\d+\s+\d+\s+)'   # sheet cat subcat + space
-            r'([A-Za-z])'                      # element letter
-            r'([A-Za-z0-9])'                   # grade (letter or digit)
-            r'([A-Za-z0-9])$'                  # scope (letter or digit)
+            r'^([A-Za-z])\s+(\d+)\s+(\d+)\s+'  # disc, section, family + space
+            r'([A-Za-z])'                        # V1
+            r'([A-Za-z0-9])'                     # V2
+            r'([A-Za-z0-9])$'                    # V3
         )
-        # Fix 5: Allow digits in the last 2 positions of suffix.
-        # Some codes use digits: p1329AB0, p1123AA8, h3713B01.
         _COMPACT_RE = re.compile(
-            r'^([A-Za-z]\d+)'                  # compact prefix (e.g. Z1411)
-            r'([A-Za-z])'                      # element
-            r'([A-Za-z0-9])'                   # grade (letter or digit)
-            r'([A-Za-z0-9])$'                  # scope (letter or digit)
+            r'^([A-Za-z])(\d{2})(\d{2})'         # disc, section, family
+            r'([A-Za-z])'                         # V1
+            r'([A-Za-z0-9])'                      # V2
+            r'([A-Za-z0-9])$'                     # V3
         )
 
-        MAX_GRADES_PER_ELEM = 3  # how many grade stems per element key
-
-        def _parse_code_parts(price_code: str):
-            """Return (element_key, grade_stem, full_code) or None."""
+        def _parse_full(price_code: str):
+            """Return (disc, section, prefix, v1, v2, v3) or None."""
             code = price_code.strip()
             m = _CODE_RE.match(code)
             if m:
-                prefix, elem, grade, scope = m.groups()
-                return (
-                    f"{prefix}{elem}",            # element key
-                    f"{prefix}{elem}{grade}",     # grade stem
-                    code,
-                )
+                disc, sec, fam, v1, v2, v3 = m.groups()
+                prefix = f"{disc} {sec} {fam} "
+                return disc.upper(), sec, prefix, v1, v2, v3
             m = _COMPACT_RE.match(code)
             if m:
-                prefix, elem, grade, scope = m.groups()
-                return (
-                    f"{prefix}{elem}",
-                    f"{prefix}{elem}{grade}",
-                    code,
-                )
-            # Fallback: 1-letter suffix or non-standard → no grouping
-            return (code, code, code)
+                disc, sec, fam, v1, v2, v3 = m.groups()
+                prefix = f"{disc}{sec}{fam}"
+                return disc.upper(), sec, prefix, v1, v2, v3
+            return None
 
-        # ── Step 1: group by element key and grade stem ──────────────────
-        elem_best_score: Dict[str, float] = {}
-        grade_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        def _is_concrete(disc: str, sec: str) -> bool:
+            return disc == "C" and sec in self._CONCRETE_SECTIONS
+
+        # ────────────────────────────────────────────────────────────────
+        # Partition candidates into concrete vs non-concrete
+        # ────────────────────────────────────────────────────────────────
+        concrete_items: List[Dict[str, Any]] = []
+        other_items: List[Dict[str, Any]] = []
 
         for c in filtered:
-            parts = _parse_code_parts(c.get("price_code", ""))
-            if parts is None:
-                continue
-            elem_key, grade_stem, _ = parts
-            score = float(c["score"])
-            if elem_key not in elem_best_score or score > elem_best_score[elem_key]:
-                elem_best_score[elem_key] = score
-            grade_groups[grade_stem].append(c)
+            parsed = _parse_full(c.get("price_code", ""))
+            if parsed and _is_concrete(parsed[0], parsed[1]):
+                concrete_items.append(c)
+            else:
+                other_items.append(c)
 
-        # ── Step 2: select top max_candidates element keys ───────────────
-        # Sheet diversity: cap elements per sheet so one sheet can't
-        # monopolise all slots.  E.g. "Mech - Storm Network" uPVC pipes
-        # vs "Mech - Plumbing" uPVC pipes — both should get representation.
-        MAX_ELEMS_PER_SHEET = max(3, self.max_candidates // 3)
-        seen_elems: set = set()
-        sheet_elem_counts: Dict[str, int] = defaultdict(int)
-        selected_elems: List[str] = []
-        # Map each element key to its sheet_name from the best-scoring member
-        elem_sheet: Dict[str, str] = {}
-        for c in filtered:
-            parts = _parse_code_parts(c.get("price_code", ""))
-            if parts is None:
-                continue
-            ek = parts[0]
-            if ek not in elem_sheet:
-                elem_sheet[ek] = c.get("sheet_name", "")
-
-        for c in filtered:                         # already sorted by score desc
-            parts = _parse_code_parts(c.get("price_code", ""))
-            if parts is None:
-                continue
-            elem_key = parts[0]
-            if elem_key not in seen_elems:
-                sheet = elem_sheet.get(elem_key, "")
-                if sheet_elem_counts[sheet] >= MAX_ELEMS_PER_SHEET:
-                    continue                       # skip – this sheet is full
-                seen_elems.add(elem_key)
-                sheet_elem_counts[sheet] += 1
-                selected_elems.append(elem_key)
-                if len(selected_elems) >= self.max_candidates:
-                    break
-
-        # ── Step 3: for each element, pick top grade stems ───────────────
-        # Map elem_key → list of grade_stems that belong to it
-        elem_to_grades: Dict[str, List[str]] = defaultdict(list)
-        grade_best: Dict[str, float] = {}
-        for gs, members in grade_groups.items():
-            # Determine element key from first member
-            parts = _parse_code_parts(members[0].get("price_code", ""))
-            if parts:
-                elem_to_grades[parts[0]].append(gs)
-                grade_best[gs] = max(float(m["score"]) for m in members)
-
-        selected_grades: List[str] = []
-        for elem_key in selected_elems:
-            grades = elem_to_grades.get(elem_key, [])
-            # Sort grades by best score descending
-            grades.sort(key=lambda g: grade_best.get(g, 0), reverse=True)
-            selected_grades.extend(grades[:MAX_GRADES_PER_ELEM])
-
-        # ── Step 4: build final list with capped scope variants ────────
-        # Fix 2: Instead of including ALL scope variants (which can be
-        # 60+ for duct accessories), cap per grade stem.  Sort siblings
-        # by score desc so the most relevant variants come first.
-        MAX_SIBLINGS_PER_GRADE = 8
         result: List[Dict[str, Any]] = []
-        for gs in selected_grades:
-            siblings = grade_groups[gs]
-            # Sort by score descending so best-matching variants win
-            siblings.sort(key=lambda x: float(x.get("score", 0)), reverse=True)
-            result.extend(siblings[:MAX_SIBLINGS_PER_GRADE])
 
+        # ════════ CONCRETE PATH: original 3-level dedup ════════════════
+        if concrete_items:
+            MAX_GRADES_PER_ELEM = 3
+            MAX_SIBLINGS_PER_GRADE = 8
+
+            elem_best: Dict[str, float] = {}
+            grade_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+            for c in concrete_items:
+                parsed = _parse_full(c.get("price_code", ""))
+                if not parsed:
+                    continue
+                _, _, prefix, v1, v2, v3 = parsed
+                elem_key = f"{prefix}{v1}"
+                grade_stem = f"{prefix}{v1}{v2}"
+                score = float(c["score"])
+                if elem_key not in elem_best or score > elem_best[elem_key]:
+                    elem_best[elem_key] = score
+                grade_groups[grade_stem].append(c)
+
+            # Select top element keys
+            seen: set = set()
+            selected_elems: List[str] = []
+            for c in concrete_items:
+                parsed = _parse_full(c.get("price_code", ""))
+                if not parsed:
+                    continue
+                ek = f"{parsed[2]}{parsed[3]}"
+                if ek not in seen:
+                    seen.add(ek)
+                    selected_elems.append(ek)
+                    if len(selected_elems) >= self.max_candidates:
+                        break
+
+            # Map element → grades
+            elem_to_grades: Dict[str, List[str]] = defaultdict(list)
+            grade_best: Dict[str, float] = {}
+            for gs, members in grade_groups.items():
+                parsed = _parse_full(members[0].get("price_code", ""))
+                if parsed:
+                    ek = f"{parsed[2]}{parsed[3]}"
+                    elem_to_grades[ek].append(gs)
+                    grade_best[gs] = max(float(m["score"]) for m in members)
+
+            for ek in selected_elems:
+                grades = elem_to_grades.get(ek, [])
+                grades.sort(key=lambda g: grade_best.get(g, 0), reverse=True)
+                for gs in grades[:MAX_GRADES_PER_ELEM]:
+                    siblings = grade_groups[gs]
+                    siblings.sort(key=lambda x: float(x.get("score", 0)), reverse=True)
+                    result.extend(siblings[:MAX_SIBLINGS_PER_GRADE])
+
+        # ════════ NON-CONCRETE PATH: prefix-level dedup ════════════════
+        # V1/V2/V3 carry spec info (size, material, rating) so we group
+        # only by prefix (disc+section+family).  Within each prefix we
+        # keep more siblings so the LLM sees the spec variety it needs
+        # to pick the right DN, thickness, cross-section etc.
+        if other_items:
+            MAX_SIBLINGS_PER_PREFIX = 12
+            MAX_PREFIXES = max(4, self.max_candidates // 2)
+
+            prefix_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+            prefix_best: Dict[str, float] = {}
+
+            for c in other_items:
+                parsed = _parse_full(c.get("price_code", ""))
+                prefix = parsed[2] if parsed else c.get("price_code", "").strip()
+                score = float(c["score"])
+                prefix_groups[prefix].append(c)
+                if prefix not in prefix_best or score > prefix_best[prefix]:
+                    prefix_best[prefix] = score
+
+            # Sheet diversity: cap prefixes per sheet
+            MAX_PREFIXES_PER_SHEET = max(3, MAX_PREFIXES // 2)
+            sheet_prefix_counts: Dict[str, int] = defaultdict(int)
+            prefix_sheet: Dict[str, str] = {}
+            for c in other_items:
+                parsed = _parse_full(c.get("price_code", ""))
+                pfx = parsed[2] if parsed else c.get("price_code", "").strip()
+                if pfx not in prefix_sheet:
+                    prefix_sheet[pfx] = c.get("sheet_name", "")
+
+            seen_pfx: set = set()
+            selected_pfx: List[str] = []
+            for c in other_items:  # sorted by score desc
+                parsed = _parse_full(c.get("price_code", ""))
+                pfx = parsed[2] if parsed else c.get("price_code", "").strip()
+                if pfx not in seen_pfx:
+                    sheet = prefix_sheet.get(pfx, "")
+                    if sheet_prefix_counts[sheet] >= MAX_PREFIXES_PER_SHEET:
+                        continue
+                    seen_pfx.add(pfx)
+                    sheet_prefix_counts[sheet] += 1
+                    selected_pfx.append(pfx)
+                    if len(selected_pfx) >= MAX_PREFIXES:
+                        break
+
+            for pfx in selected_pfx:
+                siblings = prefix_groups[pfx]
+                siblings.sort(key=lambda x: float(x.get("score", 0)), reverse=True)
+                result.extend(siblings[:MAX_SIBLINGS_PER_PREFIX])
+
+        # Final sort by score so best candidates come first for the LLM
+        result.sort(key=lambda x: float(x.get("score", 0)), reverse=True)
         return result
 
     @staticmethod
@@ -2560,6 +3187,7 @@ class LexicalMatcher:
             result.append({
                 "price_code": c["price_code"],
                 "description": raw_desc,
+                "leaf_description": c.get("leaf_description", ""),
                 "category": c.get("sheet_name", ""),
                 "score": c["score"],
                 "metadata": {

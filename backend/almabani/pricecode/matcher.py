@@ -29,16 +29,8 @@ _SCOPE_LABELS_CIVIL_CONCRETE = {
     "F": "Supply+Install",
 }
 _SCOPE_LABELS_GENERIC = {
-    "A": "Base/Standard",
-    "B": "Variant B",
-    "C": "Variant C",
-    "D": "Variant D",
     "E": "Supply Only",
     "F": "Supply+Install",
-    "G": "Variant G",
-    "H": "Variant H",
-    "I": "Variant I",
-    "J": "Variant J",
 }
 
 _DISC_LABELS = {
@@ -283,9 +275,15 @@ class PriceCodeMatcher:
                     cat_str = cm.group(1)
                     subcat_str = cm.group(2)
                     scope_letter = cm.group(5).upper()
+                    # If last char is numeric, try first suffix char
+                    if not scope_letter.isalpha():
+                        scope_letter = cm.group(3).upper()
                     # Build human-readable decomposition
                     disc_name = _DISC_LABELS.get(disc_letter, disc_letter)
                     decoded_tag = f" (={disc_name} {cat_str}-{subcat_str})"
+                elif code.strip() and code.strip()[0].upper() in _DISC_LABELS:
+                    # Fallback: at least extract discipline from first char
+                    disc_letter = code.strip()[0].upper()
 
             if scope_letter and scope_letter.isalpha():
                 if disc_letter == "C" and cat_str in ("31", "21", "11", "10"):

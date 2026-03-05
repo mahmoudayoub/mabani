@@ -40,6 +40,8 @@ output/
 !requirements.txt
 !**/requirements.txt
 
+data/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -76,12 +76,25 @@ class HierarchyProcessor:
             item = items[i]
             
             if item.item_type == ItemType.NUMERIC_LEVEL:
-                # Handle numeric level - clear c-level stack
-                c_level_stack = []
-                
                 new_level = self._extract_numeric_level(item.level)
                 
                 if new_level is not None:
+                    # ── If c-levels precede this numeric (no items in between),
+                    # attach to the deepest c-level so the c's act as a bridge
+                    # between the numeric above and this numeric below.
+                    if c_level_stack and prev_item_type == ItemType.SUBCATEGORY:
+                        c_level_stack[-1].children.append(item)
+                        # Clear c stack — the bridge is consumed
+                        c_level_stack = []
+                        level_stack.append(item)
+                        current_level = new_level
+                        prev_item_type = ItemType.NUMERIC_LEVEL
+                        i += 1
+                        continue
+
+                    # Normal numeric handling (no preceding c-levels)
+                    c_level_stack = []
+
                     # Adjust level stack based on new level
                     if new_level > current_level:
                         # Going deeper - add current item
@@ -118,30 +131,59 @@ class HierarchyProcessor:
                 logger.debug(f"Processing 'c' level at row {item.row_number}: {item.description}")
                 
                 current_numeric_parent = level_stack[-1] if level_stack else None
-                current_c_parent = c_level_stack[-1] if c_level_stack else None
                 parent_for_c = None
                 
                 if prev_item_type == ItemType.SUBCATEGORY:
-                    # Previous was c → current is child of previous c
-                    parent_for_c = current_c_parent or current_numeric_parent
-                elif prev_item_type == ItemType.ITEM:
-                    # Previous was an item → make this c a sibling of the last c (i.e., child of its parent)
-                    if len(c_level_stack) > 1:
-                        parent_for_c = c_level_stack[-2]
+                    # ── Rule 1: consecutive c's nest (parent→child) ──
+                    # Previous was also a c → current becomes child of that c.
+                    # Stack preserves the full chain so ancestors are reachable.
+                    parent_for_c = c_level_stack[-1] if c_level_stack else current_numeric_parent
+                    # Append to stack (keep entire chain: c1, c2, c3, …)
+                    if parent_for_c:
+                        parent_for_c.children.append(item)
                     else:
+                        root_items.append(item)
+                    c_level_stack.append(item)
+                
+                elif prev_item_type == ItemType.ITEM:
+                    # After items we need lookahead to distinguish Rule 2 vs Rule 3.
+                    next_sig = self._find_next_significant_item(items, i + 1)
+                    next_is_c = (next_sig is not None
+                                 and next_sig.item_type == ItemType.SUBCATEGORY)
+                    
+                    if next_is_c:
+                        # ── Rule 3: items → consecutive c's → RESET ──
+                        # Two or more c's after items: reset c_level_stack,
+                        # attach to the numeric parent, start fresh chain.
                         parent_for_c = current_numeric_parent
-                else:
-                    # Previous was numeric or unknown
-                    parent_for_c = current_c_parent or current_numeric_parent
+                        if parent_for_c:
+                            parent_for_c.children.append(item)
+                        else:
+                            root_items.append(item)
+                        c_level_stack = [item]
+                    else:
+                        # ── Rule 2: items → single c → sibling of last c ──
+                        # Pop the leaf c, make new c a sibling (child of
+                        # the leaf's parent in the c stack).
+                        if len(c_level_stack) > 1:
+                            c_level_stack.pop()           # remove leaf
+                            parent_for_c = c_level_stack[-1]
+                        else:
+                            parent_for_c = current_numeric_parent
+                        if parent_for_c:
+                            parent_for_c.children.append(item)
+                        else:
+                            root_items.append(item)
+                        c_level_stack.append(item)
                 
-                if parent_for_c:
-                    parent_for_c.children.append(item)
                 else:
-                    root_items.append(item)
-                
-                # Reset c stack to the new branch
-                c_level_stack = c_level_stack[:-1] if prev_item_type == ItemType.ITEM and len(c_level_stack) > 1 else []
-                c_level_stack.append(item)
+                    # Previous was numeric or unknown → first c under numeric
+                    parent_for_c = current_numeric_parent
+                    if parent_for_c:
+                        parent_for_c.children.append(item)
+                    else:
+                        root_items.append(item)
+                    c_level_stack = [item]
                 
                 prev_item_type = ItemType.SUBCATEGORY
             

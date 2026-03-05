@@ -35,6 +35,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("local_eval")
 
+import re as _re
+
 # ─── Config ────────────────────────────────────────────────────────────
 S3_BUCKET = "pricecodestack-pricecodedata88b02d08-ciqjcb0pjn80"
 S3_DB_KEY = "metadata/pricecode_index.db"
@@ -43,9 +45,44 @@ LOCAL_DB_PATH = "/tmp/pricecode_index.db"
 TOP_K = 20  # number of candidates to write per item (match production max_candidates)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-INPUT_FILE = BASE_DIR / "Astoria-Mechanical Commented.xlsx"
-GT_FILE = BASE_DIR / "Astoria-Mechanical Commented_pricecode.xlsx"  # may not exist
-OUTPUT_FILE = BASE_DIR / "Astoria-Mechanical Commented_search_top20.xlsx"
+
+# ── File presets ─────────────────────────────────────────────────────────
+_PRESETS = {
+    "mechanical": {
+        "input":    BASE_DIR / "Astoria-Mechanical Commented.xlsx",
+        "gt_file":  None,  # GT is inside the input file itself
+        "gt_col":   "estimator",  # column name substring to search for
+        "output":   BASE_DIR / "Astoria-Mechanical Commented_search_top20.xlsx",
+    },
+    "civil": {
+        "input":    BASE_DIR / "Astoria trial 1 (Copy).xlsx",
+        "gt_file":  None,  # GT is inside the input file (AGC Comments column)
+        "gt_col":   "agc",  # AGC Comments column
+        "output":   BASE_DIR / "Astoria trial 1 (Copy)_search_top20.xlsx",
+    },
+}
+
+# Select preset via CLI arg (default: mechanical)
+_preset_name = sys.argv[1] if len(sys.argv) > 1 else "mechanical"
+if _preset_name not in _PRESETS:
+    print(f"Unknown preset '{_preset_name}'. Choose from: {', '.join(_PRESETS)}")
+    sys.exit(1)
+_preset = _PRESETS[_preset_name]
+
+INPUT_FILE  = _preset["input"]
+GT_FILE     = _preset.get("gt_file")  # None means GT is in INPUT_FILE
+GT_COL_HINT = _preset["gt_col"]
+OUTPUT_FILE = _preset["output"]
+
+# ── Compact code normalisation ──────────────────────────────────────────
+_COMPACT_RE = _re.compile(r'^([A-Za-z])(\d{2})(\d{2})([A-Za-z][A-Za-z0-9]{1,2})$')
+
+def _compact_to_spaced(code: str) -> str:
+    """Convert compact code like p1316ACC → P 13 16 ACC."""
+    m = _COMPACT_RE.match(code.strip())
+    if m:
+        return f"{m.group(1).upper()} {m.group(2)} {m.group(3)} {m.group(4).upper()}"
+    return code.strip().upper()
 
 
 # ─── Step 1: Download DB from S3 ──────────────────────────────────────
@@ -171,57 +208,59 @@ def search_all(matcher, items):
     return results
 
 
-# ─── Step 5: Load ground truth from previous output ───────────────────
+# ─── Step 5: Load ground truth ─────────────────────────────────────────
+def _find_gt_column(ws, hint: str, max_scan_rows: int = 15):
+    """Find a column whose header contains *hint* (case-insensitive).
+    Returns (col_index, header_row) or (None, None)."""
+    hint_low = hint.lower()
+    for row in ws.iter_rows(min_row=1, max_row=max_scan_rows, max_col=ws.max_column):
+        for cell in row:
+            if cell.value and hint_low in str(cell.value).lower():
+                return cell.column, cell.row
+    return None, None
+
+
 def load_ground_truth():
     """
-    Read the AGC Comments column (assumed to contain the correct price codes)
-    from the previous pipeline output file, keyed by Excel row number (1-based).
+    Read the ground-truth column from either a separate GT file or the
+    input file itself, keyed by Excel row number (1-based).
+    Handles both spaced ("C 31 13 CGA") and compact ("p1316ACC") formats.
     """
-    if not GT_FILE.exists():
-        logger.warning(f"Ground truth file not found: {GT_FILE}")
+    gt_path = GT_FILE if GT_FILE else INPUT_FILE
+    if not gt_path.exists():
+        logger.warning(f"Ground truth file not found: {gt_path}")
         return {}
 
-    wb = load_workbook(GT_FILE, data_only=True)
+    wb = load_workbook(gt_path, data_only=True)
     ws = wb.active
 
-    # Find the "AGC Comments" column
-    agc_col = None
-    header_row = None
-    for row in ws.iter_rows(min_row=1, max_row=10, max_col=ws.max_column):
-        for cell in row:
-            if cell.value and 'agc' in str(cell.value).lower() and 'comment' in str(cell.value).lower():
-                agc_col = cell.column
-                header_row = cell.row
-                break
-        if agc_col:
-            break
+    # Primary search: use the preset's column hint
+    agc_col, header_row = _find_gt_column(ws, GT_COL_HINT)
 
+    # Fallback: try "agc" then "comment"
     if not agc_col:
-        # Try finding any column with "comment" 
-        for row in ws.iter_rows(min_row=1, max_row=10, max_col=ws.max_column):
-            for cell in row:
-                if cell.value and 'comment' in str(cell.value).lower():
-                    agc_col = cell.column
-                    header_row = cell.row
-                    break
+        for fallback in ("agc", "comment"):
+            agc_col, header_row = _find_gt_column(ws, fallback)
             if agc_col:
                 break
 
     if not agc_col:
-        logger.warning("Could not find AGC Comments column in ground truth file")
+        logger.warning(f"Could not find GT column (hint='{GT_COL_HINT}') in {gt_path.name}")
+        wb.close()
         return {}
 
-    logger.info(f"Found AGC Comments at column {agc_col}, header row {header_row}")
+    logger.info(f"Found GT column at col {agc_col}, header row {header_row} in {gt_path.name}")
 
     gt = {}
-    for row in ws.iter_rows(min_row=header_row + 1, max_row=ws.max_row, min_col=agc_col, max_col=agc_col):
+    for row in ws.iter_rows(min_row=header_row + 1, max_row=ws.max_row,
+                            min_col=agc_col, max_col=agc_col):
         cell = row[0]
         if cell.value and str(cell.value).strip():
             val = str(cell.value).strip()
-            # Normalize: "C 31 13 CGA" format
-            gt[cell.row] = val
+            # Normalise compact → spaced so all comparisons use spaced form
+            gt[cell.row] = _compact_to_spaced(val)
 
-    logger.info(f"Loaded {len(gt)} ground truth entries from {GT_FILE.name}")
+    logger.info(f"Loaded {len(gt)} ground truth entries from {gt_path.name}")
     wb.close()
     return gt
 
@@ -273,9 +312,10 @@ def compute_stats(items_candidates, gt):
         return
 
     total_with_gt = 0
-    recall_at = {1: 0, 3: 0, 5: 0, 10: 0, 20: 0}
-    family_recall_at = {1: 0, 3: 0, 5: 0, 10: 0, 20: 0}  # first 3 segments match (e.g. C 31 13)
-    super_family_recall = {1: 0, 3: 0, 5: 0, 10: 0, 20: 0}  # first 2 segments match (e.g. C 31)
+    _K_VALUES = [1, 3, 5, 10, 15, 20]
+    recall_at = {k: 0 for k in _K_VALUES}
+    family_recall_at = {k: 0 for k in _K_VALUES}  # first 3 segments match (e.g. C 31 13)
+    super_family_recall = {k: 0 for k in _K_VALUES}  # first 2 segments match (e.g. C 31)
 
     # Map from row_index (0-based df) to Excel row (1-based)
     # In the pipeline, row_index is the df index. Excel row = row_index + 1
@@ -287,15 +327,10 @@ def compute_stats(items_candidates, gt):
     # The GT file should have the same row numbers.
 
     def normalize_code(code_str):
-        """Normalize a price code to a canonical spaced format."""
+        """Normalize a price code to canonical spaced uppercase form."""
         if not code_str:
             return ""
-        code_str = str(code_str).strip().upper()
-        # Already spaced format: "C 31 13 CGA"
-        parts = code_str.split()
-        if len(parts) >= 3:
-            return " ".join(parts)
-        return code_str
+        return _compact_to_spaced(str(code_str))
 
     def code_family(code_str, depth=3):
         """Extract the first `depth` segments of a spaced code."""
@@ -318,7 +353,7 @@ def compute_stats(items_candidates, gt):
         found_family = False
         found_super = False
 
-        for k_cutoff in [1, 3, 5, 10, 20]:
+        for k_cutoff in _K_VALUES:
             for cand in candidates[:k_cutoff]:
                 cand_code = normalize_code(cand.get('price_code', ''))
                 cand_fam3 = code_family(cand_code, 3)
@@ -370,7 +405,7 @@ def compute_stats(items_candidates, gt):
     print(f"Total items with ground truth: {total_with_gt}")
     print()
 
-    for k in [1, 3, 5, 10, 20]:
+    for k in _K_VALUES:
         exact_pct = (recall_at[k] / total_with_gt * 100) if total_with_gt else 0
         fam_pct = (family_recall_at[k] / total_with_gt * 100) if total_with_gt else 0
         sup_pct = (super_family_recall[k] / total_with_gt * 100) if total_with_gt else 0

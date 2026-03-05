@@ -209,24 +209,25 @@ class PriceCodeMatcher:
         category_path: Optional[str] = None,
     ) -> str:
         parts: List[str] = []
-        hierarchy_parts: List[str] = []
-        if grandparent:
-            hierarchy_parts.append(str(grandparent))
-        if parent:
-            hierarchy_parts.append(str(parent))
-        if hierarchy_parts:
-            parts.append(f"Hierarchy: {' > '.join(hierarchy_parts)}")
+
+        # Build a single "Target Item:" line: category_path > description
+        context_prefix = ""
         if category_path:
-            tail = self._context_tail_from_path(category_path)
-            if tail:
-                parts.append(f"Context: {tail}")
-        parts.append(f"Description: {description}")
+            context_prefix = category_path.strip()
+        elif parent or grandparent:
+            # Fallback when no category_path: grandparent > parent
+            segs = [s for s in [grandparent, parent] if s]
+            context_prefix = " > ".join(str(s) for s in segs)
+
+        if context_prefix:
+            parts.append(f"Target Item: {context_prefix} > {description}")
+        else:
+            parts.append(f"Target Item: {description}")
+
         if unit:
             parts.append(f"TARGET UNIT: {unit}")
         else:
             parts.append("TARGET UNIT: (not specified)")
-        if item_code:
-            parts.append(f"Item Code: {item_code}")
         return "\n".join(parts)
 
     @staticmethod
@@ -239,8 +240,23 @@ class PriceCodeMatcher:
         for i, cand in enumerate(candidates, 1):
             code = cand.get("price_code", "NO_CODE")
             desc = cand.get("description", "")
+            leaf = cand.get("leaf_description", "")
             category = cand.get("category", "")
             tag = f" ({category})" if category else ""
+
+            # ── Structured prefix / leaf display ────────────────────────
+            # desc is the full prefixed_description, e.g.
+            # "Ready Mix Concrete ; Cast In Situ ; Concrete For Footing ..."
+            # Split into prefix hierarchy + leaf so the LLM sees the
+            # classification path explicitly.
+            prefix_tag = ""
+            display_desc = desc
+            if leaf and desc and ";" in desc:
+                segments = [s.strip() for s in desc.split(";")]
+                if len(segments) > 1:
+                    prefix_segments = segments[:-1]
+                    prefix_tag = " {" + " > ".join(prefix_segments) + "}"
+                    display_desc = segments[-1]
 
             # ── Scope annotation ────────────────────────────────────────
             # Parse price code suffix to extract the scope letter and
@@ -251,6 +267,8 @@ class PriceCodeMatcher:
             disc_letter = ""
             cat_str = ""
             scope_letter = None
+
+            decoded_tag = ""  # human-readable decomposition for compact codes
 
             if len(parts) >= 4 and len(parts[3]) >= 2:
                 # Spaced format: C 31 13 CGA
@@ -263,7 +281,11 @@ class PriceCodeMatcher:
                 if cm:
                     disc_letter = code.strip()[0].upper()
                     cat_str = cm.group(1)
+                    subcat_str = cm.group(2)
                     scope_letter = cm.group(5).upper()
+                    # Build human-readable decomposition
+                    disc_name = _DISC_LABELS.get(disc_letter, disc_letter)
+                    decoded_tag = f" (={disc_name} {cat_str}-{subcat_str})"
 
             if scope_letter and scope_letter.isalpha():
                 if disc_letter == "C" and cat_str in ("31", "21", "11", "10"):
@@ -278,5 +300,5 @@ class PriceCodeMatcher:
             if disc_letter in _DISC_LABELS:
                 disc_tag = f" [Disc: {_DISC_LABELS[disc_letter]}]"
 
-            lines.append(f"[{i}] [{code}]{disc_tag}{scope_tag}{tag} {desc}")
+            lines.append(f"[{i}] [{code}]{decoded_tag}{disc_tag}{scope_tag}{prefix_tag}{tag} {display_desc}")
         return "\n".join(lines)

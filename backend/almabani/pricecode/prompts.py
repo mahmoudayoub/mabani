@@ -29,24 +29,24 @@ CANDIDATES:
 {candidates_text}
 
 INSTRUCTIONS:
-Perform a logical evaluation to find the best match.
+Evaluate the candidates and select the best match using the criteria below.
+Criteria are listed in PRIORITY ORDER — resolve conflicts by following the higher-priority rule.
 
-1. CORE WORK IDENTIFICATION:
+PRIORITY 1 — DISCIPLINE / SYSTEM MATCH (highest weight):
+   - Each candidate is tagged with [Disc: X] showing its discipline.
+   - The target Hierarchy tells you which building system the item belongs to.
+   - ALWAYS prefer candidates from the MATCHING discipline over others.
+   - Identical physical items (pipes, valves, insulation) exist under multiple disciplines.
+   - Example: "Chilled Water Pipework" hierarchy → prefer [Disc: HVAC] over [Disc: Plumbing].
+   - Example: "Fire Protection Piping" hierarchy → prefer [Disc: Fire] over [Disc: Plumbing].
+   - Wrong-discipline match = HIGH confidence at best, never EXACT.
+
+PRIORITY 2 — CORE WORK IDENTIFICATION:
    - What is the fundamental work or material described in the target?
    - Which candidates describe the same fundamental work or material?
    - Ignore differences in naming convention (e.g., "Power Supply Cable" = "LV Power Cable" = "XLPE Cable" when specs match).
 
-2. SPECIFICATION MATCH:
-   - Compare key specifications: size, rating, material type, core count.
-   - Example: "1x150 mm2" matches "1C x 150 mm2" (same cable cross-section).
-   - Minor spec differences (e.g., insulation brand, jacket type) are acceptable for HIGH confidence.
-
-3. UNIT COMPATIBILITY:
-   - Check the TARGET UNIT against the likely unit of the candidate based on its description.
-   - Note: Candidate units are not explicitly listed; infer from context (cables → m, concrete → m3, etc.).
-   - If the candidate clearly implies an incompatible unit, reject it.
-
-4. SCOPE CHECK — USE THE HIERARCHY (CRITICAL):
+PRIORITY 3 — SCOPE CHECK — USE THE HIERARCHY:
    - The target's Hierarchy tells you the SCOPE (what work is being priced).
    - Each candidate line now includes a [Scope X: meaning] tag — USE IT.
    - Read the hierarchy carefully:
@@ -65,19 +65,56 @@ Perform a logical evaluation to find the best match.
    - MANDATORY: When the hierarchy says "Supply" (without "install"/"pour"), you MUST pick a candidate with Scope E. Do NOT pick Scope A.
    - MANDATORY: When the hierarchy says "Pour…labour…material" or "Supply and install", you MUST pick Scope F.
 
-5. SUBCATEGORY SPECIFICITY:
+PRIORITY 4 — SPECIFICATION MATCH:
+   - Compare key specifications: size, rating, material type, core count.
+   - Example: "1x150 mm2" matches "1C x 150 mm2" (same cable cross-section).
+   - Minor spec differences (e.g., insulation brand, jacket type) are acceptable for HIGH confidence.
+
+PRIORITY 5 — UNIT COMPATIBILITY:
+   - Check the TARGET UNIT against the likely unit of the candidate based on its description.
+   - Note: Candidate units are not explicitly listed; infer from context (cables → m, concrete → m3, etc.).
+   - If the candidate clearly implies an incompatible unit, reject it.
+
+PRIORITY 6 — SUBCATEGORY SPECIFICITY (tiebreaker):
    - Codes with subcategory "00" (e.g., C 31 00 xxx) are generic templates.
    - Codes with a specific subcategory (e.g., C 31 13 xxx) are project-specific.
    - ALWAYS prefer a specific subcategory over "00" when both match the same work.
 
-6. DISCIPLINE / SYSTEM MATCH (CRITICAL for MEP):
-   - Each candidate is tagged with [Disc: X] showing its discipline.
-   - The target Hierarchy tells you which building system the item belongs to.
-   - ALWAYS prefer candidates from the MATCHING discipline over others.
-   - Identical physical items (pipes, valves, insulation) exist under multiple disciplines.
-   - Example: "Chilled Water Pipework" hierarchy → prefer [Disc: HVAC] over [Disc: Plumbing].
-   - Example: "Fire Protection Piping" hierarchy → prefer [Disc: Fire] over [Disc: Plumbing].
-   - Wrong-discipline match = HIGH confidence at best, never EXACT.
+────────────────────────────────────────
+WORKED EXAMPLES (use these as a guide):
+
+Example A — Civil / Concrete supply:
+  TARGET:
+    Hierarchy: Concrete Work > Supply Ready Mix Concrete
+    Description: Normal concrete grade C40 for raft foundation
+    TARGET UNIT: m3
+  CANDIDATES:
+    [1] [C 31 13 CGA] [Disc: Civil] [Scope A: Concrete Only] (Cast-in-Place) Supply and place concrete…
+    [2] [C 31 13 CGE] [Disc: Civil] [Scope E: Supply Only] (Cast-in-Place) Supply ready mix concrete C40…
+    [3] [C 31 00 CGE] [Disc: Civil] [Scope E: Supply Only] (Concrete General) Supply ready mix concrete…
+  CORRECT → [2]: Discipline matches (Civil). Hierarchy says "Supply" → Scope E. Specific subcategory 13 > generic 00. EXACT.
+
+Example B — MEP / Plumbing cross-discipline:
+  TARGET:
+    Hierarchy: Plumbing > Hot Water System > Pipework
+    Description: 25 mm diameter copper pipe
+    TARGET UNIT: m
+  CANDIDATES:
+    [1] [h3713B01] [Disc: HVAC] [Scope A: Supply+Fix+Test] (HVAC Piping) 25mm copper pipe…
+    [2] [p1316ACC] [Disc: Plumbing] [Scope C: Supply+Fix+Test] (Hot Water) 25mm diameter copper pipe…
+    [3] [p1316ACA] [Disc: Plumbing] [Scope A: Supply+Fix+Test] (Hot Water) 20mm diameter copper pipe…
+  CORRECT → [2]: Discipline matches (Plumbing, not HVAC). Same 25mm spec. EXACT.
+
+Example C — NO MATCH:
+  TARGET:
+    Hierarchy: Electrical > Earthing System
+    Description: 50x6mm copper earthing tape
+    TARGET UNIT: m
+  CANDIDATES:
+    [1] [E 26 05 ECA] [Disc: Electrical] [Scope A: Supply+Fix+Test] (Power) 1C x 150mm2 XLPE cable
+    [2] [E 26 05 ECB] [Disc: Electrical] [Scope B: Supply+Fix+Test] (Power) 4C x 25mm2 armoured cable
+  CORRECT → NO MATCH: Earthing tape is fundamentally different from power cables. Different material and application.
+────────────────────────────────────────
 
 CONFIDENCE LEVELS:
 - "EXACT" (Green): You are CONFIDENT this is the correct price code.

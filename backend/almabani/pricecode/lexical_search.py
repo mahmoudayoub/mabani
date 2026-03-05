@@ -171,11 +171,13 @@ DISCIPLINE_HINTS: Dict[str, Set[str]] = {
     },
     "mechanical": {
         "pipe", "piping", "valve", "pump", "tank", "sanitary", "water",
-        "sewage", "stormwater", "storm", "hvac", "duct", "fan", "chiller",
-        "sprinkler", "firefighting", "plumbing", "drain", "manhole",
-        "chamber", "irrigation", "potable", "fuel", "lpg", "vent",
-        "waste", "network", "conduit", "rcp", "hdpe", "upvc", "grp",
-        "gre", "ductile", "iron", "tse",
+        "sewage", "stormwater", "storm", "hvac", "duct", "ductwork",
+        "fan", "chiller", "sprinkler", "firefighting", "plumbing",
+        "drain", "drainage", "manhole", "chamber", "irrigation",
+        "potable", "fuel", "lpg", "vent", "waste", "network",
+        "conduit", "rcp", "hdpe", "upvc", "grp", "gre", "ductile",
+        "iron", "tse", "diffuser", "ahu", "fcu", "damper", "grille",
+        "louver", "condensate", "refrigerant",
     },
 }
 
@@ -490,10 +492,19 @@ _MEP_PREFIX_HINTS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\bplumbing\b", re.I), "p"),
     (re.compile(r"\bsanitary\b", re.I), "p"),
     (re.compile(r"\bdomestic\s+(?:hot\s+|cold\s+)?water\b", re.I), "p"),
+    (re.compile(r"\bhot\s+water\b", re.I), "p"),
+    (re.compile(r"\bcold\s+water\b", re.I), "p"),
+    (re.compile(r"\bwater\s+supply\b", re.I), "p"),
     (re.compile(r"\bpotable\s+water\b", re.I), "p"),
     (re.compile(r"\bsewage\b", re.I), "p"),
+    (re.compile(r"\bdrainage\b", re.I), "p"),
     (re.compile(r"\bsoil\s+(?:and|&)\s*waste\b", re.I), "p"),
     (re.compile(r"\bwater\s+heater\b", re.I), "p"),
+    # Fire protection (f) — BEFORE HVAC so fire-specific terms match first
+    (re.compile(r"\bfire\s+(?:protect|suppress|fight)", re.I), "f"),
+    (re.compile(r"\bfire\s+hose\b", re.I), "f"),
+    (re.compile(r"\bfire\s+damper\b", re.I), "f"),
+    (re.compile(r"\bsprinkler\b", re.I), "f"),
     # HVAC (h) — heating, ventilation, air conditioning
     (re.compile(r"\bhvac\b", re.I), "h"),
     (re.compile(r"\bchilled\s+water\b", re.I), "h"),
@@ -502,26 +513,34 @@ _MEP_PREFIX_HINTS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\bdistrict\s+cooling\b", re.I), "h"),
     (re.compile(r"\bcondensate\b", re.I), "h"),
     (re.compile(r"\brefrigerant\b", re.I), "h"),
-    # Fire protection (f) — suppression, sprinklers
-    (re.compile(r"\bfire\s+(?:protect|suppress|fight)", re.I), "f"),
-    (re.compile(r"\bfire\s+hose\b", re.I), "f"),
-    (re.compile(r"\bsprinkler\b", re.I), "f"),
+    (re.compile(r"\bductwork\b", re.I), "h"),
+    (re.compile(r"\bduct\b", re.I), "h"),
+    (re.compile(r"\bfan\s+coil\b", re.I), "h"),
+    (re.compile(r"\bfcu\b", re.I), "h"),
+    (re.compile(r"\bahu\b", re.I), "h"),
+    (re.compile(r"\bair\s+handl", re.I), "h"),
+    (re.compile(r"\bdiffuser\b", re.I), "h"),
+    (re.compile(r"\bdamper\b", re.I), "h"),
+    (re.compile(r"\bgrilles?\b", re.I), "h"),
+    (re.compile(r"\blouv(?:er|re)\b", re.I), "h"),
     # Utilities / External (Z)
     (re.compile(r"\butilit(?:y|ies)\b", re.I), "Z"),
     (re.compile(r"\birrigation\b", re.I), "Z"),
 ]
 
 
-def _detect_mep_prefix(parent: str, grandparent: str) -> Optional[str]:
+def _detect_mep_prefix(
+    parent: str, grandparent: str, category_path: str = ""
+) -> Optional[str]:
     """Detect expected MEP price-code prefix letter from hierarchy context.
 
-    Scans parent and grandparent text for standard construction keywords
-    that unambiguously identify the MEP sub-discipline.  Returns the
-    prefix letter (p/h/f/Z) if the evidence is clear, or None if
-    ambiguous / unknown.  First match wins, so more-specific patterns
-    should appear before less-specific ones.
+    Scans parent, grandparent, **and category_path** text for standard
+    construction keywords that unambiguously identify the MEP sub-
+    discipline.  Returns the prefix letter (p/h/f/Z) if the evidence is
+    clear, or None if ambiguous / unknown.  First match wins, so more-
+    specific patterns should appear before less-specific ones.
     """
-    ctx = f"{grandparent} {parent}"
+    ctx = f"{grandparent} {parent} {category_path}"
     for pattern, prefix in _MEP_PREFIX_HINTS:
         if pattern.search(ctx):
             return prefix
@@ -1828,9 +1847,18 @@ class LexicalMatcher:
         expected_scope = _detect_expected_scope(parent_str, gp_str)
         # MEP sub-discipline prefix (p/h/f/Z) from hierarchy keywords
         expected_mep_prefix = (
-            _detect_mep_prefix(parent_str, gp_str)
+            _detect_mep_prefix(
+                parent_str, gp_str, item.get("category_path", "") or ""
+            )
             if guessed_disc == "mechanical" else None
         )
+        # Pre-compute parent/grandparent alpha tokens for segment matching
+        _parent_alpha = self._alpha_tokens(set(tokenize(parent_str))) if parent_str else set()
+        _gp_alpha = self._alpha_tokens(set(tokenize(gp_str))) if gp_str else set()
+        _ctx_alpha = _parent_alpha | _gp_alpha   # combined hierarchy context tokens
+        # Remove description tokens to avoid double-counting with leaf overlap
+        _ctx_alpha -= alpha_dist
+
         # Sheet affinity: compute once, reuse for all candidates
         sheet_aff: Dict[str, float] = {}
         _sa_best_aff = 0.0
@@ -1884,6 +1912,33 @@ class LexicalMatcher:
                 elif leaf_ratio == 0.0:
                     final *= 0.50                       # heavy penalty
 
+            # ── Segment-level hierarchy matching ────────────────────────
+            # The ref's prefixed_description has semicolon-delimited
+            # segments: "Ready Mix Concrete ; Cast In Situ ; leaf …".
+            # The intermediate (non-leaf) segments are classification
+            # context.  When BOQ parent/grandparent tokens match these
+            # intermediate segments, boost the candidate — it means the
+            # rate-book classification aligns with the BOQ hierarchy.
+            if _ctx_alpha:
+                _prefix_desc = clean_text(ref["prefixed_description"])
+                _seg_parts = [s.strip() for s in _prefix_desc.split(";")]
+                if len(_seg_parts) > 1:
+                    # All segments except the last (leaf)
+                    _intermediate = " ".join(_seg_parts[:-1])
+                    _inter_toks = self._alpha_tokens(
+                        set(tokenize_normalized(normalize_text(_intermediate)))
+                    )
+                    if _inter_toks:
+                        _seg_overlap = _ctx_alpha & _inter_toks
+                        _seg_ratio = len(_seg_overlap) / max(1, len(_ctx_alpha))
+                        if _seg_ratio >= 0.3:
+                            final *= 1.0 + 0.35 * _seg_ratio  # up to ~1.35×
+                        elif _seg_ratio == 0.0 and not short:
+                            # No intermediate segment matches BOQ context
+                            # at all — mild penalty (only for non-thin items
+                            # where context is trustworthy)
+                            final *= 0.92
+
             # Token overlap bonuses
             if distinctive:
                 final += 1.25 * (len(overlap) / max(1, len(distinctive)))
@@ -1928,14 +1983,24 @@ class LexicalMatcher:
             # identifies the sub-discipline.  Identical physical items
             # (pipes, valves, insulation) exist across sub-disciplines,
             # so we boost matching and penalize mismatching prefixes.
+            # Penalty is moderate for MEP-vs-MEP (prefix misdetection is
+            # common on thin items) but stronger for non-MEP prefixes
+            # (Y-insulation, C-civil) which are almost always wrong.
             if expected_mep_prefix:
                 _ref_pc_raw = clean_text(ref["price_code"])
                 _ref_prefix = _ref_pc_raw[0].upper() if _ref_pc_raw else ""
                 if _ref_prefix and _ref_prefix.isalpha():
                     if _ref_prefix == expected_mep_prefix.upper():
-                        final *= 1.15       # matching sub-discipline
+                        final *= 1.20       # matching sub-discipline
                     elif _ref_prefix in ("P", "H", "F", "Z"):
-                        final *= 0.65       # wrong MEP sub-discipline
+                        # Wrong MEP sub-discipline — moderate penalty
+                        final *= 0.60
+                    else:
+                        # Non-MEP prefix (Y, C, E, etc.) — stronger
+                        if short:
+                            final *= 0.45
+                        else:
+                            final *= 0.55
 
             # Airfield routing
             if is_airfield:

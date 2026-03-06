@@ -32,7 +32,7 @@ from openpyxl import load_workbook
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "lexical_v3"
+SCHEMA_VERSION = "lexical_v4"
 
 # ═════════════════════════════════════════════════════════════════════════
 # Constants
@@ -1541,6 +1541,9 @@ CREATE TABLE IF NOT EXISTS refs (
     dn_csv  TEXT, dia_csv  TEXT, mm_csv  TEXT, mpa_csv TEXT,
     kv_csv  TEXT, dims_csv TEXT, mm2_csv TEXT, core_csv TEXT,
     thk_csv TEXT, fire_csv TEXT, pn_csv TEXT,
+    pipe_mat_csv TEXT, valve_type_csv TEXT, concrete_elem_csv TEXT,
+    cable_insul_csv TEXT, schedule_csv TEXT, pipe_grade_csv TEXT,
+    fitting_type_csv TEXT,
     code_prefix TEXT
 );
 CREATE TABLE IF NOT EXISTS postings (
@@ -1769,6 +1772,13 @@ def build_index(
                     ",".join(specs["mm2"]), ",".join(specs["cores"]),
                     ",".join(specs["thk"]), ",".join(specs["fire"]),
                     ",".join(specs["pn"]),
+                    ",".join(specs.get("pipe_mat", ())),
+                    ",".join(specs.get("valve_type", ())),
+                    ",".join(specs.get("concrete_elem", ())),
+                    ",".join(specs.get("cable_insul", ())),
+                    ",".join(specs.get("schedule", ())),
+                    ",".join(specs.get("pipe_grade", ())),
+                    ",".join(specs.get("fitting_type", ())),
                     extract_code_prefix(pc),
                 ))
                 for tok in toks:
@@ -1778,7 +1788,7 @@ def build_index(
 
                 if len(insert_buf) >= 5000:
                     cur.executemany(
-                        "INSERT INTO refs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO refs VALUES (" + ",".join("?" * 29) + ")",
                         insert_buf,
                     )
                     cur.executemany("INSERT INTO postings VALUES (?,?)", posting_buf)
@@ -1793,7 +1803,7 @@ def build_index(
             )
 
         if insert_buf:
-            cur.executemany("INSERT INTO refs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", insert_buf)
+            cur.executemany("INSERT INTO refs VALUES (" + ",".join("?" * 29) + ")", insert_buf)
             cur.executemany("INSERT INTO postings VALUES (?,?)", posting_buf)
 
         # Full df table replacement (includes prior + new counts)
@@ -1898,7 +1908,7 @@ class LexicalMatcher:
     # Tuning knobs (class-level defaults)
     HARD_POSTINGS_LIMIT = 50000
     MAX_QUERY_TERMS = 22
-    INITIAL_POOL_LIMIT = 3000
+    INITIAL_POOL_LIMIT = 5000
     RELATIVE_CUTOFF = 0.50
     MIN_ABS_SCORE = 1.60
     MIN_OVERLAP_TOKENS = 1
@@ -1933,6 +1943,7 @@ class LexicalMatcher:
         self._postings: Dict[str, List[int]] = data["postings"]
         self._refs: Dict[int, Dict[str, Any]] = data["refs"]
         self._prefix_groups: Dict[str, List[int]] = data.get("prefix_groups", {})
+        self._spec_index: Dict[str, Dict[str, frozenset]] = data.get("spec_index", {})
 
         logger.info(
             f"LexicalMatcher ready (in-memory): {self.ref_count:,} refs, "
@@ -1946,15 +1957,36 @@ class LexicalMatcher:
         return self
 
     # ── On-the-fly categorical spec extraction ──────────────────────────
+    # Categorical spec columns stored in v4 schema
+    _CAT_DB_COLS = {
+        "pipe_mat":      "pipe_mat_csv",
+        "valve_type":    "valve_type_csv",
+        "concrete_elem": "concrete_elem_csv",
+        "cable_insul":   "cable_insul_csv",
+        "schedule":      "schedule_csv",
+        "pipe_grade":    "pipe_grade_csv",
+        "fitting_type":  "fitting_type_csv",
+    }
+
     def _get_ref_cat_specs(self, ref_id: int) -> Dict[str, Tuple[str, ...]]:
-        """Extract categorical specs from a ref's description, with caching."""
+        """Extract categorical specs from a ref, preferring DB columns (v4)."""
         cached = self._ref_cat_cache.get(ref_id)
         if cached is not None:
             return cached
         ref = self._refs.get(ref_id)
         if ref is None:
             return {}
-        # Use prefixed_description for richer context (includes hierarchy)
+        # Try DB columns first (v4 schema stores them)
+        has_db_cols = ref.get("pipe_mat_csv") is not None
+        if has_db_cols:
+            cat: Dict[str, Tuple[str, ...]] = {}
+            for spec_key, col in self._CAT_DB_COLS.items():
+                raw = ref.get(col) or ""
+                vals = tuple(v.strip() for v in str(raw).split(",") if v.strip())
+                cat[spec_key] = vals
+            self._ref_cat_cache[ref_id] = cat
+            return cat
+        # Fallback: on-the-fly extraction for v3 DBs
         desc = ref.get("prefixed_description", "") or ref.get("description", "") or ""
         low = desc.lower()
         cat = _extract_categorical(low)
@@ -2060,6 +2092,37 @@ class LexicalMatcher:
                 prefix_groups[pfx].append(rid)
         prefix_groups = dict(prefix_groups)  # shed defaultdict overhead
 
+        # ── Spec inverted indexes ───────────────────────────────────
+        # For each numeric AND categorical DB-column spec, build
+        # {normalised_value: set(ref_id)} so the search can inject / boost
+        # spec-matching refs into the candidate pool *before* the top-N cut.
+        _SPEC_COLS = ("mpa_csv", "dn_csv", "dia_csv", "kv_csv",
+                      "mm2_csv", "core_csv", "pn_csv",
+                      "pipe_mat_csv", "valve_type_csv", "concrete_elem_csv",
+                      "cable_insul_csv", "schedule_csv", "pipe_grade_csv")
+        spec_index: Dict[str, Dict[str, Set[int]]] = {
+            col: defaultdict(set) for col in _SPEC_COLS
+        }
+        for rid, ref in refs.items():
+            for col in _SPEC_COLS:
+                raw = ref.get(col)
+                if not raw:
+                    continue
+                s = str(raw).strip()
+                if not s:
+                    continue
+                for v in s.split(","):
+                    v = v.strip()
+                    if v:
+                        spec_index[col][v].add(rid)
+        # Convert inner defaultdicts to plain dicts + freeze sets
+        spec_index = {
+            col: {v: frozenset(rids) for v, rids in vmap.items()}
+            for col, vmap in spec_index.items()
+        }
+        _si_total = sum(len(rids) for vmap in spec_index.values() for rids in vmap.values())
+        logger.info(f"Spec inverted indexes: {_si_total:,} entries across {len(_SPEC_COLS)} columns")
+
         conn.close()
         logger.info(
             f"Index loaded: {len(refs):,} refs, "
@@ -2077,6 +2140,7 @@ class LexicalMatcher:
             "postings": postings,
             "refs": refs,
             "prefix_groups": prefix_groups,
+            "spec_index": spec_index,
         }
 
     # ── public API ──────────────────────────────────────────────────────
@@ -2125,13 +2189,34 @@ class LexicalMatcher:
         ]
         _total_postings_scanned = 0
 
+        # Identify spec-value tokens so we exempt them from the
+        # frequency filter.  Numbers like "40" (from C32/40) appear
+        # in >8 % of refs and would be dropped, but they carry vital
+        # specification information.
+        _spec_tok_set: Set[str] = set()
+        for _sk in ("mpa", "dn", "dia", "kv", "mm2", "cores", "pn",
+                    "dims", "mm"):
+            for _sv in desc_specs.get(_sk, ()):
+                _spec_tok_set.add(_sv)
+                # Also add common suffixed forms (e.g. "dn150" → "150")
+                if _sv.replace(".", "", 1).isdigit():
+                    _spec_tok_set.add(_sv)
+
         for _tok_idx, (tok, qscore) in enumerate(ordered):
             df = self.df.get(tok, 0)
             if not df:
                 continue
-            if self.ref_count and (df / self.ref_count) > 0.08:
+            # Allow spec-value tokens through the frequency filter —
+            # numbers like "40" or "150" are high-DF but carry vital
+            # specification meaning when extracted by extract_specs().
+            _is_spec_tok = tok in _spec_tok_set
+            if not _is_spec_tok and self.ref_count and (df / self.ref_count) > 0.08:
                 continue
             damp = 1.0 / (1.0 + math.log(df + 1))
+            # Give spec tokens a slight extra weight so they contribute
+            # more to pool ordering even when their IDF is low.
+            if _is_spec_tok:
+                damp = max(damp, 0.25)
             posting_ids = self._postings.get(tok, ())
             _scan_len = min(len(posting_ids), self.HARD_POSTINGS_LIMIT)
             _total_postings_scanned += _scan_len
@@ -2154,6 +2239,92 @@ class LexicalMatcher:
 
         _t_postings = _time.perf_counter()
 
+        # ── 1b. Spec-aware pool boosting & injection ────────────────────
+        # Refs whose DB spec columns match the query's numeric specs get
+        # a score boost in the pool.  Refs that weren't found by TF-IDF
+        # at all (complete vocabulary mismatch) get injected with a
+        # minimum score so they survive the top-N cut and can be properly
+        # reranked later.
+        _SPEC_MAP = {
+            "mpa":   "mpa_csv",
+            "dn":    "dn_csv",
+            "dia":   "dia_csv",
+            "kv":    "kv_csv",
+            "mm2":   "mm2_csv",
+            "cores": "core_csv",
+            "pn":    "pn_csv",
+        }
+        # Also boost/inject based on categorical specs from ctx_specs
+        _CAT_MAP = {
+            "pipe_mat":      "pipe_mat_csv",
+            "valve_type":    "valve_type_csv",
+            "concrete_elem": "concrete_elem_csv",
+            "cable_insul":   "cable_insul_csv",
+            "schedule":      "schedule_csv",
+            "pipe_grade":    "pipe_grade_csv",
+        }
+        _pool_min = min(scored_pool.values()) if scored_pool else 0.0
+        _pool_median = 0.0
+        if scored_pool:
+            _sorted_scores = sorted(scored_pool.values(), reverse=True)
+            _pool_median = _sorted_scores[len(_sorted_scores) // 2]
+        _spec_injected = 0
+        _spec_boosted = 0
+        for spec_key, col_name in _SPEC_MAP.items():
+            qvals = set(desc_specs.get(spec_key, ()))
+            if not qvals:
+                continue
+            col_idx = self._spec_index.get(col_name, {})
+            matching_rids: Set[int] = set()
+            for qv in qvals:
+                matching_rids |= col_idx.get(qv, frozenset())
+            # Also cross-reference dia ↔ dn
+            if spec_key == "dia":
+                dn_idx = self._spec_index.get("dn_csv", {})
+                for qv in qvals:
+                    matching_rids |= dn_idx.get(qv, frozenset())
+            elif spec_key == "dn":
+                dia_idx = self._spec_index.get("dia_csv", {})
+                for qv in qvals:
+                    matching_rids |= dia_idx.get(qv, frozenset())
+            if self._valid_ref_ids is not None:
+                matching_rids &= self._valid_ref_ids
+            for rid in matching_rids:
+                if rid in scored_pool:
+                    # Boost existing pool entries by 30% per matching spec
+                    scored_pool[rid] *= 1.30
+                    _spec_boosted += 1
+                else:
+                    # Inject with median score — enough to survive the cut,
+                    # but low enough that pure spec match without text
+                    # relevance won't dominate.
+                    scored_pool[rid] = max(_pool_median * 0.60, _pool_min)
+                    _spec_injected += 1
+
+        # Categorical spec boosting (pipe_mat, valve_type, etc.)
+        for spec_key, col_name in _CAT_MAP.items():
+            qvals = set(ctx_specs.get(spec_key, ()))
+            if not qvals:
+                continue
+            col_idx = self._spec_index.get(col_name, {})
+            matching_rids: Set[int] = set()
+            for qv in qvals:
+                matching_rids |= col_idx.get(qv, frozenset())
+            if self._valid_ref_ids is not None:
+                matching_rids &= self._valid_ref_ids
+            for rid in matching_rids:
+                if rid in scored_pool:
+                    scored_pool[rid] *= 1.25
+                    _spec_boosted += 1
+                else:
+                    scored_pool[rid] = max(_pool_median * 0.50, _pool_min)
+                    _spec_injected += 1
+
+        if _spec_boosted or _spec_injected:
+            logger.debug(
+                f"Spec pool: boosted={_spec_boosted}, injected={_spec_injected}"
+            )
+
         # ── 2. Fetch top-N ref rows ─────────────────────────────────────
         prelim = sorted(scored_pool.items(), key=lambda kv: kv[1], reverse=True)[
             : self.INITIAL_POOL_LIMIT
@@ -2164,6 +2335,7 @@ class LexicalMatcher:
 
         # ── 3. Re-rank ──────────────────────────────────────────────────
         core_norm = normalize_text(item.get("description", ""))
+        _query_toks_list = tokenize_normalized(core_norm)  # ordered token list for bigram matching
         boq_unit_fam = _unit_family(item.get("unit", "") or "")
         reranked: List[Dict[str, Any]] = []
         _yield_counter = 0
@@ -2172,22 +2344,24 @@ class LexicalMatcher:
         distinctive_objects = distinctive & OBJECT_TOKENS
         parent_str = item.get("parent", "") or ""
         gp_str = item.get("grandparent", "") or ""
+        _catpath_str = item.get("category_path", "") or ""
         route_toks = alpha_dist | self._alpha_tokens(
-            set(tokenize(" ; ".join([parent_str, gp_str])))
+            set(tokenize(" ; ".join([parent_str, gp_str, _catpath_str])))
         )
         # Scope detection from hierarchy context (pre-computed once)
         expected_scope = _detect_expected_scope(parent_str, gp_str)
         # MEP sub-discipline prefix (p/h/f/Z) from hierarchy keywords
         expected_mep_prefix = (
             _detect_mep_prefix(
-                parent_str, gp_str, item.get("category_path", "") or ""
+                parent_str, gp_str, _catpath_str,
             )
             if guessed_disc == "mechanical" else None
         )
-        # Pre-compute parent/grandparent alpha tokens for segment matching
+        # Pre-compute parent/grandparent/category_path alpha tokens for segment matching
         _parent_alpha = self._alpha_tokens(set(tokenize(parent_str))) if parent_str else set()
         _gp_alpha = self._alpha_tokens(set(tokenize(gp_str))) if gp_str else set()
-        _ctx_alpha = _parent_alpha | _gp_alpha   # combined hierarchy context tokens
+        _cp_alpha = self._alpha_tokens(set(tokenize(_catpath_str))) if _catpath_str else set()
+        _ctx_alpha = _parent_alpha | _gp_alpha | _cp_alpha  # combined hierarchy context tokens
         # Remove description tokens to avoid double-counting with leaf overlap
         _ctx_alpha -= alpha_dist
 
@@ -2229,6 +2403,26 @@ class LexicalMatcher:
                 final += 1.35 * ratio
                 if core_norm in full_norm or leaf_norm in core_norm:
                     final += 0.8
+                # Also check against the full prefixed description —
+                # catches matches where query vocabulary aligns with the
+                # rate-book hierarchy path.
+                if full_norm and full_norm != leaf_norm:
+                    full_ratio = _rapidfuzz_ratio(core_norm, full_norm) / 100.0
+                    if full_ratio > ratio:
+                        final += 0.45 * (full_ratio - ratio)
+
+            # Bigram sequence bonus — consecutive token pairs from query
+            # appearing in the ref indicate a phrase match (stronger than
+            # individual tokens).  E.g. "ready mix" or "steel bar".
+            if len(_query_toks_list) >= 2:
+                _ref_norm_str = full_norm
+                _bigram_hits = 0
+                for _bi in range(len(_query_toks_list) - 1):
+                    _bg = _query_toks_list[_bi] + " " + _query_toks_list[_bi + 1]
+                    if _bg in _ref_norm_str:
+                        _bigram_hits += 1
+                if _bigram_hits > 0:
+                    final += 0.30 * min(_bigram_hits, 4)
 
             # Leaf-token overlap  (STRONG signal)
             # Tokens matching the ref's LEAF description are far more
@@ -2277,6 +2471,29 @@ class LexicalMatcher:
                 final += 1.25 * (len(overlap) / max(1, len(distinctive)))
             if alpha_dist:
                 final += 1.1 * (len(alpha_overlap) / max(1, len(alpha_dist)))
+
+            # ── Bigram sequence bonus ───────────────────────────────────
+            # Two consecutive query tokens appearing in order in the ref
+            # description is a much stronger signal than random unigram
+            # matches (e.g. "copper pipe" vs "pipe" + "copper" separately).
+            if len(_query_toks_list) >= 2:
+                _ref_tok_list = tokenize_normalized(full_norm)
+                _ref_tok_set_idx: Dict[str, List[int]] = defaultdict(list)
+                for _ri, _rt in enumerate(_ref_tok_list):
+                    _ref_tok_set_idx[_rt].append(_ri)
+                _bigram_hits = 0
+                for _qi in range(len(_query_toks_list) - 1):
+                    _t1, _t2 = _query_toks_list[_qi], _query_toks_list[_qi + 1]
+                    _positions1 = _ref_tok_set_idx.get(_t1, [])
+                    _positions2 = _ref_tok_set_idx.get(_t2, [])
+                    if _positions1 and _positions2:
+                        for _p1 in _positions1:
+                            if (_p1 + 1) in _positions2:
+                                _bigram_hits += 1
+                                break
+                if _bigram_hits > 0:
+                    _bigram_ratio = _bigram_hits / max(1, len(_query_toks_list) - 1)
+                    final += 0.6 * _bigram_ratio  # up to +0.6 for full bigram match
 
             # Spec scoring (additive)
             final += self._spec_score(
@@ -2480,7 +2697,7 @@ class LexicalMatcher:
             reranked.sort(key=lambda x: float(x["score"]), reverse=True)
             # Collect top prefix groups from the best-scoring candidates
             _seen_prefixes: Dict[str, float] = {}
-            MAX_EXPAND_PREFIXES = 8
+            MAX_EXPAND_PREFIXES = 12
             for r in reranked:
                 pfx = extract_code_prefix(r["price_code"])
                 if pfx and pfx not in _seen_prefixes:
@@ -2753,9 +2970,11 @@ class LexicalMatcher:
             if grandparent:
                 parts.append((grandparent, 1.2))
 
-        # Broader hierarchy context at low weight
+        # Broader hierarchy context — category_path contains the full
+        # BOQ hierarchy (e.g. "CONCRETE WORK > POURED CONCRETE > In-situ")
+        # which carries strong classification signal for sheet routing.
         if category_path:
-            parts.append((category_path, 0.6))
+            parts.append((category_path, 1.2))
 
         qweights: Dict[str, float] = defaultdict(float)
         for text, w in parts:
@@ -2893,6 +3112,9 @@ class LexicalMatcher:
             elif key == "dn":
                 rvals = rvals | self._csv_to_set(ref.get("dia_csv", ""))
             if not rvals:
+                # Generic ref (no spec value) — small penalty so
+                # specific-matching refs rank above generics.
+                factor *= 0.88
                 continue
             if qvals & rvals:
                 factor *= match_f
@@ -2904,12 +3126,12 @@ class LexicalMatcher:
         rcat = self._get_ref_cat_specs(ref_id) if ref_id is not None else {}
 
         _CAT_SPEC = {
-            "concrete_elem":  (1.45, 0.70, 0.90),
-            "pipe_mat":       (1.40, 0.55, 1.00),
-            "valve_type":     (1.40, 0.55, 1.00),
-            "cable_insul":    (1.30, 0.60, 1.00),
-            "schedule":       (1.25, 0.65, 1.00),
-            "pipe_grade":     (1.30, 0.60, 1.00),
+            "concrete_elem":  (1.45, 0.70, 0.85),
+            "pipe_mat":       (1.40, 0.55, 0.85),
+            "valve_type":     (1.40, 0.55, 0.85),
+            "cable_insul":    (1.30, 0.60, 0.90),
+            "schedule":       (1.25, 0.65, 0.92),
+            "pipe_grade":     (1.30, 0.60, 0.90),
         }
         for key, (match_f, mismatch_f, missing_f) in _CAT_SPEC.items():
             qvals = set(ctx_specs.get(key, ()))
@@ -2954,7 +3176,9 @@ class LexicalMatcher:
             elif key == "dn":
                 rvals = rvals | self._csv_to_set(ref.get("dia_csv", ""))
             if not rvals:
-                return False
+                # Ref has no value for this spec — allow through (generic ref).
+                # Soft scoring (_spec_multiplier) handles the penalty.
+                continue
             if is_subset:
                 if not qvals.issubset(rvals):
                     return False
@@ -3173,6 +3397,15 @@ class LexicalMatcher:
         result.sort(key=lambda x: float(x.get("score", 0)), reverse=True)
         return result
 
+    _PIPELINE_SPEC_COLS = (
+        ("dn_csv", "DN"), ("dia_csv", "Dia"), ("mpa_csv", "MPa"),
+        ("kv_csv", "kV"), ("mm2_csv", "mm²"), ("core_csv", "Cores"),
+        ("pn_csv", "PN"), ("thk_csv", "Thk"),
+        ("pipe_mat_csv", "Material"), ("valve_type_csv", "Valve"),
+        ("concrete_elem_csv", "Element"), ("cable_insul_csv", "Insulation"),
+        ("schedule_csv", "Schedule"), ("pipe_grade_csv", "Grade"),
+    )
+
     @staticmethod
     def _to_pipeline_format(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert internal ranking dicts to the format ``llm_match()`` expects."""
@@ -3184,7 +3417,13 @@ class LexicalMatcher:
                 parts = raw_desc.split(" ; ", 1)
                 if parts[0].strip() == parts[1].strip():
                     raw_desc = parts[0].strip()
-            result.append({
+            # Collect non-empty spec columns for the LLM
+            specs: Dict[str, str] = {}
+            for col, label in LexicalMatcher._PIPELINE_SPEC_COLS:
+                val = c.get(col)
+                if val and str(val).strip():
+                    specs[label] = str(val).strip()
+            entry: Dict[str, Any] = {
                 "price_code": c["price_code"],
                 "description": raw_desc,
                 "leaf_description": c.get("leaf_description", ""),
@@ -3197,5 +3436,8 @@ class LexicalMatcher:
                     "reference_sheet": c.get("sheet_name", ""),
                     "reference_category": c.get("sheet_name", ""),
                 },
-            })
+            }
+            if specs:
+                entry["specs"] = specs
+            result.append(entry)
         return result

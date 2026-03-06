@@ -13,7 +13,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from .prompts import PRICECODE_MATCH_SYSTEM, PRICECODE_MATCH_USER
-from .lexical_search import LexicalMatcher
+from .lexical_search import LexicalMatcher, extract_specs
 
 _LLM_MAX_RETRIES = 3
 _LLM_BASE_DELAY = 1.0  # seconds; doubles each retry
@@ -220,6 +220,26 @@ class PriceCodeMatcher:
             parts.append(f"TARGET UNIT: {unit}")
         else:
             parts.append("TARGET UNIT: (not specified)")
+
+        # Extract and display parsed specs so the LLM can compare explicitly
+        all_text = " ".join(
+            str(s) for s in [description, parent, grandparent, category_path] if s
+        )
+        specs = extract_specs(all_text)
+        _SPEC_LABELS = {
+            "dn": "DN", "dia": "Dia", "mpa": "MPa", "kv": "kV",
+            "mm2": "mm²", "cores": "Cores", "pn": "PN", "thk": "Thk",
+            "pipe_mat": "Material", "valve_type": "Valve",
+            "concrete_elem": "Element", "concrete_scope": "Scope",
+        }
+        spec_parts = []
+        for key, label in _SPEC_LABELS.items():
+            vals = specs.get(key, ())
+            if vals:
+                spec_parts.append(f"{label}={','.join(vals)}")
+        if spec_parts:
+            parts.append(f"TARGET SPECS: {' | '.join(spec_parts)}")
+
         return "\n".join(parts)
 
     @staticmethod
@@ -298,5 +318,12 @@ class PriceCodeMatcher:
             if disc_letter in _DISC_LABELS:
                 disc_tag = f" [Disc: {_DISC_LABELS[disc_letter]}]"
 
-            lines.append(f"[{i}] [{code}]{decoded_tag}{disc_tag}{scope_tag}{prefix_tag}{tag} {display_desc}")
+            # ── Spec annotations from search engine ────────────────
+            spec_tags = ""
+            cand_specs = cand.get("specs", {})
+            if cand_specs:
+                st_parts = [f"{k}:{v}" for k, v in cand_specs.items()]
+                spec_tags = " [" + ", ".join(st_parts) + "]"
+
+            lines.append(f"[{i}] [{code}]{decoded_tag}{disc_tag}{scope_tag}{spec_tags}{prefix_tag}{tag} {display_desc}")
         return "\n".join(lines)

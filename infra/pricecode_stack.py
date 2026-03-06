@@ -120,7 +120,7 @@ class PriceCodeStack(Stack):
                 "PRICECODE_TOP_K": os.getenv("PRICECODE_TOP_K", "99"),
                 "PRICECODE_BATCH_SIZE": os.getenv("PRICECODE_BATCH_SIZE", "100"),
                 "PRICECODE_MAX_CONCURRENT": os.getenv("PRICECODE_MAX_CONCURRENT", "200"),
-                "PRICECODE_MAX_CANDIDATES": os.getenv("PRICECODE_MAX_CANDIDATES", "12"),
+                "PRICECODE_MAX_CANDIDATES": os.getenv("PRICECODE_MAX_CANDIDATES", "20"),
                 "PRICECODE_INDEX_DB": os.getenv("PRICECODE_INDEX_DB", "/tmp/pricecode_index.db"),
             },
             secrets=secrets,

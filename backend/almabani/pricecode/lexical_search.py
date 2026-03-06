@@ -19,12 +19,14 @@ import hashlib
 import io
 import logging
 import math
+import multiprocessing
 import os
 import re
 import sqlite3
 
 import zipfile
 from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from rapidfuzz.fuzz import ratio as _rapidfuzz_ratio
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
@@ -1522,6 +1524,47 @@ def iter_ref_rows(path: str) -> Iterator[
                 yield out
 
 
+def _process_file_for_indexing(path: str) -> tuple:
+    """Process a single reference file for indexing.
+
+    Runs in a worker process — returns all data needed for SQLite INSERT.
+    Returns (source_stem, insert_rows, tok_lists) where each insert_row
+    has ref_id=None (assigned by the caller).
+    """
+    raw_stem = os.path.splitext(os.path.basename(path))[0]
+    source_stem = raw_stem[4:] if raw_stem.startswith("ref_") else raw_stem
+    insert_rows: list = []
+    tok_lists: list = []
+    for discipline, source_file, sheet, pc, prefixed, leaf, specs, toks in iter_ref_rows(path):
+        segs = split_hierarchy(prefixed)
+        family_parts = list(segs[:3]) if segs else [sheet]
+        _compact_fk = re.match(r'^[A-Za-z](\d{2})(\d{2})', (pc or "").strip())
+        if _compact_fk and len(segs) <= 1:
+            family_parts = [f"sec{_compact_fk.group(1)}", f"sub{_compact_fk.group(2)}"]
+        family_key = " | ".join([discipline, sheet] + family_parts)
+        insert_rows.append((
+            None, discipline, source_file, sheet, pc,
+            prefixed, leaf, family_key,
+            normalize_text(prefixed), normalize_text(leaf),
+            ",".join(specs["dn"]),  ",".join(specs["dia"]),
+            ",".join(specs["mm"]),  ",".join(specs["mpa"]),
+            ",".join(specs["kv"]),  ",".join(specs["dims"]),
+            ",".join(specs["mm2"]), ",".join(specs["cores"]),
+            ",".join(specs["thk"]), ",".join(specs["fire"]),
+            ",".join(specs["pn"]),
+            ",".join(specs.get("pipe_mat", ())),
+            ",".join(specs.get("valve_type", ())),
+            ",".join(specs.get("concrete_elem", ())),
+            ",".join(specs.get("cable_insul", ())),
+            ",".join(specs.get("schedule", ())),
+            ",".join(specs.get("pipe_grade", ())),
+            ",".join(specs.get("fitting_type", ())),
+            extract_code_prefix(pc),
+        ))
+        tok_lists.append(toks)
+    return source_stem, insert_rows, tok_lists
+
+
 # ═════════════════════════════════════════════════════════════════════════
 # SQLite Index
 # ═════════════════════════════════════════════════════════════════════════
@@ -1641,7 +1684,10 @@ def build_index(
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA synchronous=OFF")
+    conn.execute("PRAGMA cache_size=-65536")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("PRAGMA mmap_size=268435456")
 
     if not rebuild and _index_ready(conn, ref_paths):
         logger.info("SQLite index is up-to-date – reusing.")
@@ -1746,64 +1792,59 @@ def build_index(
     ref_id = start_ref_id
 
     try:
-        for path in paths_to_index:
-            raw_stem = os.path.splitext(os.path.basename(path))[0]
-            # Strip 'ref_' prefix added by the download step so that the
-            # stored source_file matches the original S3 key stem.
-            source_stem = raw_stem[4:] if raw_stem.startswith("ref_") else raw_stem
-            logger.info(f"Indexing {os.path.basename(path)} …")
-            for discipline, source_file, sheet, pc, prefixed, leaf, specs, toks in iter_ref_rows(path):
-                segs = split_hierarchy(prefixed)
-                family_parts = list(segs[:3]) if segs else [sheet]
-                # For compact codes (e.g. p1316ACC), extract section+
-                # subsection from the code itself to give a more meaningful
-                # family_key than just the sheet name.
-                _compact_fk = re.match(r'^[A-Za-z](\d{2})(\d{2})', (pc or "").strip())
-                if _compact_fk and len(segs) <= 1:
-                    family_parts = [f"sec{_compact_fk.group(1)}", f"sub{_compact_fk.group(2)}"]
-                family_key = " | ".join([discipline, sheet] + family_parts)
-                insert_buf.append((
-                    ref_id, discipline, source_file, sheet, pc,
-                    prefixed, leaf, family_key,
-                    normalize_text(prefixed), normalize_text(leaf),
-                    ",".join(specs["dn"]),  ",".join(specs["dia"]),
-                    ",".join(specs["mm"]),  ",".join(specs["mpa"]),
-                    ",".join(specs["kv"]),  ",".join(specs["dims"]),
-                    ",".join(specs["mm2"]), ",".join(specs["cores"]),
-                    ",".join(specs["thk"]), ",".join(specs["fire"]),
-                    ",".join(specs["pn"]),
-                    ",".join(specs.get("pipe_mat", ())),
-                    ",".join(specs.get("valve_type", ())),
-                    ",".join(specs.get("concrete_elem", ())),
-                    ",".join(specs.get("cable_insul", ())),
-                    ",".join(specs.get("schedule", ())),
-                    ",".join(specs.get("pipe_grade", ())),
-                    ",".join(specs.get("fitting_type", ())),
-                    extract_code_prefix(pc),
-                ))
-                for tok in toks:
-                    posting_buf.append((tok, ref_id))
-                    df_counter[tok] += 1
-                ref_id += 1
+        # ── Parallel file processing ────────────────────────────────────
+        # Each file is processed in a separate worker process to utilise
+        # all CPU cores (4 vCPU on Fargate → ~4x speedup).  SQLite writes
+        # happen in the main thread (SQLite doesn't support concurrent writes).
+        _INSERT_SQL = "INSERT INTO refs VALUES (" + ",".join("?" * 29) + ")"
+        _BATCH_SIZE = 20000
 
-                if len(insert_buf) >= 5000:
-                    cur.executemany(
-                        "INSERT INTO refs VALUES (" + ",".join("?" * 29) + ")",
-                        insert_buf,
-                    )
-                    cur.executemany("INSERT INTO postings VALUES (?,?)", posting_buf)
-                    conn.commit()
-                    insert_buf.clear()
-                    posting_buf.clear()
+        # Track sheet→token counts in Python to avoid expensive SQL JOIN later
+        _sheet_tok_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        _sheet_sizes: Dict[str, int] = defaultdict(int)
 
-            # Record this file as indexed
-            cur.execute(
-                "INSERT OR REPLACE INTO indexed_files (source_file, file_path) VALUES (?, ?)",
-                (source_stem, os.path.abspath(path)),
-            )
+        _num_workers = min(len(paths_to_index), max(1, multiprocessing.cpu_count() or 4))
+        logger.info(f"Indexing {len(paths_to_index)} file(s) with {_num_workers} worker(s) …")
+
+        with ProcessPoolExecutor(max_workers=_num_workers) as pool:
+            futures = {
+                pool.submit(_process_file_for_indexing, p): p
+                for p in paths_to_index
+            }
+            for future in as_completed(futures):
+                path = futures[future]
+                source_stem, file_rows, file_tok_lists = future.result()
+                logger.info(
+                    f"Indexed {os.path.basename(path)}: {len(file_rows):,} rows"
+                )
+                for row_tuple, row_toks in zip(file_rows, file_tok_lists):
+                    sheet_name = row_tuple[3]  # sheet_name field
+                    complete_row = (ref_id,) + row_tuple[1:]
+                    insert_buf.append(complete_row)
+                    for tok in row_toks:
+                        posting_buf.append((tok, ref_id))
+                        df_counter[tok] += 1
+                        _sheet_tok_counts[sheet_name][tok] += 1
+                        _sheet_sizes[sheet_name] += 1
+                    ref_id += 1
+
+                    if len(insert_buf) >= _BATCH_SIZE:
+                        cur.executemany(_INSERT_SQL, insert_buf)
+                        cur.executemany(
+                            "INSERT INTO postings VALUES (?,?)", posting_buf
+                        )
+                        conn.commit()
+                        insert_buf.clear()
+                        posting_buf.clear()
+
+                # Record this file as indexed
+                cur.execute(
+                    "INSERT OR REPLACE INTO indexed_files (source_file, file_path) VALUES (?, ?)",
+                    (source_stem, os.path.abspath(path)),
+                )
 
         if insert_buf:
-            cur.executemany("INSERT INTO refs VALUES (" + ",".join("?" * 29) + ")", insert_buf)
+            cur.executemany(_INSERT_SQL, insert_buf)
             cur.executemany("INSERT INTO postings VALUES (?,?)", posting_buf)
 
         # Full df table replacement (includes prior + new counts)
@@ -1811,24 +1852,27 @@ def build_index(
         cur.executemany("INSERT INTO df VALUES (?,?)", list(df_counter.items()))
 
         # ── Compute sheet-level token signatures ──────────────────────
-        # For each sheet, find the top-K most distinctive tokens using
-        # a sheet-level TF-IDF score.  Stored once in the DB so that
-        # LexicalMatcher can load them instantly at startup.
+        # For full rebuilds, use Python-accumulated counts (avoids
+        # expensive SQL JOIN over 7M+ postings rows).
+        # For append mode, fall back to SQL which includes prior data.
         logger.info("Computing sheet token signatures …")
         cur.execute("DELETE FROM sheet_tokens")
 
-        # 1. Per-sheet-token counts  (postings × refs GROUP BY)
-        stc: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        sheet_sizes: Dict[str, int] = defaultdict(int)
-        cur2 = conn.cursor()
-        cur2.execute(
-            "SELECT r.sheet_name, p.token, COUNT(*) "
-            "FROM postings p JOIN refs r ON p.ref_id = r.ref_id "
-            "GROUP BY r.sheet_name, p.token"
-        )
-        for _sheet, _tok, _cnt in cur2:
-            stc[_sheet][_tok] = _cnt
-            sheet_sizes[_sheet] += _cnt
+        stc: Dict[str, Dict[str, int]]
+        _sh_sizes: Dict[str, int]
+        if not append_mode and _sheet_tok_counts:
+            stc = _sheet_tok_counts
+            _sh_sizes = _sheet_sizes
+        else:
+            stc = defaultdict(lambda: defaultdict(int))
+            _sh_sizes = defaultdict(int)
+            for _sn, _tk, _cnt in conn.execute(
+                "SELECT r.sheet_name, p.token, COUNT(*) "
+                "FROM postings p JOIN refs r ON p.ref_id = r.ref_id "
+                "GROUP BY r.sheet_name, p.token"
+            ):
+                stc[_sn][_tk] = _cnt
+                _sh_sizes[_sn] += _cnt
 
         num_sheets = max(len(stc), 1)
         # 2. How many sheets each token appears in
@@ -1841,7 +1885,7 @@ def build_index(
         _SIG_TOP_K = 50
         sig_buf: List[tuple] = []
         for _sheet, _toks in stc.items():
-            _sz = max(sheet_sizes[_sheet], 1)
+            _sz = max(_sh_sizes[_sheet], 1)
             scored = []
             for _tok, _cnt in _toks.items():
                 _tf = _cnt / _sz
@@ -2002,13 +2046,14 @@ class LexicalMatcher:
     ) -> Dict[str, Any]:
         """Synchronously load the entire SQLite index into Python dicts."""
         conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA mmap_size=268435456")
+        conn.execute("PRAGMA cache_size=-65536")
 
         # ── DF / IDF ────────────────────────────────────────────────────
         df: Dict[str, int] = {}
-        for row in conn.execute("SELECT token, df FROM df"):
-            df[str(row["token"])] = int(row["df"])
+        for tok, d in conn.execute("SELECT token, df FROM df"):
+            df[str(tok)] = int(d)
 
         ref_count = int(conn.execute("SELECT COUNT(*) FROM refs").fetchone()[0])
 
@@ -2036,24 +2081,24 @@ class LexicalMatcher:
         # ── Sheet token signatures ──────────────────────────────────────
         sheet_sigs: Dict[str, Set[str]] = defaultdict(set)
         try:
-            for row in conn.execute("SELECT sheet_name, token FROM sheet_tokens"):
-                sheet_sigs[str(row["sheet_name"])].add(str(row["token"]))
+            for _sn, _tk in conn.execute("SELECT sheet_name, token FROM sheet_tokens"):
+                sheet_sigs[str(_sn)].add(str(_tk))
         except Exception:
             logger.warning("sheet_tokens table not found – sheet affinity disabled")
 
         # ── Sheet → discipline mapping ──────────────────────────────────
         sheet_discipline: Dict[str, str] = {}
         try:
-            for row in conn.execute("SELECT DISTINCT sheet_name, discipline FROM refs"):
-                sheet_discipline[str(row["sheet_name"])] = str(row["discipline"])
+            for _sn, _disc in conn.execute("SELECT DISTINCT sheet_name, discipline FROM refs"):
+                sheet_discipline[str(_sn)] = str(_disc)
         except Exception:
             pass
 
         # ── Postings: token → list[ref_id] ──────────────────────────────
         logger.info("Loading postings into memory …")
         postings: Dict[str, List[int]] = defaultdict(list)
-        for row in conn.execute("SELECT token, ref_id FROM postings"):
-            postings[row["token"]].append(int(row["ref_id"]))
+        for tok, rid in conn.execute("SELECT token, ref_id FROM postings"):
+            postings[tok].append(rid)
         postings = dict(postings)  # shed defaultdict overhead
 
         # ── Refs: ref_id → dict ─────────────────────────────────────────
@@ -2122,6 +2167,16 @@ class LexicalMatcher:
         }
         _si_total = sum(len(rids) for vmap in spec_index.values() for rids in vmap.values())
         logger.info(f"Spec inverted indexes: {_si_total:,} entries across {len(_SPEC_COLS)} columns")
+
+        # ── Pre-compute tokenized forms for search speed ────────────────
+        # Avoids re-tokenizing 5000 candidates per search call.
+        # Cost: ~7-10s one-time; saves ~200ms per search × 200+ items.
+        logger.info("Pre-computing token tuples …")
+        for rid, ref in refs.items():
+            _nt = ref.get("norm_text") or ""
+            _nl = ref.get("norm_leaf") or ""
+            ref["_tok_tuple"] = tuple(tokenize_normalized(str(_nt))) if _nt else ()
+            ref["_leaf_tok_tuple"] = tuple(tokenize_normalized(str(_nl))) if _nl else ()
 
         conn.close()
         logger.info(
@@ -2392,7 +2447,8 @@ class LexicalMatcher:
             final = lex_score
             leaf_norm = clean_text(ref["norm_leaf"])
             full_norm = clean_text(ref["norm_text"])
-            ref_toks = set(tokenize_normalized(full_norm))
+            _cached_toks = ref.get("_tok_tuple")
+            ref_toks = set(_cached_toks) if _cached_toks else set(tokenize_normalized(full_norm))
             overlap = distinctive & ref_toks
             alpha_overlap = alpha_dist & ref_toks
             obj_overlap = bool(distinctive_objects & ref_toks)
@@ -2428,7 +2484,7 @@ class LexicalMatcher:
             # Tokens matching the ref's LEAF description are far more
             # meaningful than tokens matching only the hierarchy prefix.
             # Multiplicative to scale with the base TF-IDF score.
-            leaf_toks = set(tokenize_normalized(leaf_norm))
+            leaf_toks = set(ref.get("_leaf_tok_tuple") or ()) or set(tokenize_normalized(leaf_norm))
             leaf_alpha = self._alpha_tokens(leaf_toks)
             leaf_overlap = alpha_dist & leaf_alpha
             if alpha_dist and leaf_alpha:
@@ -2477,7 +2533,7 @@ class LexicalMatcher:
             # description is a much stronger signal than random unigram
             # matches (e.g. "copper pipe" vs "pipe" + "copper" separately).
             if len(_query_toks_list) >= 2:
-                _ref_tok_list = tokenize_normalized(full_norm)
+                _ref_tok_list = list(_cached_toks) if _cached_toks else tokenize_normalized(full_norm)
                 _ref_tok_set_idx: Dict[str, List[int]] = defaultdict(list)
                 for _ri, _rt in enumerate(_ref_tok_list):
                     _ref_tok_set_idx[_rt].append(_ri)

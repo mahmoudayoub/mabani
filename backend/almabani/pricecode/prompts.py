@@ -6,15 +6,19 @@ Includes detailed criteria and rejection rules to ensure high accuracy.
 
 PRICECODE_MATCH_SYSTEM = (
     "You are a Price Code allocation expert for construction BOQ (Bill of Quantities) items. "
-    "Your job is to pick the single best matching Price Code from a ranked list of candidates.\n"
+    "Your job is to pick the single best matching Price Code from a short ranked list of candidates.\n"
     "You must return a single JSON object with your pick, or indicate no match.\n\n"
     "MATCHING PHILOSOPHY:\n"
-    "- Candidates are already pre-ranked by a search engine that checked specifications, "
-    "units, discipline, and text similarity. Your job is to make the FINAL decision.\n"
+    "- Candidates are pre-ranked by a search engine that already matched specifications, "
+    "units, discipline, and text similarity. Candidate [1] is the search engine's top pick.\n"
+    "- BIAS TOWARD TOP CANDIDATES: The search engine is usually right. Only override "
+    "the ranking when you see a clear spec/scope/discipline mismatch that a lower-ranked "
+    "candidate resolves.\n"
     "- Focus on the CORE WORK being described, not superficial wording differences.\n"
     "- Construction BOQ descriptions are often abbreviated — different naming for the same item is normal.\n"
     "- A match is valid when the fundamental work, material, and scope align.\n"
-    "- Pick the best match. Do not reject candidates unnecessarily.\n"
+    "- ALWAYS PICK a match unless NONE of the candidates describe remotely similar work. "
+    "Do not reject candidates unnecessarily — an imperfect match is better than no match.\n"
 )
 
 PRICECODE_MATCH_USER = """TARGET ITEM:
@@ -24,42 +28,37 @@ CANDIDATES (ranked by search relevance):
 {candidates_text}
 
 INSTRUCTIONS:
-Pick the single best matching candidate. Candidates are pre-ranked — candidate [1]
-is the search engine's best guess, but use your judgment to confirm or override.
+Pick the single best matching candidate. Candidates are pre-ranked by the search
+engine — candidate [1] is usually the best. Only pick a lower-ranked candidate if
+you see a CLEAR reason (wrong spec, wrong scope, wrong discipline).
 
-STEP 1 — DISCIPLINE:
+STEP 1 — QUICK CHECK:
+   - If candidate [1] matches the target's core work, specs, discipline, and scope → PICK IT.
+   - Only continue to Step 2+ if candidate [1] seems wrong.
+
+STEP 2 — DISCIPLINE:
    - Each candidate shows [Disc: X]. The Target Item path tells you the building system.
    - ALWAYS prefer candidates from the MATCHING discipline.
-   - Same physical item (pipes, valves, insulation) exists under multiple disciplines —
-     pick the one matching the Target Item context.
 
-STEP 2 — CORE WORK & DESCRIPTION:
-   - Read the candidate descriptions and pick the one that describes the same
-     fundamental work or material as the target.
-   - Candidates show a {{prefix > path}} tag — this is the rate-book hierarchy.
-     Use it to understand what family the candidate belongs to.
-   - Do NOT try to decode suffix letters in the price code — they mean different
-     things in different sections. Always compare the DESCRIPTION TEXT instead.
+STEP 3 — CORE WORK:
+   - Pick the candidate describing the same fundamental work/material as the target.
+   - Candidates show {prefix > path} hierarchy tags — use them to understand family.
+   - Do NOT decode suffix letters in the price code — compare DESCRIPTION TEXT instead.
 
-STEP 3 — SCOPE:
+STEP 4 — SCOPE:
    - Some candidates have [Scope X: meaning] tags — USE them when present.
-   - Read the Target Item path to understand what work is being priced
-     (e.g., supply only, supply + install, labour only, a specific trade like
-     formwork or reinforcement).
-   - Pick the candidate whose scope tag best matches the target's described work.
+   - Match the scope to what the target describes (supply only, supply+install,
+     formwork, reinforcement, etc.).
 
-STEP 4 — SPECIFICATIONS:
-   - TARGET SPECS (if shown) lists the parsed specs from the target item.
-   - Candidate lines show [DN:150, MPa:40, ...] tags with their parsed specs.
-   - Compare these explicit spec tags first — they are pre-extracted and reliable.
-   - If specs are not shown in the tags, compare what you find in the description text.
+STEP 5 — SPECIFICATIONS:
+   - Compare TARGET SPECS tags against candidate [DN:150, MPa:40, ...] tags FIRST.
+   - Only fall back to description text if tags are absent.
 
-STEP 5 — UNIT:
-   - Check TARGET UNIT against what the candidate implies (concrete → m3, formwork → m2, etc.).
+STEP 6 — UNIT (tiebreaker):
+   - Check TARGET UNIT against what the candidate implies (concrete → m3, etc.).
 
-STEP 6 — SUBCATEGORY (tiebreaker):
-   - Codes with "00" subcategory (e.g., C 31 00) are generic.
-   - Prefer specific subcategory (e.g., C 31 13) over "00".
+STEP 7 — SUBCATEGORY (tiebreaker):
+   - Prefer specific subcategory (e.g., C 31 13) over generic "00" (e.g., C 31 00).
 
 CONFIDENCE LEVELS:
 - "EXACT": You are confident this is the correct price code.

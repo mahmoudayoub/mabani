@@ -2294,12 +2294,13 @@ class LexicalMatcher:
 
         _t_postings = _time.perf_counter()
 
-        # ── 1b. Spec-aware pool boosting & injection ────────────────────
-        # Refs whose DB spec columns match the query's numeric specs get
-        # a score boost in the pool.  Refs that weren't found by TF-IDF
-        # at all (complete vocabulary mismatch) get injected with a
-        # minimum score so they survive the top-N cut and can be properly
-        # reranked later.
+        # ── 1b. Compound spec-aware pool boosting & injection ───────────
+        # Instead of independent per-key 1.30× boosts, count how many
+        # spec dimensions each ref matches and apply a COMPOUND factor
+        # (1.28^n).  This ensures refs matching 3 of 3 query specs get
+        # exponentially more boost than refs matching only 1 of 3.
+        # Injection score also scales with match coverage so multi-spec
+        # matching refs that TF-IDF missed still survive the top-N cut.
         _SPEC_MAP = {
             "mpa":   "mpa_csv",
             "dn":    "dn_csv",
@@ -2309,7 +2310,6 @@ class LexicalMatcher:
             "cores": "core_csv",
             "pn":    "pn_csv",
         }
-        # Also boost/inject based on categorical specs from ctx_specs
         _CAT_MAP = {
             "pipe_mat":      "pipe_mat_csv",
             "valve_type":    "valve_type_csv",
@@ -2317,14 +2317,26 @@ class LexicalMatcher:
             "cable_insul":   "cable_insul_csv",
             "schedule":      "schedule_csv",
             "pipe_grade":    "pipe_grade_csv",
+            "fitting_type":  "fitting_type_csv",
         }
         _pool_min = min(scored_pool.values()) if scored_pool else 0.0
         _pool_median = 0.0
         if scored_pool:
             _sorted_scores = sorted(scored_pool.values(), reverse=True)
             _pool_median = _sorted_scores[len(_sorted_scores) // 2]
-        _spec_injected = 0
-        _spec_boosted = 0
+
+        # Count how many spec dimensions the query carries
+        _query_spec_dims = 0
+        for _sk in _SPEC_MAP:
+            if desc_specs.get(_sk):
+                _query_spec_dims += 1
+        for _sk in _CAT_MAP:
+            if ctx_specs.get(_sk):
+                _query_spec_dims += 1
+
+        # Collect per-ref match count across all spec dimensions
+        _spec_match_count: Dict[int, int] = defaultdict(int)
+
         for spec_key, col_name in _SPEC_MAP.items():
             qvals = set(desc_specs.get(spec_key, ()))
             if not qvals:
@@ -2333,7 +2345,7 @@ class LexicalMatcher:
             matching_rids: Set[int] = set()
             for qv in qvals:
                 matching_rids |= col_idx.get(qv, frozenset())
-            # Also cross-reference dia ↔ dn
+            # Cross-reference dia ↔ dn
             if spec_key == "dia":
                 dn_idx = self._spec_index.get("dn_csv", {})
                 for qv in qvals:
@@ -2345,18 +2357,8 @@ class LexicalMatcher:
             if self._valid_ref_ids is not None:
                 matching_rids &= self._valid_ref_ids
             for rid in matching_rids:
-                if rid in scored_pool:
-                    # Boost existing pool entries by 30% per matching spec
-                    scored_pool[rid] *= 1.30
-                    _spec_boosted += 1
-                else:
-                    # Inject with median score — enough to survive the cut,
-                    # but low enough that pure spec match without text
-                    # relevance won't dominate.
-                    scored_pool[rid] = max(_pool_median * 0.60, _pool_min)
-                    _spec_injected += 1
+                _spec_match_count[rid] += 1
 
-        # Categorical spec boosting (pipe_mat, valve_type, etc.)
         for spec_key, col_name in _CAT_MAP.items():
             qvals = set(ctx_specs.get(spec_key, ()))
             if not qvals:
@@ -2368,16 +2370,29 @@ class LexicalMatcher:
             if self._valid_ref_ids is not None:
                 matching_rids &= self._valid_ref_ids
             for rid in matching_rids:
-                if rid in scored_pool:
-                    scored_pool[rid] *= 1.25
-                    _spec_boosted += 1
-                else:
-                    scored_pool[rid] = max(_pool_median * 0.50, _pool_min)
-                    _spec_injected += 1
+                _spec_match_count[rid] += 1
+
+        # Apply compound boost (existing pool) or scaled injection (new)
+        _spec_injected = 0
+        _spec_boosted = 0
+        _COMPOUND_BASE = 1.28  # per-dimension compound factor
+        for rid, match_count in _spec_match_count.items():
+            compound_factor = _COMPOUND_BASE ** match_count
+            if rid in scored_pool:
+                scored_pool[rid] *= compound_factor
+                _spec_boosted += 1
+            else:
+                # Injection score scales with match coverage:
+                # 1/3 specs → median×0.55, 2/3 → median×0.70, 3/3 → median×1.00
+                match_ratio = match_count / max(1, _query_spec_dims)
+                inject_score = _pool_median * (0.55 + 0.45 * match_ratio)
+                scored_pool[rid] = max(inject_score, _pool_min)
+                _spec_injected += 1
 
         if _spec_boosted or _spec_injected:
             logger.debug(
-                f"Spec pool: boosted={_spec_boosted}, injected={_spec_injected}"
+                f"Spec pool: boosted={_spec_boosted}, injected={_spec_injected}, "
+                f"query_dims={_query_spec_dims}"
             )
 
         # ── 2. Fetch top-N ref rows ─────────────────────────────────────
@@ -2721,6 +2736,22 @@ class LexicalMatcher:
                 "price_code": clean_text(ref["price_code"]),
                 "description": clean_text(ref["prefixed_description"]),
                 "leaf_description": clean_text(ref["leaf_description"]),
+                # Spec columns for LLM display
+                "dn_csv": ref.get("dn_csv", ""),
+                "dia_csv": ref.get("dia_csv", ""),
+                "mpa_csv": ref.get("mpa_csv", ""),
+                "kv_csv": ref.get("kv_csv", ""),
+                "mm2_csv": ref.get("mm2_csv", ""),
+                "core_csv": ref.get("core_csv", ""),
+                "pn_csv": ref.get("pn_csv", ""),
+                "thk_csv": ref.get("thk_csv", ""),
+                "pipe_mat_csv": ref.get("pipe_mat_csv", ""),
+                "valve_type_csv": ref.get("valve_type_csv", ""),
+                "concrete_elem_csv": ref.get("concrete_elem_csv", ""),
+                "cable_insul_csv": ref.get("cable_insul_csv", ""),
+                "schedule_csv": ref.get("schedule_csv", ""),
+                "pipe_grade_csv": ref.get("pipe_grade_csv", ""),
+                "fitting_type_csv": ref.get("fitting_type_csv", ""),
             })
 
         _t_rerank = _time.perf_counter()
@@ -2842,6 +2873,22 @@ class LexicalMatcher:
                         "price_code": clean_text(sref["price_code"]),
                         "description": clean_text(sref["prefixed_description"]),
                         "leaf_description": clean_text(sref.get("leaf_description", "")),
+                        # Spec columns for LLM display
+                        "dn_csv": sref.get("dn_csv", ""),
+                        "dia_csv": sref.get("dia_csv", ""),
+                        "mpa_csv": sref.get("mpa_csv", ""),
+                        "kv_csv": sref.get("kv_csv", ""),
+                        "mm2_csv": sref.get("mm2_csv", ""),
+                        "core_csv": sref.get("core_csv", ""),
+                        "pn_csv": sref.get("pn_csv", ""),
+                        "thk_csv": sref.get("thk_csv", ""),
+                        "pipe_mat_csv": sref.get("pipe_mat_csv", ""),
+                        "valve_type_csv": sref.get("valve_type_csv", ""),
+                        "concrete_elem_csv": sref.get("concrete_elem_csv", ""),
+                        "cable_insul_csv": sref.get("cable_insul_csv", ""),
+                        "schedule_csv": sref.get("schedule_csv", ""),
+                        "pipe_grade_csv": sref.get("pipe_grade_csv", ""),
+                        "fitting_type_csv": sref.get("fitting_type_csv", ""),
                     })
                     _existing_ids.add(sid)
                     _expansion_count += 1
@@ -3182,12 +3229,13 @@ class LexicalMatcher:
         rcat = self._get_ref_cat_specs(ref_id) if ref_id is not None else {}
 
         _CAT_SPEC = {
-            "concrete_elem":  (1.45, 0.70, 0.85),
-            "pipe_mat":       (1.40, 0.55, 0.85),
-            "valve_type":     (1.40, 0.55, 0.85),
-            "cable_insul":    (1.30, 0.60, 0.90),
-            "schedule":       (1.25, 0.65, 0.92),
-            "pipe_grade":     (1.30, 0.60, 0.90),
+            "concrete_elem":  (1.45, 0.30, 0.85),
+            "pipe_mat":       (1.40, 0.30, 0.85),
+            "valve_type":     (1.40, 0.30, 0.85),
+            "fitting_type":   (1.35, 0.30, 0.88),
+            "cable_insul":    (1.30, 0.35, 0.90),
+            "schedule":       (1.25, 0.45, 0.92),
+            "pipe_grade":     (1.30, 0.40, 0.90),
         }
         for key, (match_f, mismatch_f, missing_f) in _CAT_SPEC.items():
             qvals = set(ctx_specs.get(key, ()))
@@ -3242,25 +3290,11 @@ class LexicalMatcher:
                 if not (qvals & rvals):
                     return False
 
-        # ── Hard categorical spec filters (on-the-fly) ─────────────────
-        # Pipe material and valve type are unambiguous differentiators:
-        #   BOQ says "HDPE pipe" → must NOT match DI/uPVC/CS refs.
-        #   BOQ says "gate valve" → must NOT match butterfly/check refs.
-        # We only reject when BOTH query and ref have values (avoids
-        # false-rejection when the ref description is too generic).
-        ref_id = ref.get("ref_id")
-        if ref_id is not None:
-            rcat = self._get_ref_cat_specs(ref_id)
-            _HARD_CAT_KEYS = ("pipe_mat", "valve_type")
-            for key in _HARD_CAT_KEYS:
-                qvals = set(qspecs.get(key, ()))
-                if not qvals:
-                    continue
-                rvals = set(rcat.get(key, ()))
-                if not rvals:
-                    continue  # ref is generic (no material/type mentioned)
-                if not (qvals & rvals):
-                    return False  # definite mismatch
+        # Categorical specs (pipe_mat, valve_type, fitting_type) are
+        # NOT hard-filtered — extraction errors would permanently kill
+        # the correct candidate.  Instead they get very strong soft
+        # penalties in _spec_multiplier (0.30× mismatch) which ranks
+        # them low without eliminating them.
 
         return True
 
@@ -3460,6 +3494,7 @@ class LexicalMatcher:
         ("pipe_mat_csv", "Material"), ("valve_type_csv", "Valve"),
         ("concrete_elem_csv", "Element"), ("cable_insul_csv", "Insulation"),
         ("schedule_csv", "Schedule"), ("pipe_grade_csv", "Grade"),
+        ("fitting_type_csv", "Fitting"),
     )
 
     @staticmethod

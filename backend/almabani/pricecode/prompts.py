@@ -42,7 +42,7 @@ STEP 2 — DISCIPLINE:
 
 STEP 3 — CORE WORK:
    - Pick the candidate describing the same fundamental work/material as the target.
-   - Candidates show {prefix > path} hierarchy tags — use them to understand family.
+   - Candidates show {{prefix > path}} hierarchy tags — use them to understand family.
    - Do NOT decode suffix letters in the price code — compare DESCRIPTION TEXT instead.
 
 STEP 4 — SCOPE:

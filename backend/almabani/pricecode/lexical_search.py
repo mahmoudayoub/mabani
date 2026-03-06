@@ -971,7 +971,7 @@ _CONCRETE_ELEM_PATTERNS: List[Tuple[str, str]] = [
     (r"\bpedestals?\b", "PEDESTAL"), (r"\bramps?\b", "RAMP"),
     (r"\bupstand\s*walls?\b", "UPSTAND"), (r"\bbasement\s*walls?\b", "BSMTWALL"),
     (r"\bneck\s*(?:columns?|walls?)\b", "COLNECK"),
-    (r"\bwalls?\b", "WALL"), (r"\bfoot\w*\b", "FOOTING"),
+    (r"\bwalls?\b", "WALL"), (r"\bfoundations?\b", "FOOTING"), (r"\bfoot\w*\b", "FOOTING"),
     (r"\btransfer\s*beams?\b", "TRANSBEAM"),
 ]
 _CONCRETE_ELEM_RE = [(re.compile(p, re.I), tag) for p, tag in _CONCRETE_ELEM_PATTERNS]
@@ -2420,6 +2420,9 @@ class LexicalMatcher:
         )
         # Scope detection from hierarchy context (pre-computed once)
         expected_scope = _detect_expected_scope(parent_str, gp_str)
+        # In-situ vs Precast: check if BOQ context mentions "precast"
+        _all_ctx_low = (parent_str + " " + gp_str + " " + _catpath_str).lower()
+        _ctx_has_precast = bool(re.search(r"\bprecast\b", _all_ctx_low))
         # MEP sub-discipline prefix (p/h/f/Z) from hierarchy keywords
         expected_mep_prefix = (
             _detect_mep_prefix(
@@ -2536,6 +2539,18 @@ class LexicalMatcher:
                         # BOQ says "Soil pipe work" but ref intermediate
                         # says "Facility Sanitary Sewerage").  Absence of
                         # match is not evidence of wrong candidate.
+
+                        # ── In-situ vs Precast concrete routing ────────
+                        # When the BOQ context does NOT mention "precast"
+                        # but the ref's intermediate segment says "Precast",
+                        # penalise — the item is likely cast-in-situ concrete.
+                        # Conversely, if context says "precast" but ref says
+                        # "Cast In Situ", penalise.
+                        _inter_low = _intermediate.lower()
+                        if "precast" in _inter_low and not _ctx_has_precast:
+                            final *= 0.55
+                        elif _ctx_has_precast and "cast in situ" in _inter_low:
+                            final *= 0.65
 
             # Token overlap bonuses
             if distinctive:

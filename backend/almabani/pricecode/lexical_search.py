@@ -593,6 +593,186 @@ def _parse_compact_code(price_code: str):
     return None
 
 
+# ── Data-driven V-suffix & family profile building ──────────────────
+# Built once at index load from ref descriptions.  Replaces all
+# hardcoded if/else routing for specific families (C 21 11, C 11 13…).
+#
+# * vsuffix_profiles:  for each (family, v_position), the tokens that
+#   discriminate one V-letter from another inside that family.
+# * family_profiles:  for each family prefix, tokens from the
+#   *hierarchy* (non-leaf) part of the description that are distinctive
+#   to this family versus the rest of the rate book.
+
+_PROFILE_TOK_RE = re.compile(r"[a-z]{3,}")   # min 3 chars — skip 2-letter noise
+
+# Common English stop words — filtered from all profiles to avoid
+# false matches on generic words like "and", "for", "the", etc.
+_PROFILE_STOP: frozenset = frozenset({
+    "the", "and", "for", "with", "without", "from", "into", "that",
+    "this", "its", "are", "was", "were", "been", "being", "has",
+    "have", "had", "does", "did", "will", "shall", "may", "can",
+    "could", "would", "should", "not", "but", "nor", "yet", "also",
+    "per", "all", "any", "each", "every", "both", "more", "less",
+    "only", "than", "then", "when", "where", "which", "while",
+    "about", "above", "below", "between", "through", "during",
+    "before", "after", "other", "such", "same", "over", "under",
+    "type", "etc", "ref", "see", "use", "new", "one", "two",
+    "supply", "install", "installation", "provide", "including",
+    "complete", "general", "work", "works", "item", "items",
+    "measured", "rate", "rates", "price", "unit", "total",
+})
+
+# Domain-agnostic unit expansion: turns BOQ unit abbreviations into
+# tokens that can match rate-book description words.
+_UNIT_EXPAND: Dict[str, Tuple[str, ...]] = {
+    "t":    ("ton", "tons", "tonne", "tonnes"),
+    "kg":   ("kilogram", "kilograms"),
+    "kgs":  ("kilogram", "kilograms"),
+    "m3":   ("cubic",),
+    "m2":   ("square",),
+    "m":    ("meter", "metre"),
+    "lm":   ("linear", "meter", "metre"),
+    "nr":   ("number",),
+    "no":   ("number",),
+    "ls":   ("lump", "sum"),
+}
+
+
+def _build_vsuffix_profiles(
+    refs: Dict[int, Dict[str, Any]],
+) -> Dict[Tuple[str, int], Dict[str, frozenset]]:
+    """Auto-build discriminating keyword profiles for V-suffix routing.
+
+    For each (family_prefix, v_position), stores the set of
+    discriminating tokens for each V-value letter.  A token is
+    *discriminating* if it appears in >=50 % of refs with that V-value
+    but <20 % of refs with any other V-value in the same position.
+
+    Returns
+    -------
+    {(family_6char, v_pos_idx): {v_letter: frozenset_of_tokens}}
+    """
+    # Group refs by family prefix
+    family_refs: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
+    for rid, ref in refs.items():
+        pc = (ref.get("price_code") or "").strip()
+        parts = pc.split()
+        if len(parts) >= 4 and len(parts[3]) >= 2:
+            family = " ".join(parts[:3])
+            leaf = (ref.get("leaf_description") or "").lower()
+            vsuffix = parts[3]
+            family_refs[family].append((vsuffix, leaf))
+
+    profiles: Dict[Tuple[str, int], Dict[str, frozenset]] = {}
+
+    for family, ref_list in family_refs.items():
+        for v_pos in range(3):  # V1, V2, V3
+            # Group by V-value letter at this position
+            groups: Dict[str, List[str]] = defaultdict(list)
+            for vsuffix, leaf in ref_list:
+                if v_pos < len(vsuffix):
+                    groups[vsuffix[v_pos]].append(leaf)
+
+            if len(groups) < 2:
+                continue  # need >=2 values to discriminate
+
+            # Token frequency per group (fraction of descs containing token)
+            group_freqs: Dict[str, Dict[str, float]] = {}
+            for letter, descs in groups.items():
+                counter: Dict[str, int] = defaultdict(int)
+                for desc in descs:
+                    seen: set = set()
+                    for tok in _PROFILE_TOK_RE.findall(desc):
+                        if tok not in seen and tok not in _PROFILE_STOP:
+                            counter[tok] += 1
+                            seen.add(tok)
+                n = max(len(descs), 1)
+                group_freqs[letter] = {t: c / n for t, c in counter.items()}
+
+            # Find discriminating tokens per letter
+            all_letters = list(groups.keys())
+            disc: Dict[str, set] = {}
+
+            for letter in all_letters:
+                d_tokens: set = set()
+                for tok, freq in group_freqs[letter].items():
+                    if freq < 0.50:
+                        continue
+                    max_other = max(
+                        (group_freqs[ol].get(tok, 0.0)
+                         for ol in all_letters if ol != letter),
+                        default=0.0,
+                    )
+                    if max_other < 0.20:
+                        d_tokens.add(tok)
+                if d_tokens:
+                    disc[letter] = d_tokens
+
+            if len(disc) >= 2:
+                profiles[(family, v_pos)] = {
+                    k: frozenset(v) for k, v in disc.items()
+                }
+
+    return profiles
+
+
+def _build_family_profiles(
+    refs: Dict[int, Dict[str, Any]],
+) -> Dict[str, frozenset]:
+    """Build discriminating token sets for each family prefix.
+
+    Uses the **full** ``prefixed_description`` (hierarchy + leaf).
+    A token is discriminating for a family if:
+      - it appears in >=50 % of that family's refs, AND
+      - the family's share of all global occurrences is the **highest**
+        among all families AND exceeds 40 %.
+
+    Stop words are excluded to avoid false matches on generic words.
+
+    Returns
+    -------
+    {family_prefix: frozenset_of_discriminating_tokens}
+    """
+    family_tok_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    family_ref_counts: Dict[str, int] = defaultdict(int)
+    global_tok_counts: Dict[str, int] = defaultdict(int)
+
+    for rid, ref in refs.items():
+        pc = (ref.get("price_code") or "").strip()
+        parts = pc.split()
+        if len(parts) < 3:
+            continue
+        family = " ".join(parts[:3])
+
+        # Use FULL description (hierarchy + leaf) for richer signal
+        desc = (ref.get("prefixed_description") or "").lower()
+
+        seen: set = set()
+        for tok in _PROFILE_TOK_RE.findall(desc):
+            if tok not in seen and tok not in _PROFILE_STOP:
+                family_tok_counts[family][tok] += 1
+                global_tok_counts[tok] += 1
+                seen.add(tok)
+        family_ref_counts[family] += 1
+
+    profiles: Dict[str, frozenset] = {}
+    for family, tokens in family_tok_counts.items():
+        n = max(family_ref_counts[family], 1)
+        disc: set = set()
+        for tok, count in tokens.items():
+            freq = count / n
+            if freq < 0.50:
+                continue
+            # Token must be dominated by this family (>40 % of all uses)
+            family_share = count / max(global_tok_counts[tok], 1)
+            if family_share > 0.40:
+                disc.add(tok)
+        if disc:
+            profiles[family] = frozenset(disc)
+
+    return profiles
+
+
 # ── Code prefix extraction ──────────────────────────────────────────
 # The code prefix identifies the "family" of a code: all codes sharing
 # the same prefix describe the same type of work but differ in
@@ -1992,6 +2172,8 @@ class LexicalMatcher:
         self._refs: Dict[int, Dict[str, Any]] = data["refs"]
         self._prefix_groups: Dict[str, List[int]] = data.get("prefix_groups", {})
         self._spec_index: Dict[str, Dict[str, frozenset]] = data.get("spec_index", {})
+        self._vsuffix_profiles: Dict[Tuple[str, int], Dict[str, frozenset]] = data.get("vsuffix_profiles", {})
+        self._family_profiles: Dict[str, frozenset] = data.get("family_profiles", {})
 
         logger.info(
             f"LexicalMatcher ready (in-memory): {self.ref_count:,} refs, "
@@ -2189,6 +2371,15 @@ class LexicalMatcher:
             f"{len(prefix_groups):,} prefix groups"
         )
 
+        # ── Data-driven V-suffix & family profiles ──────────────────
+        logger.info("Building V-suffix & family discriminating profiles …")
+        vsuffix_profiles = _build_vsuffix_profiles(refs)
+        family_profiles = _build_family_profiles(refs)
+        logger.info(
+            f"Profiles built: {len(vsuffix_profiles)} V-suffix dimensions, "
+            f"{len(family_profiles)} family profiles"
+        )
+
         return {
             "df": df,
             "ref_count": ref_count,
@@ -2200,6 +2391,8 @@ class LexicalMatcher:
             "refs": refs,
             "prefix_groups": prefix_groups,
             "spec_index": spec_index,
+            "vsuffix_profiles": vsuffix_profiles,
+            "family_profiles": family_profiles,
         }
 
     # ── public API ──────────────────────────────────────────────────────
@@ -2427,68 +2620,54 @@ class LexicalMatcher:
         # In-situ vs Precast: check if BOQ context mentions "precast"
         _all_ctx_low = (parent_str + " " + gp_str + " " + _catpath_str).lower()
         _ctx_has_precast = bool(re.search(r"\bprecast\b", _all_ctx_low))
-        # Rebar routing: parent/grandparent says "bar reinforcement" /
-        # "rebar" / "high yield" / "steel reinforcement" AND unit is
-        # weight → item IS rebar, not concrete-with-reinforcement-scope.
-        _ctx_is_rebar = (
-            bool(re.search(
-                r"\b(?:steel\s*)?bar\s*reinforcement\b|\brebar\b|\bhigh\s*yield\b"
-                r"|\bsteel\s*reinforc(?:ement|ing)\b",
-                _all_ctx_low,
-            ))
-            and boq_unit_fam == "weight"
+
+        # ── Data-driven context tokens for V-suffix & family routing ──
+        # Build token set from FULL BOQ context (description + hierarchy
+        # + unit) once; used in the rerank loop for every candidate.
+        _boq_desc_low = (item.get("description", "") or "").lower()
+        _boq_unit_low = (item.get("unit", "") or "").lower().strip()
+        _boq_ctx_tokens: set = set(
+            t for t in _PROFILE_TOK_RE.findall(_all_ctx_low + " " + _boq_desc_low)
+            if t not in _PROFILE_STOP
         )
-        # ── Rebar V1 (supply scope) preference ────────────────────────
-        # C 21 11 V1: A=Supply Only, B=Install w/o Bending, C=Install+Bending
-        # Default in construction is C (supply, bend, install) unless
-        # the parent explicitly says "supply only".
-        _rebar_v1_pref: Optional[str] = None
-        _rebar_v2_pref: Optional[str] = None  # V2: A=Tons, B=Kg
-        if _ctx_is_rebar:
-            if re.search(r"\bsupply\s*only\b", _all_ctx_low):
-                _rebar_v1_pref = "A"
-            elif re.search(r"\bwithout\s*bending\b", _all_ctx_low):
-                _rebar_v1_pref = "B"
-            else:
-                _rebar_v1_pref = "C"  # default: supply + install + bending
-            # V2 unit: A=measured in Tons, B=measured in Kg
-            # Match based on BOQ unit field (general unit-matching)
-            if boq_unit_fam == "weight":
-                _unit_low = (item.get("unit", "") or "").lower().strip()
-                if _unit_low in ("kg", "kgs", "kilogram", "kilograms"):
-                    _rebar_v2_pref = "B"
-                else:
-                    # "t", "ton", "tons", "tonne" etc → Tons is default
-                    _rebar_v2_pref = "A"
-        # ── Formwork material + scope preference ───────────────────────
-        # C 11 13 V2: A=Timber/Plywood, B=Steel Formwork
-        # C 11 13 V3: A=Supply+Install, B=Supply Only, C=Install Only
-        # Detect formwork context from parent/desc if unit is area (m2)
-        _ctx_is_formwork = (
-            boq_unit_fam == "area"
-            and bool(re.search(
-                r"\b(?:formwork|shuttering)\b", _all_ctx_low,
-            ))
+        # Expand unit abbreviations so they match rate-book description
+        # words (e.g. BOQ unit "t" → {"ton","tons","tonne","tonnes"}).
+        if _boq_unit_low in _UNIT_EXPAND:
+            _boq_ctx_tokens.update(_UNIT_EXPAND[_boq_unit_low])
+        if len(_boq_unit_low) >= 3 and _boq_unit_low not in _PROFILE_STOP:
+            _boq_ctx_tokens.add(_boq_unit_low)
+
+        # Hierarchy-only tokens (for family-level routing)
+        _boq_hier_tokens: set = set(
+            t for t in _PROFILE_TOK_RE.findall(_all_ctx_low)
+            if t not in _PROFILE_STOP
         )
-        _formwork_v2_pref: Optional[str] = None  # material
-        _formwork_v3_pref: Optional[str] = None  # scope
-        if _ctx_is_formwork:
-            # Material: default to timber unless steel formwork mentioned
-            if re.search(r"\bsteel\s*(?:formwork|shuttering)\b", _all_ctx_low):
-                _formwork_v2_pref = "B"
+        if _boq_unit_low in _UNIT_EXPAND:
+            _boq_hier_tokens.update(_UNIT_EXPAND[_boq_unit_low])
+        if len(_boq_unit_low) >= 3 and _boq_unit_low not in _PROFILE_STOP:
+            _boq_hier_tokens.add(_boq_unit_low)
+
+        # Pre-compute family affinity scores for families present in
+        # the candidate pool — enables data-driven family routing
+        # (replaces hardcoded _ctx_is_rebar / _ctx_is_formwork).
+        _family_affinity: Dict[str, float] = {}
+        _cand_families: set = set()
+        for _crid, _ in prelim:
+            _cref = ref_rows.get(_crid)
+            if not _cref:
+                continue
+            _cpc = (clean_text(_cref["price_code"])).split()
+            if len(_cpc) >= 3:
+                _cand_families.add(" ".join(_cpc[:3]))
+        for _cfam in _cand_families:
+            _fdisc = self._family_profiles.get(_cfam)
+            if _fdisc:
+                _match = len(_boq_ctx_tokens & _fdisc)
+                _family_affinity[_cfam] = _match / len(_fdisc)
             else:
-                _formwork_v2_pref = "A"  # timber/plywood is standard
-            # Scope: "erection"/"installation"/"fixing" → Supply+Install
-            # "supply only" → Supply Only
-            if re.search(r"\bsupply\s*only\b", _all_ctx_low):
-                _formwork_v3_pref = "B"
-            elif re.search(
-                r"\berection\b|\binstallation\b|\bfixing\b|\bsupply\s*and\s*install",
-                _all_ctx_low,
-            ):
-                _formwork_v3_pref = "A"  # supply + install
-            else:
-                _formwork_v3_pref = "A"  # default for formwork
+                _family_affinity[_cfam] = 0.0
+        _best_fam_aff = max(_family_affinity.values()) if _family_affinity else 0.0
+
         # MEP sub-discipline prefix (p/h/f/Z) from hierarchy keywords
         expected_mep_prefix = (
             _detect_mep_prefix(
@@ -2806,54 +2985,50 @@ class LexicalMatcher:
                             else:
                                 final *= 0.85  # wrong scope (soft)
 
-            # ── Rebar vs Concrete routing ──────────────────────────────
-            # When the BOQ hierarchy explicitly describes bar reinforcement
-            # (parent = "High yield steel bar reinforcement …") and the
-            # unit is weight (t/kg), route strongly to C 21 11 (rebar)
-            # and away from C 31 13 (concrete), C 11 13 (formwork), etc.
-            # Applied as one of the LAST multipliers so it overrides
-            # token overlap / spec bonuses that favour concrete refs
-            # whose descriptions happen to share element keywords
-            # (e.g. "Concrete for Retaining Wall" matches "retaining wall").
-            if _ctx_is_rebar:
-                _rpc_fam = " ".join(_pc_parts[:3]) if len(_pc_parts) >= 3 else _pc
-                if _rpc_fam.startswith("C 21"):
-                    final *= 2.0   # strong boost for rebar refs
-                elif _rpc_fam.startswith(("C 31", "C 34", "C 41", "C 11")):
-                    final *= 0.35  # penalise concrete/formwork refs
+            # ── Data-driven family routing ─────────────────────────────
+            # When the BOQ context strongly matches the discriminating
+            # tokens of one family over others in the candidate pool,
+            # boost refs from that family.  Non-matching families get
+            # a *mild* penalty to avoid crushing correct families
+            # that simply lack profiles.
+            if _best_fam_aff > 0.30 and len(_pc_parts) >= 3:
+                _ref_fam = " ".join(_pc_parts[:3])
+                _my_fam_aff = _family_affinity.get(_ref_fam, 0.0)
+                if _my_fam_aff >= _best_fam_aff * 0.80:
+                    # This ref's family matches the BOQ context well
+                    final *= 1.0 + 0.5 * _my_fam_aff   # up to ×1.5
+                elif _my_fam_aff < 0.05:
+                    # Family has NO profile match at all — mild penalty
+                    final *= max(0.70, 1.0 - 0.5 * _best_fam_aff)
 
-            # ── Within-family V-suffix routing ─────────────────────────
-            # Within C 21 11 and C 11 13, the V-suffix letters carry
-            # supply-scope and material information that the generic
-            # scoring (fuzzy, spec, etc.) cannot differentiate.
-            # Apply targeted multipliers to route to the correct variant.
-            if len(_pc_parts) >= 4 and len(_pc_parts[3]) >= 3:
-                _v1, _v2, _v3 = _pc_parts[3][0], _pc_parts[3][1], _pc_parts[3][2]
+            # ── Data-driven V-suffix routing (general, boost-only) ─────
+            # For each V-position (V1, V2, V3), find the V-value whose
+            # discriminating tokens best match the BOQ context and
+            # boost matches.  NO penalty for non-matching to avoid
+            # systematically penalising profiled families vs non-profiled.
+            if len(_pc_parts) >= 4 and len(_pc_parts[3]) >= 2:
+                _vsuffix = _pc_parts[3]
                 _fam3 = " ".join(_pc_parts[:3])
-                # ── C 21 11 rebar: V1 = supply scope ──────────────────
-                if _fam3 == "C 21 11" and _rebar_v1_pref:
-                    if _v1 == _rebar_v1_pref:
-                        final *= 1.35   # matching supply scope
-                    else:
-                        final *= 0.65   # wrong supply scope
-                    # V2 unit routing: A=Tons, B=Kg
-                    if _rebar_v2_pref:
-                        if _v2 == _rebar_v2_pref:
-                            final *= 1.25   # matching unit of measure
-                        else:
-                            final *= 0.70   # wrong unit of measure
-                # ── C 11 13 formwork: V2 = material, V3 = scope ───────
-                if _fam3 == "C 11 13":
-                    if _formwork_v2_pref:
-                        if _v2 == _formwork_v2_pref:
-                            final *= 1.25   # matching material
-                        else:
-                            final *= 0.70   # wrong material
-                    if _formwork_v3_pref:
-                        if _v3 == _formwork_v3_pref:
-                            final *= 1.25   # matching scope
-                        else:
-                            final *= 0.70   # wrong scope
+                for _vp in range(min(3, len(_vsuffix))):
+                    _vkey = (_fam3, _vp)
+                    _vprofiles = self._vsuffix_profiles.get(_vkey)
+                    if not _vprofiles or len(_vprofiles) < 2:
+                        continue
+                    _vletter = _vsuffix[_vp]
+                    # Score each V-value by # discriminating tokens matched
+                    _best_vl = None
+                    _best_vn = 0
+                    _my_vn = 0
+                    for _cvl, _cdisc in _vprofiles.items():
+                        _cn = len(_boq_ctx_tokens & _cdisc)
+                        if _cn > _best_vn:
+                            _best_vn = _cn
+                            _best_vl = _cvl
+                        if _cvl == _vletter:
+                            _my_vn = _cn
+                    if _best_vn > 0 and _best_vl is not None:
+                        if _vletter == _best_vl:
+                            final *= 1.25   # matching V-suffix boost
 
             reranked.append({
                 "ref_id": ref_id,

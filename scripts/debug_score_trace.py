@@ -17,9 +17,11 @@ matcher = asyncio.run(load_matcher())
 items, sheet_name, df, header_row_idx, columns = parse_input()
 gt = load_ground_truth()
 
-# Rows to trace — representative of the big miss groups
-# Focus on cases where family is right but leaf is wrong
-TRACE_ROWS = [433, 457, 577, 615]
+# Rows to trace — remaining miss groups
+# C 31 13 within-family: 501 (Upstand→PGA), 505 (Ground floor slabs→EHA), 11249 (blinding→ABE)
+# C 21 11 rebar: 577 (Raft slab, parent=steel bar reinforcement, unit=t)
+# C 11 13 formwork: 613 (foundations; sides→AAA)
+TRACE_ROWS = [501, 505, 577, 613, 11249]
 
 from almabani.pricecode.lexical_search import (
     tokenize, tokenize_normalized, extract_specs, normalize_text,

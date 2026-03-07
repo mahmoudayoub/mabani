@@ -591,6 +591,11 @@ class PriceCodePipeline:
             if not candidates:
                 result = {"matched": False, "reason": "No candidates found"}
             else:
+                # Cap to configured max before sending to LLM
+                from almabani.config.settings import get_settings
+                _max = get_settings().pricecode_max_candidates
+                candidates = candidates[:_max]
+
                 # ── LLM pick from top candidates ──────────────────────
                 result = await self.matcher.llm_match(
                     description=item_dict["description"],

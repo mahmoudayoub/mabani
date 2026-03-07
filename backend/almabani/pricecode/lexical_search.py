@@ -961,7 +961,9 @@ _CONCRETE_ELEM_PATTERNS: List[Tuple[str, str]] = [
     (r"\brafts?\b", "RAFT"), (r"\bpile\s*caps?\b", "PILECAP"), (r"\bpiles?\b", "PILE"),
     (r"\btie\s*beams?\b", "TIEBEAM"), (r"\bdrop\s*(?:beams?|panels?)\b", "DROPBEAM"),
     (r"\bground\s*beams?\b|\bgrade\s*beams?\b", "GRADEBEAM"),
+    (r"\bcore\s*walls?\b", "SHEARWALL"),  # "core wall" is a shear wall
     (r"\bshear\s*walls?\b", "SHEARWALL"), (r"\bretaining\s*walls?\b", "RETWALL"),
+    (r"\b(?:water\s*)?tank\s*walls?\b", "RETWALL"),  # tank walls = retaining
     (r"\bslabs?\s*on\s*grade\b|\bsog\b|\bground\s*(?:floor\s*)?slabs?\b", "SOG"),
     (r"\bsuspended\s*slabs?\b", "SUSPSLAB"), (r"\bflat\s*slabs?\b", "FLATSLAB"),
     (r"\bslabs?\b", "SLAB"), (r"\bcolumns?\s*necks?\b", "COLNECK"),
@@ -2436,6 +2438,57 @@ class LexicalMatcher:
             ))
             and boq_unit_fam == "weight"
         )
+        # ── Rebar V1 (supply scope) preference ────────────────────────
+        # C 21 11 V1: A=Supply Only, B=Install w/o Bending, C=Install+Bending
+        # Default in construction is C (supply, bend, install) unless
+        # the parent explicitly says "supply only".
+        _rebar_v1_pref: Optional[str] = None
+        _rebar_v2_pref: Optional[str] = None  # V2: A=Tons, B=Kg
+        if _ctx_is_rebar:
+            if re.search(r"\bsupply\s*only\b", _all_ctx_low):
+                _rebar_v1_pref = "A"
+            elif re.search(r"\bwithout\s*bending\b", _all_ctx_low):
+                _rebar_v1_pref = "B"
+            else:
+                _rebar_v1_pref = "C"  # default: supply + install + bending
+            # V2 unit: A=measured in Tons, B=measured in Kg
+            # Match based on BOQ unit field (general unit-matching)
+            if boq_unit_fam == "weight":
+                _unit_low = (item.get("unit", "") or "").lower().strip()
+                if _unit_low in ("kg", "kgs", "kilogram", "kilograms"):
+                    _rebar_v2_pref = "B"
+                else:
+                    # "t", "ton", "tons", "tonne" etc → Tons is default
+                    _rebar_v2_pref = "A"
+        # ── Formwork material + scope preference ───────────────────────
+        # C 11 13 V2: A=Timber/Plywood, B=Steel Formwork
+        # C 11 13 V3: A=Supply+Install, B=Supply Only, C=Install Only
+        # Detect formwork context from parent/desc if unit is area (m2)
+        _ctx_is_formwork = (
+            boq_unit_fam == "area"
+            and bool(re.search(
+                r"\b(?:formwork|shuttering)\b", _all_ctx_low,
+            ))
+        )
+        _formwork_v2_pref: Optional[str] = None  # material
+        _formwork_v3_pref: Optional[str] = None  # scope
+        if _ctx_is_formwork:
+            # Material: default to timber unless steel formwork mentioned
+            if re.search(r"\bsteel\s*(?:formwork|shuttering)\b", _all_ctx_low):
+                _formwork_v2_pref = "B"
+            else:
+                _formwork_v2_pref = "A"  # timber/plywood is standard
+            # Scope: "erection"/"installation"/"fixing" → Supply+Install
+            # "supply only" → Supply Only
+            if re.search(r"\bsupply\s*only\b", _all_ctx_low):
+                _formwork_v3_pref = "B"
+            elif re.search(
+                r"\berection\b|\binstallation\b|\bfixing\b|\bsupply\s*and\s*install",
+                _all_ctx_low,
+            ):
+                _formwork_v3_pref = "A"  # supply + install
+            else:
+                _formwork_v3_pref = "A"  # default for formwork
         # MEP sub-discipline prefix (p/h/f/Z) from hierarchy keywords
         expected_mep_prefix = (
             _detect_mep_prefix(
@@ -2768,6 +2821,39 @@ class LexicalMatcher:
                     final *= 2.0   # strong boost for rebar refs
                 elif _rpc_fam.startswith(("C 31", "C 34", "C 41", "C 11")):
                     final *= 0.35  # penalise concrete/formwork refs
+
+            # ── Within-family V-suffix routing ─────────────────────────
+            # Within C 21 11 and C 11 13, the V-suffix letters carry
+            # supply-scope and material information that the generic
+            # scoring (fuzzy, spec, etc.) cannot differentiate.
+            # Apply targeted multipliers to route to the correct variant.
+            if len(_pc_parts) >= 4 and len(_pc_parts[3]) >= 3:
+                _v1, _v2, _v3 = _pc_parts[3][0], _pc_parts[3][1], _pc_parts[3][2]
+                _fam3 = " ".join(_pc_parts[:3])
+                # ── C 21 11 rebar: V1 = supply scope ──────────────────
+                if _fam3 == "C 21 11" and _rebar_v1_pref:
+                    if _v1 == _rebar_v1_pref:
+                        final *= 1.35   # matching supply scope
+                    else:
+                        final *= 0.65   # wrong supply scope
+                    # V2 unit routing: A=Tons, B=Kg
+                    if _rebar_v2_pref:
+                        if _v2 == _rebar_v2_pref:
+                            final *= 1.25   # matching unit of measure
+                        else:
+                            final *= 0.70   # wrong unit of measure
+                # ── C 11 13 formwork: V2 = material, V3 = scope ───────
+                if _fam3 == "C 11 13":
+                    if _formwork_v2_pref:
+                        if _v2 == _formwork_v2_pref:
+                            final *= 1.25   # matching material
+                        else:
+                            final *= 0.70   # wrong material
+                    if _formwork_v3_pref:
+                        if _v3 == _formwork_v3_pref:
+                            final *= 1.25   # matching scope
+                        else:
+                            final *= 0.70   # wrong scope
 
             reranked.append({
                 "ref_id": ref_id,
@@ -3290,6 +3376,18 @@ class LexicalMatcher:
                 factor *= missing_f
             elif qvals & rvals:
                 factor *= match_f
+                # ── Element precision bonus (general) ─────────────────
+                # When query and ref both have categorical spec values,
+                # prefer refs whose value set tightly matches the query.
+                # Example: query=(COLUMN,) should prefer ref=(COLUMN,)
+                # over ref=(COLNECK,COLUMN) — the latter has an extra
+                # element the query didn't ask for.
+                # Applies to ALL categorical specs, not just concrete_elem.
+                _precision = len(qvals & rvals) / max(1, len(rvals))
+                # precision 1.0 → ×1.10 (exact match bonus)
+                # precision 0.5 → ×1.00 (neutral)
+                # precision 0.0 → impossible here (already matched)
+                factor *= 0.80 + 0.30 * _precision   # range: 0.80–1.10
             else:
                 factor *= mismatch_f
 

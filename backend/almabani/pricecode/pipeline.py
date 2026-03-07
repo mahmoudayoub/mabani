@@ -591,17 +591,19 @@ class PriceCodePipeline:
             if not candidates:
                 result = {"matched": False, "reason": "No candidates found"}
             else:
-                # ── LLM judge (I/O-bound, semaphore gates rate limit) ────
-                async with _llm_sem:
-                    result = await self.matcher.llm_match(
-                        description=item.get('description', ''),
-                        candidates=candidates,
-                        parent=item.get('parent'),
-                        grandparent=item.get('grandparent'),
-                        unit=item.get('unit'),
-                        item_code=item.get('item_code'),
-                        category_path=item.get('category_path'),
-                    )
+                # ── Use top-1 lexical candidate directly (skip LLM) ────
+                _top = candidates[0]
+                result = {
+                    "matched": True,
+                    "price_code": _top.get("price_code"),
+                    "price_description": _top.get("description"),
+                    "score": _top.get("score"),
+                    "confidence_level": "HIGH",
+                    "reason": "Top lexical candidate (no LLM)",
+                    "match_index": 1,
+                    "source_file": _top.get("source_file"),
+                    "reference_sheet": _top.get("sheet_name"),
+                }
 
             _match_cache[cache_key] = result
             _items_completed += 1

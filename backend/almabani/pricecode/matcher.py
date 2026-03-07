@@ -156,11 +156,8 @@ class PriceCodeMatcher:
                         result["price_code"] = cand.get("price_code")
                         result["price_description"] = cand.get("description")
                         result["score"] = cand.get("score")
-                        meta = cand.get("metadata", {}) or {}
-                        result["source_file"] = meta.get("source_file")
-                        result["reference_sheet"] = meta.get("reference_sheet")
-                        result["reference_category"] = meta.get("reference_category")
-                        result["reference_row"] = meta.get("reference_row")
+                        result["source_file"] = cand.get("source_file")
+                        result["reference_sheet"] = cand.get("sheet_name")
                     else:
                         result["matched"] = False
                         result["reason"] = f"LLM returned invalid index: {idx}"
@@ -202,26 +199,23 @@ class PriceCodeMatcher:
     ) -> str:
         parts: List[str] = []
 
-        # Build a single "Target Item:" line: category_path > description
+        # Context path > description
         context_prefix = ""
         if category_path:
             context_prefix = category_path.strip()
         elif parent or grandparent:
-            # Fallback when no category_path: grandparent > parent
             segs = [s for s in [grandparent, parent] if s]
             context_prefix = " > ".join(str(s) for s in segs)
 
         if context_prefix:
-            parts.append(f"Target Item: {context_prefix} > {description}")
+            parts.append(f"Item: {context_prefix} > {description}")
         else:
-            parts.append(f"Target Item: {description}")
+            parts.append(f"Item: {description}")
 
         if unit:
-            parts.append(f"TARGET UNIT: {unit}")
-        else:
-            parts.append("TARGET UNIT: (not specified)")
+            parts.append(f"Unit: {unit}")
 
-        # Extract and display parsed specs so the LLM can compare explicitly
+        # Parsed specs
         all_text = " ".join(
             str(s) for s in [description, parent, grandparent, category_path] if s
         )
@@ -238,92 +232,65 @@ class PriceCodeMatcher:
             if vals:
                 spec_parts.append(f"{label}={','.join(vals)}")
         if spec_parts:
-            parts.append(f"TARGET SPECS: {' | '.join(spec_parts)}")
+            parts.append(f"Specs: {' | '.join(spec_parts)}")
 
         return "\n".join(parts)
 
     @staticmethod
     def _build_candidates_text(candidates: List[Dict[str, Any]]) -> str:
         lines: List[str] = []
-        # Compact code regex: e.g. p1316ACC, h3713B01
-        _compact_re = re.compile(
-            r'^[A-Za-z](\d{2})(\d{2})([A-Za-z])([A-Za-z0-9])([A-Za-z0-9])$'
-        )
         for i, cand in enumerate(candidates, 1):
             code = cand.get("price_code", "NO_CODE")
             desc = cand.get("description", "")
             leaf = cand.get("leaf_description", "")
-            category = cand.get("category", "")
-            tag = f" ({category})" if category else ""
 
-            # ── Structured prefix / leaf display ────────────────────────
-            # desc is the full prefixed_description, e.g.
-            # "Ready Mix Concrete ; Cast In Situ ; Concrete For Footing ..."
-            # Split into prefix hierarchy + leaf so the LLM sees the
-            # classification path explicitly.
-            prefix_tag = ""
+            # Show hierarchy path + leaf separately when available
             display_desc = desc
+            prefix_tag = ""
             if leaf and desc and ";" in desc:
                 segments = [s.strip() for s in desc.split(";")]
                 if len(segments) > 1:
-                    prefix_segments = segments[:-1]
-                    prefix_tag = " {" + " > ".join(prefix_segments) + "}"
+                    prefix_tag = " {" + " > ".join(segments[:-1]) + "}"
                     display_desc = segments[-1]
 
-            # ── Scope annotation ────────────────────────────────────────
-            # Parse price code suffix to extract the scope letter and
-            # append a human-readable label so the LLM explicitly sees
-            # what each scope variant means.
-            scope_tag = ""
-            parts = code.strip().split()
-            disc_letter = ""
-            cat_str = ""
-            scope_letter = None
-
-            decoded_tag = ""  # human-readable decomposition for compact codes
-
-            if len(parts) >= 4 and len(parts[3]) >= 2:
-                # Spaced format: C 31 13 CGA
-                disc_letter = parts[0].upper()
-                cat_str = parts[1] if len(parts) >= 2 else ""
-                scope_letter = parts[3][-1].upper()
-            else:
-                # Try compact format: p1316ACC
-                cm = _compact_re.match(code.strip())
-                if cm:
-                    disc_letter = code.strip()[0].upper()
-                    cat_str = cm.group(1)
-                    subcat_str = cm.group(2)
-                    scope_letter = cm.group(5).upper()
-                    # If last char is numeric, try first suffix char
-                    if not scope_letter.isalpha():
-                        scope_letter = cm.group(3).upper()
-                    # Build human-readable decomposition
-                    disc_name = _DISC_LABELS.get(disc_letter, disc_letter)
-                    decoded_tag = f" (={disc_name} {cat_str}-{subcat_str})"
-                elif code.strip() and code.strip()[0].upper() in _DISC_LABELS:
-                    # Fallback: at least extract discipline from first char
-                    disc_letter = code.strip()[0].upper()
-
-            if scope_letter and scope_letter.isalpha():
-                if disc_letter == "C" and cat_str in ("31", "21", "11", "10"):
-                    label = _SCOPE_LABELS_CIVIL_CONCRETE.get(scope_letter)
-                else:
-                    label = _SCOPE_LABELS_GENERIC.get(scope_letter)
-                if label:
-                    scope_tag = f" [Scope {scope_letter}: {label}]"
-
-            # ── Discipline annotation ───────────────────────────────────
+            # Discipline from price code (first letter, already normalised)
+            code_parts = code.strip().split()
+            disc_letter = code_parts[0].upper() if code_parts else ""
             disc_tag = ""
             if disc_letter in _DISC_LABELS:
-                disc_tag = f" [Disc: {_DISC_LABELS[disc_letter]}]"
+                disc_tag = f" [{_DISC_LABELS[disc_letter]}]"
 
-            # ── Spec annotations from search engine ────────────────
+            # Scope annotation (last char of suffix)
+            scope_tag = ""
+            if len(code_parts) >= 4 and len(code_parts[3]) >= 2:
+                cat_str = code_parts[1]
+                scope_letter = code_parts[3][-1].upper()
+                if scope_letter.isalpha():
+                    if disc_letter == "C" and cat_str in ("31", "21", "11", "10"):
+                        label = _SCOPE_LABELS_CIVIL_CONCRETE.get(scope_letter)
+                    else:
+                        label = _SCOPE_LABELS_GENERIC.get(scope_letter)
+                    if label:
+                        scope_tag = f" [Scope: {label}]"
+
+            # Spec tags from search engine
             spec_tags = ""
-            cand_specs = cand.get("specs", {})
-            if cand_specs:
-                st_parts = [f"{k}:{v}" for k, v in cand_specs.items()]
+            _spec_keys = [
+                ("dn_csv", "DN"), ("dia_csv", "Dia"), ("mpa_csv", "MPa"),
+                ("kv_csv", "kV"), ("mm2_csv", "mm²"), ("core_csv", "Cores"),
+                ("pn_csv", "PN"), ("thk_csv", "Thk"),
+                ("pipe_mat_csv", "Mat"), ("valve_type_csv", "Valve"),
+                ("concrete_elem_csv", "Elem"),
+            ]
+            st_parts = []
+            for k, label in _spec_keys:
+                v = cand.get(k, "")
+                if v:
+                    st_parts.append(f"{label}:{v}")
+            if st_parts:
                 spec_tags = " [" + ", ".join(st_parts) + "]"
 
-            lines.append(f"[{i}] [{code}]{decoded_tag}{disc_tag}{scope_tag}{spec_tags}{prefix_tag}{tag} {display_desc}")
+            lines.append(
+                f"[{i}] {code}{disc_tag}{scope_tag}{spec_tags}{prefix_tag} {display_desc}"
+            )
         return "\n".join(lines)

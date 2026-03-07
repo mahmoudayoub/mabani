@@ -593,6 +593,32 @@ def _parse_compact_code(price_code: str):
     return None
 
 
+_NORMALIZE_PC_RE = re.compile(
+    r'^([A-Za-z])(\d{2})(\d{2})([A-Za-z][A-Za-z0-9]{0,2})$'
+)
+
+
+def normalize_price_code(price_code: str) -> str:
+    """Normalize a price code to canonical spaced uppercase form.
+
+    Both compact ``p1316ACC`` and spaced ``p 13 16 ACC`` become
+    ``P 13 16 ACC``.  Already-spaced codes are uppercased and cleaned.
+    """
+    code = price_code.strip()
+    if not code:
+        return code
+    # Already spaced?
+    parts = code.split()
+    if len(parts) >= 4:
+        return (" ".join(parts)).upper()
+    # Compact?
+    m = _NORMALIZE_PC_RE.match(code)
+    if m:
+        return f"{m.group(1).upper()} {m.group(2)} {m.group(3)} {m.group(4).upper()}"
+    # Fallback: just uppercase
+    return code.upper()
+
+
 # ── Data-driven V-suffix & family profile building ──────────────────
 # Built once at index load from ref descriptions.  Replaces all
 # hardcoded if/else routing for specific families (C 21 11, C 11 13…).
@@ -2942,16 +2968,10 @@ class LexicalMatcher:
             # Subcategory "00" is a generic/template placeholder; codes
             # like C 31 13, C 11 13, F 30 36 are project-specific and
             # should be preferred when both exist.
-            _pc = clean_text(ref["price_code"])
+            _pc = normalize_price_code(ref["price_code"])
             _pc_parts = _pc.split()
-            # Subcategory "00" penalty — works for both spaced and compact
-            _subcat = None
-            if len(_pc_parts) >= 3:
-                _subcat = _pc_parts[2]
-            else:
-                _compact = _parse_compact_code(_pc)
-                if _compact:
-                    _subcat = _compact[2]  # subcat from compact format
+            # Subcategory "00" penalty
+            _subcat = _pc_parts[2] if len(_pc_parts) >= 3 else None
             if _subcat == "00":
                 final *= 0.60  # penalise generic subcategory (prefer specific)
 
@@ -2988,24 +3008,24 @@ class LexicalMatcher:
             # ── Data-driven family routing ─────────────────────────────
             # When the BOQ context strongly matches the discriminating
             # tokens of one family over others in the candidate pool,
-            # boost refs from that family.  Non-matching families get
-            # a *mild* penalty to avoid crushing correct families
-            # that simply lack profiles.
+            # boost refs from that family and penalise non-matching
+            # families proportionally to the confidence gap.
             if _best_fam_aff > 0.30 and len(_pc_parts) >= 3:
                 _ref_fam = " ".join(_pc_parts[:3])
                 _my_fam_aff = _family_affinity.get(_ref_fam, 0.0)
                 if _my_fam_aff >= _best_fam_aff * 0.80:
                     # This ref's family matches the BOQ context well
                     final *= 1.0 + 0.5 * _my_fam_aff   # up to ×1.5
-                elif _my_fam_aff < 0.05:
-                    # Family has NO profile match at all — mild penalty
-                    final *= max(0.70, 1.0 - 0.5 * _best_fam_aff)
+                elif _best_fam_aff >= 0.50 and _my_fam_aff < 0.10:
+                    # Strong evidence for another family & this one
+                    # has almost no profile match → penalise
+                    final *= 0.60
 
-            # ── Data-driven V-suffix routing (general, boost-only) ─────
+            # ── Data-driven V-suffix routing (general) ──────────────────
             # For each V-position (V1, V2, V3), find the V-value whose
-            # discriminating tokens best match the BOQ context and
-            # boost matches.  NO penalty for non-matching to avoid
-            # systematically penalising profiled families vs non-profiled.
+            # discriminating tokens best match the BOQ context.
+            # When confidence is high (>=2 tokens matched), also penalise
+            # non-matching V-values to create separation within a family.
             if len(_pc_parts) >= 4 and len(_pc_parts[3]) >= 2:
                 _vsuffix = _pc_parts[3]
                 _fam3 = " ".join(_pc_parts[:3])
@@ -3028,7 +3048,11 @@ class LexicalMatcher:
                             _my_vn = _cn
                     if _best_vn > 0 and _best_vl is not None:
                         if _vletter == _best_vl:
-                            final *= 1.25   # matching V-suffix boost
+                            final *= 1.30   # matching V-suffix boost
+                        elif _best_vn >= 2 and _my_vn == 0:
+                            # High confidence: >=2 tokens match another
+                            # V-value and ZERO match this one → penalise
+                            final *= 0.70
 
             reranked.append({
                 "ref_id": ref_id,
@@ -3038,7 +3062,7 @@ class LexicalMatcher:
                 "discipline": ref_disc,
                 "source_file": clean_text(ref["source_file"]),
                 "sheet_name": clean_text(ref["sheet_name"]),
-                "price_code": clean_text(ref["price_code"]),
+                "price_code": normalize_price_code(ref["price_code"]),
                 "description": clean_text(ref["prefixed_description"]),
                 "leaf_description": clean_text(ref["leaf_description"]),
                 # Spec columns for LLM display
@@ -3147,7 +3171,7 @@ class LexicalMatcher:
 
                     # Scope scoring
                     if expected_scope:
-                        sib_pc = clean_text(sref["price_code"])
+                        sib_pc = normalize_price_code(sref["price_code"])
                         sib_scope = _extract_scope_letter(sib_pc)
                         if sib_scope:
                             if expected_scope in ("E", "F"):
@@ -3167,6 +3191,34 @@ class LexicalMatcher:
                             else:
                                 sib_score *= 0.45
 
+                    # V-suffix routing for siblings (general, data-driven)
+                    _sib_pc = normalize_price_code(sref["price_code"])
+                    _sib_parts = _sib_pc.split()
+                    if len(_sib_parts) >= 4 and len(_sib_parts[3]) >= 2:
+                        _sib_vsuffix = _sib_parts[3]
+                        _sib_fam3 = " ".join(_sib_parts[:3])
+                        for _svp in range(min(3, len(_sib_vsuffix))):
+                            _svkey = (_sib_fam3, _svp)
+                            _svprofiles = self._vsuffix_profiles.get(_svkey)
+                            if not _svprofiles or len(_svprofiles) < 2:
+                                continue
+                            _svletter = _sib_vsuffix[_svp]
+                            _sbest_vl = None
+                            _sbest_vn = 0
+                            _smy_vn = 0
+                            for _scvl, _scdisc in _svprofiles.items():
+                                _scn = len(_boq_ctx_tokens & _scdisc)
+                                if _scn > _sbest_vn:
+                                    _sbest_vn = _scn
+                                    _sbest_vl = _scvl
+                                if _scvl == _svletter:
+                                    _smy_vn = _scn
+                            if _sbest_vn > 0 and _sbest_vl is not None:
+                                if _svletter == _sbest_vl:
+                                    sib_score *= 1.30
+                                elif _sbest_vn >= 2 and _smy_vn == 0:
+                                    sib_score *= 0.70
+
                     reranked.append({
                         "ref_id": sid,
                         "score": round(sib_score, 4),
@@ -3175,7 +3227,7 @@ class LexicalMatcher:
                         "discipline": sib_disc,
                         "source_file": clean_text(sref["source_file"]),
                         "sheet_name": clean_text(sref.get("sheet_name", "")),
-                        "price_code": clean_text(sref["price_code"]),
+                        "price_code": normalize_price_code(sref["price_code"]),
                         "description": clean_text(sref["prefixed_description"]),
                         "leaf_description": clean_text(sref.get("leaf_description", "")),
                         # Spec columns for LLM display

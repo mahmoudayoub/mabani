@@ -962,14 +962,14 @@ _CONCRETE_ELEM_PATTERNS: List[Tuple[str, str]] = [
     (r"\btie\s*beams?\b", "TIEBEAM"), (r"\bdrop\s*(?:beams?|panels?)\b", "DROPBEAM"),
     (r"\bground\s*beams?\b|\bgrade\s*beams?\b", "GRADEBEAM"),
     (r"\bshear\s*walls?\b", "SHEARWALL"), (r"\bretaining\s*walls?\b", "RETWALL"),
-    (r"\bslabs?\s*on\s*grade\b|\bsog\b", "SOG"),
+    (r"\bslabs?\s*on\s*grade\b|\bsog\b|\bground\s*(?:floor\s*)?slabs?\b", "SOG"),
     (r"\bsuspended\s*slabs?\b", "SUSPSLAB"), (r"\bflat\s*slabs?\b", "FLATSLAB"),
     (r"\bslabs?\b", "SLAB"), (r"\bcolumns?\s*necks?\b", "COLNECK"),
     (r"\bcolumns?\b", "COLUMN"), (r"\bbeams?\b", "BEAM"),
     (r"\bstairs?\b|\bsteps?\b", "STAIR"), (r"\bparapets?\b", "PARAPET"),
     (r"\bkerbs?\b|\bcurbs?\b", "KERB"), (r"\bblinding\b", "BLINDING"),
     (r"\bpedestals?\b", "PEDESTAL"), (r"\bramps?\b", "RAMP"),
-    (r"\bupstand\s*walls?\b", "UPSTAND"), (r"\bbasement\s*walls?\b", "BSMTWALL"),
+    (r"\bupstands?\b", "PARAPET"), (r"\bbasement\s*walls?\b", "BSMTWALL"),
     (r"\bneck\s*(?:columns?|walls?)\b", "COLNECK"),
     (r"\bwalls?\b", "WALL"), (r"\bfoundations?\b", "FOOTING"), (r"\bfoot\w*\b", "FOOTING"),
     (r"\btransfer\s*beams?\b", "TRANSBEAM"),
@@ -1169,12 +1169,14 @@ def extract_specs(text: str) -> Dict[str, Tuple[str, ...]]:
             mpa.add(val)
 
     # Concrete grade designation: "C32/40", "C12/15", "C40", "C 40", "Grade C40"
-    # The second number in C32/40 is the cylinder strength in MPa.
-    # Single-number forms like "C40" also indicate MPa directly.
+    # C32/40 means cylinder=32, cube=40.  Extract BOTH numbers because
+    # rate-book refs may reference either value (e.g. "C 40 Mpa" uses
+    # the cube strength, while "C 45 Mpa" from C45/55 uses cylinder).
     for m in re.finditer(r"\bc\s*(\d{1,2})\s*/\s*(\d{1,2})\b", low):
-        cyl = int(m.group(2))
-        if 10 <= cyl <= 80:
-            mpa.add(str(cyl))
+        for _g in (1, 2):
+            _v = int(m.group(_g))
+            if 10 <= _v <= 80:
+                mpa.add(str(_v))
     for m in re.finditer(r"(?:\bgrade\s+)?\bc\s*-?\s*(\d{2})\b(?!\s*/\s*\d)", low):
         val = int(m.group(1))
         if 10 <= val <= 80 and concrete_ctx:
@@ -2423,6 +2425,17 @@ class LexicalMatcher:
         # In-situ vs Precast: check if BOQ context mentions "precast"
         _all_ctx_low = (parent_str + " " + gp_str + " " + _catpath_str).lower()
         _ctx_has_precast = bool(re.search(r"\bprecast\b", _all_ctx_low))
+        # Rebar routing: parent/grandparent says "bar reinforcement" /
+        # "rebar" / "high yield" / "steel reinforcement" AND unit is
+        # weight → item IS rebar, not concrete-with-reinforcement-scope.
+        _ctx_is_rebar = (
+            bool(re.search(
+                r"\b(?:steel\s*)?bar\s*reinforcement\b|\brebar\b|\bhigh\s*yield\b"
+                r"|\bsteel\s*reinforc(?:ement|ing)\b",
+                _all_ctx_low,
+            ))
+            and boq_unit_fam == "weight"
+        )
         # MEP sub-discipline prefix (p/h/f/Z) from hierarchy keywords
         expected_mep_prefix = (
             _detect_mep_prefix(
@@ -2739,6 +2752,22 @@ class LexicalMatcher:
                                 final *= 1.25  # matching scope boost
                             else:
                                 final *= 0.85  # wrong scope (soft)
+
+            # ── Rebar vs Concrete routing ──────────────────────────────
+            # When the BOQ hierarchy explicitly describes bar reinforcement
+            # (parent = "High yield steel bar reinforcement …") and the
+            # unit is weight (t/kg), route strongly to C 21 11 (rebar)
+            # and away from C 31 13 (concrete), C 11 13 (formwork), etc.
+            # Applied as one of the LAST multipliers so it overrides
+            # token overlap / spec bonuses that favour concrete refs
+            # whose descriptions happen to share element keywords
+            # (e.g. "Concrete for Retaining Wall" matches "retaining wall").
+            if _ctx_is_rebar:
+                _rpc_fam = " ".join(_pc_parts[:3]) if len(_pc_parts) >= 3 else _pc
+                if _rpc_fam.startswith("C 21"):
+                    final *= 2.0   # strong boost for rebar refs
+                elif _rpc_fam.startswith(("C 31", "C 34", "C 41", "C 11")):
+                    final *= 0.35  # penalise concrete/formwork refs
 
             reranked.append({
                 "ref_id": ref_id,

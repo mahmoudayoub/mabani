@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     pricecode_max_candidates: int = 1  # Lexical candidates to send to LLM
     pricecode_index_db: str = '/tmp/pricecode_index.db'  # SQLite index path
     
+    # ==================== Price Code Vector Settings ==============
+    pricecode_vector_top_k: int = 5
+    pricecode_vector_threshold: float = 0.40
+    
     # ==================== Logging Settings ====================
     log_level: str = 'INFO'
     log_format: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

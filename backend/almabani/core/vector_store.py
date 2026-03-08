@@ -129,15 +129,27 @@ class VectorStoreService:
         dimension: int = 1536,
         metric: str = 'cosine',
         cloud: str = 'aws',
-        region: Optional[str] = None
+        region: Optional[str] = None,
+        non_filterable_metadata_keys: Optional[List[str]] = None
     ):
         """
         Create a new S3 Vectors index.
         Will also create the vector bucket if it doesn't exist.
+        
+        Args:
+            non_filterable_metadata_keys: metadata keys that should NOT
+                be indexed for filtering.  ``None`` uses a default set.
         """
         distance_metric = 'cosine'
         if metric == 'euclidean' or metric == 'l2':
             distance_metric = 'euclidean'
+
+        if non_filterable_metadata_keys is None:
+            non_filterable_metadata_keys = [
+                'text', 'description', 'category_path', 'full_description',
+                'parent', 'grandparent', 'trade', 'code', 'unit',
+                'original_id'
+            ]
         
         async with self._session.client('s3vectors', region_name=self.region) as client:
             # 1. Create the vector bucket (idempotent)
@@ -161,11 +173,7 @@ class VectorStoreService:
                     distanceMetric=distance_metric,
                     dataType='float32',
                     metadataConfiguration={
-                        'nonFilterableMetadataKeys': [
-                            'text', 'description', 'category_path', 'full_description',
-                            'parent', 'grandparent', 'trade', 'code', 'unit',
-                            'original_id'
-                        ]
+                        'nonFilterableMetadataKeys': non_filterable_metadata_keys
                     }
                 )
                 logger.info(f"Index '{self.index_name}' created successfully")

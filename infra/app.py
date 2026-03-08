@@ -2,6 +2,7 @@ import os
 import aws_cdk as cdk
 from almabani_stack import AlmabaniStack
 from pricecode_stack import PriceCodeStack
+from pricecode_vector_stack import PriceCodeVectorStack
 from deletion_stack import DeletionStack
 from chat_stack import ChatStack
 from dotenv import load_dotenv
@@ -37,10 +38,14 @@ main_stack = AlmabaniStack(app, "AlmabaniStack", env=env)
 # Price Code Stack (standalone mode - creates its own VPC/bucket)
 pc_stack = PriceCodeStack(app, "PriceCodeStack", env=env)
 
+# Price Code Vector Stack (standalone mode - creates its own VPC/bucket)
+pcv_stack = PriceCodeVectorStack(app, "PriceCodeVectorStack", env=env)
+
 # Deletion API Stack
 DeletionStack(app, "DeletionStack", env=env, 
               shared_bucket=main_stack.bucket,
-              pricecode_bucket=pc_stack.bucket)
+              pricecode_bucket=pc_stack.bucket,
+              pricecode_vector_bucket=pcv_stack.bucket)
 
 # Chat API Stack (natural language interface)
 ChatStack(app, "ChatStack", env=env)

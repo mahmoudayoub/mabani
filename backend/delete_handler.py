@@ -299,3 +299,102 @@ def delete_price_code_set(event, context):
         return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
 
     return create_response(200, {"message": f"Set {set_name} deleted successfully"})
+
+
+def delete_pricecode_vector_set(event, context):
+    """
+    Delete a price-code vector set from S3 Vectors + registry.
+
+    Path params: set_name (mapped from /pricecode-vector/sets/{set_name})
+
+    Steps:
+      1. Delete vectors from S3 Vectors index ``almabani-pricecode-vector``
+         whose ``source_file`` metadata matches *set_name*.
+      2. Delete source Excel from ``input/pricecode-vector/index/``.
+      3. Update ``metadata/available_pricecode_vector.json`` registry.
+    """
+    # Handle CORS preflight
+    if event.get('httpMethod') == 'OPTIONS':
+        return create_response(200, {})
+
+    path_params = event.get("pathParameters", {}) or {}
+    set_name = path_params.get("set_name")
+
+    if set_name:
+        set_name = unquote(set_name)
+
+    if not set_name:
+        return create_response(400, {"error": "Missing set name"})
+
+    print(f"Deleting Price Code Vector Set: {set_name}")
+
+    # ── 1. Delete from S3 Vectors ───────────────────────────────────────
+    bucket_name = os.environ.get("S3_VECTORS_BUCKET", "almabani-vectors")
+    index_name = "almabani-pricecode-vector"
+    region = os.environ.get("AWS_REGION", "eu-west-1")
+
+    try:
+        from almabani.core.vector_store import VectorStoreService
+
+        vector_store = VectorStoreService(
+            bucket_name=bucket_name,
+            region=region,
+            index_name=index_name,
+        )
+
+        async def _run_delete():
+            return await vector_store.delete_by_metadata(
+                filter_dict={"source_file": {"$eq": set_name}}
+            )
+
+        deleted = asyncio.run(_run_delete())
+        print(f"Deleted {deleted} vectors for set '{set_name}' from index {index_name}")
+    except Exception as e:
+        print(f"Vector store deletion failed: {e}")
+        return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})
+
+    # ── 2. Delete source Excel from S3 ──────────────────────────────────
+    pcv_bucket = os.environ.get("PRICECODE_VECTOR_BUCKET")
+    if pcv_bucket:
+        try:
+            prefix = "input/pricecode-vector/index/"
+            paginator = s3_client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=pcv_bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    stem = os.path.splitext(os.path.basename(key))[0]
+                    if stem == set_name or stem == f"ref_{set_name}":
+                        s3_client.delete_object(Bucket=pcv_bucket, Key=key)
+                        print(f"Deleted source file: s3://{pcv_bucket}/{key}")
+        except Exception as e:
+            print(f"Warning: failed to delete source Excel: {e}")
+
+    # ── 3. Update registry ──────────────────────────────────────────────
+    if pcv_bucket:
+        try:
+            registry_key = "metadata/available_pricecode_vector.json"
+            try:
+                obj = s3_client.get_object(Bucket=pcv_bucket, Key=registry_key)
+                data = json.loads(obj['Body'].read())
+                sets_list = data.get("sets", [])
+            except s3_client.exceptions.NoSuchKey:
+                sets_list = []
+            except Exception as e:
+                print(f"Error reading registry: {e}")
+                sets_list = []
+
+            if set_name in sets_list:
+                sets_list.remove(set_name)
+                s3_client.put_object(
+                    Bucket=pcv_bucket,
+                    Key=registry_key,
+                    Body=json.dumps({"sets": sets_list}, indent=2),
+                    ContentType="application/json",
+                )
+                print(f"Removed '{set_name}' from pricecode-vector registry")
+            else:
+                print(f"Set '{set_name}' not found in registry")
+        except Exception as e:
+            return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
+
+    return create_response(200, {"message": f"Price Code Vector set '{set_name}' deleted successfully"})

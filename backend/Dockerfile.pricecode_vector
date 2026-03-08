@@ -1,0 +1,40 @@
+# Price Code Vector Worker - Docker Image
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install gunicorn (optional, kept for consistency)
+RUN pip install --no-cache-dir gunicorn
+
+# Copy application code
+COPY almabani/ ./almabani/
+COPY pyproject.toml setup.py ./
+COPY pricecode_vector_worker.py ./
+
+# Install the package
+RUN pip install --no-cache-dir -e .
+
+# Create data directories
+RUN mkdir -p /app/data/logs
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
+# Default CMD – runs price code vector worker
+CMD ["python", "pricecode_vector_worker.py"]

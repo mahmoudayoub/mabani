@@ -17,6 +17,7 @@ class DeletionStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, 
                  shared_bucket: s3.IBucket = None,
                  pricecode_bucket: s3.IBucket = None,
+                 pricecode_vector_bucket: s3.IBucket = None,
                  **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
@@ -34,6 +35,14 @@ class DeletionStack(Stack):
         else:
             pc_bucket = None
             pc_bucket_name = ""
+
+        # 1c. Access Price Code Vector Bucket
+        if pricecode_vector_bucket:
+            pcv_bucket = pricecode_vector_bucket
+            pcv_bucket_name = pcv_bucket.bucket_name
+        else:
+            pcv_bucket = None
+            pcv_bucket_name = ""
 
         # 2. Lambda Function & Layer
         backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend')
@@ -83,10 +92,31 @@ class DeletionStack(Stack):
             timeout=Duration.seconds(120)
         )
 
+        # 2c. Price Code Vector Deletion Lambda
+        pcv_deletion_lambda = _lambda.Function(self, "DeletePriceCodeVectorLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_handler.delete_pricecode_vector_set",
+            code=_lambda.Code.from_asset(backend_dir, exclude=[
+                "*.pyc", "__pycache__", ".venv", "venv", "tests",
+                "data", "layers", "*.xlsx", "*.json", "scripts",
+                "app", ".env", "*.egg-info"
+            ]),
+            layers=[dependencies_layer],
+            environment={
+                "FILE_PROCESSING_BUCKET": bucket.bucket_name,
+                "PRICECODE_VECTOR_BUCKET": pcv_bucket_name,
+                "S3_VECTORS_BUCKET": "almabani-vectors",
+            },
+            memory_size=512,
+            timeout=Duration.seconds(120)
+        )
+
         # 3. Permissions
         bucket.grant_read_write(deletion_lambda)
         if pc_bucket:
             pc_bucket.grant_read_write(pc_deletion_lambda)
+        if pcv_bucket:
+            pcv_bucket.grant_read_write(pcv_deletion_lambda)
             
         # Grant S3 Vectors data API access
         s3v_policy = iam.PolicyStatement(
@@ -95,6 +125,7 @@ class DeletionStack(Stack):
         )
         deletion_lambda.add_to_role_policy(s3v_policy)
         pc_deletion_lambda.add_to_role_policy(s3v_policy)
+        pcv_deletion_lambda.add_to_role_policy(s3v_policy)
         
         # 4. API Gateway
         api = apigw.RestApi(self, "DeletionApi",
@@ -135,6 +166,12 @@ class DeletionStack(Stack):
         sets = pricecode.add_resource("sets")
         set_resource = sets.add_resource("{set_name}")
         set_resource.add_method("DELETE", apigw.LambdaIntegration(pc_deletion_lambda))
+
+        # Resource: /pricecode-vector/sets/{set_name}
+        pcv = api.root.add_resource("pricecode-vector")
+        pcv_sets = pcv.add_resource("sets")
+        pcv_set_resource = pcv_sets.add_resource("{set_name}")
+        pcv_set_resource.add_method("DELETE", apigw.LambdaIntegration(pcv_deletion_lambda))
 
         # Outputs
         CfnOutput(self, "DeletionApiUrl", value=api.url)

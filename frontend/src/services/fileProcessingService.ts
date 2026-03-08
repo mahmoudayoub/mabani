@@ -224,32 +224,57 @@ export const deleteEstimate = async (filename: string): Promise<void> => {
     }
 };
 
+/**
+ * Delete a sheet (External API — async with polling)
+ */
 export const deleteSheet = async (sheetName: string): Promise<void> => {
-    // HARDCODED External API URL for Datasheet Deletion
-    const deletionApiUrl = "https://auwdkyf4ka.execute-api.eu-west-1.amazonaws.com/prod/";
+    const deletionApiUrl = "https://auwdkyf4ka.execute-api.eu-west-1.amazonaws.com/prod";
 
-    // If using external API directly, it might not need auth headers if public?
-    // User said "backend is configured to accept it... but currently does not validate it (Public endpoint)"
-    // So sending headers is safe.
     const headers = await getAuthHeaders();
-
-    // Use encodeURIComponent for the sheet name in the path
     const encodedName = encodeURIComponent(sheetName);
 
-    // Construct URL. If External, path is /files/sheets/{name} appended to Base.
-    // Ensure slash handling.
-    const baseUrl = deletionApiUrl.endsWith('/') ? deletionApiUrl.slice(0, -1) : deletionApiUrl;
-
-    const response = await fetch(`${baseUrl}/files/sheets/${encodedName}`, {
+    // 1. Fire DELETE → dispatcher returns 202 with deletion_id
+    const response = await fetch(`${deletionApiUrl}/files/sheets/${encodedName}`, {
         method: 'DELETE',
         headers: headers,
     });
 
-    if (!response.ok) {
+    if (!response.ok && response.status !== 202) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || `Failed to delete sheet: ${response.statusText}`);
     }
+
+    const data = await response.json();
+    const deletionId = data.deletion_id;
+    const bucketType = data.bucket_type || 'files';
+
+    if (!deletionId) return;
+
+    // 2. Poll deletion status until complete or error
+    const maxAttempts = 120;
+    for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        try {
+            const statusResp = await fetch(
+                `${deletionApiUrl}/deletion-status/${encodeURIComponent(deletionId)}?bucket_type=${bucketType}`,
+                { method: 'GET', headers: headers }
+            );
+
+            if (statusResp.status === 404) continue;
+
+            if (statusResp.ok) {
+                const statusData = await statusResp.json();
+                if (statusData.status === 'complete') return;
+                if (statusData.status === 'error') {
+                    throw new Error(statusData.error || 'Deletion failed');
+                }
+            }
+        } catch (error) {
+            if (error instanceof Error && error.message.includes('Deletion failed')) throw error;
+            console.log('Polling deletion status...', error);
+        }
+    }
+
+    throw new Error('Deletion timed out — it may still complete in the background');
 };
-
-
-

@@ -230,25 +230,57 @@ export const fetchTextContent = async (url: string): Promise<string> => {
 };
 
 /**
- * Delete a price code set (External API)
+ * Delete a price code set (External API — async with polling)
  */
 export const deletePriceCodeSet = async (setName: string): Promise<void> => {
-    // HARDCODED External API URL
-    const deletionApiUrl = "https://auwdkyf4ka.execute-api.eu-west-1.amazonaws.com/prod/";
+    const deletionApiUrl = "https://auwdkyf4ka.execute-api.eu-west-1.amazonaws.com/prod";
 
-    // Note: External endpoint might not need headers if public, but sending them is safe
     const headers = await getAuthHeaders();
     const encodedName = encodeURIComponent(setName);
 
-    const baseUrl = deletionApiUrl.endsWith('/') ? deletionApiUrl.slice(0, -1) : deletionApiUrl;
-
-    const response = await fetch(`${baseUrl}/pricecode/sets/${encodedName}`, {
+    // 1. Fire DELETE → dispatcher returns 202 with deletion_id
+    const response = await fetch(`${deletionApiUrl}/pricecode/sets/${encodedName}`, {
         method: 'DELETE',
         headers: headers,
     });
 
-    if (!response.ok) {
+    if (!response.ok && response.status !== 202) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || `Failed to delete price code set: ${response.statusText}`);
     }
+
+    const data = await response.json();
+    const deletionId = data.deletion_id;
+    const bucketType = data.bucket_type || 'pricecode';
+
+    if (!deletionId) return; // Fallback: old sync behaviour (no polling needed)
+
+    // 2. Poll deletion status until complete or error
+    const maxAttempts = 120; // Up to ~10 minutes (5s intervals)
+    for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        try {
+            const statusResp = await fetch(
+                `${deletionApiUrl}/deletion-status/${encodeURIComponent(deletionId)}?bucket_type=${bucketType}`,
+                { method: 'GET', headers: headers }
+            );
+
+            if (statusResp.status === 404) continue; // Not ready yet
+
+            if (statusResp.ok) {
+                const statusData = await statusResp.json();
+                if (statusData.status === 'complete') return;
+                if (statusData.status === 'error') {
+                    throw new Error(statusData.error || 'Deletion failed');
+                }
+                // status === 'pending' → continue polling
+            }
+        } catch (error) {
+            if (error instanceof Error && error.message.includes('Deletion failed')) throw error;
+            console.log('Polling deletion status...', error);
+        }
+    }
+
+    throw new Error('Deletion timed out — it may still complete in the background');
 };

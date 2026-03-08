@@ -929,7 +929,7 @@ const CodeAllocation: React.FC = () => {
 
                     {/* Mode Selection Cards */}
                     {/* Lexical Section */}
-                    <h2 className="text-lg font-semibold text-gray-700 mb-3">Lexical Matching</h2>
+                    <h2 className="text-lg font-semibold text-gray-700 mb-3">BOQ Based</h2>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         {/* AI Assistant Option */}
                         <button
@@ -975,7 +975,7 @@ const CodeAllocation: React.FC = () => {
                     </div>
 
                     {/* Vector Section */}
-                    <h2 className="text-lg font-semibold text-gray-700 mb-3">Vector Matching</h2>
+                    <h2 className="text-lg font-semibold text-gray-700 mb-3">AI Code Based</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Vector Allocate Option */}
                         <button

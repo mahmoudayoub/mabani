@@ -3,9 +3,11 @@ import os
 import asyncio
 import boto3
 import json
+import time
 from urllib.parse import unquote
 
 s3_client = boto3.client("s3")
+lambda_client = boto3.client("lambda")
 FILE_PROCESSING_BUCKET = os.environ.get("FILE_PROCESSING_BUCKET")
 
 def create_response(status_code, body):
@@ -14,11 +16,223 @@ def create_response(status_code, body):
         "headers": {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Credentials": True,
-            "Access-Control-Allow-Methods": "DELETE,OPTIONS",
+            "Access-Control-Allow-Methods": "DELETE,GET,OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type,Authorization"
         },
         "body": json.dumps(body)
     }
+
+
+def _write_deletion_status(bucket, deletion_id, status_data):
+    """Write deletion status marker to S3."""
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=f"deletion-status/{deletion_id}.json",
+        Body=json.dumps(status_data),
+        ContentType="application/json"
+    )
+
+
+# ============================================================
+# STATUS ENDPOINT (shared across all delete types)
+# ============================================================
+
+def get_deletion_status(event, context):
+    """
+    Get the status of a deletion operation.
+    Path params: deletion_id
+    Query params: bucket_type = 'files' | 'pricecode' | 'pricecode-vector'
+    """
+    if event.get('httpMethod') == 'OPTIONS':
+        return create_response(200, {})
+
+    path_params = event.get("pathParameters", {}) or {}
+    deletion_id = path_params.get("deletion_id")
+
+    if not deletion_id:
+        return create_response(400, {"error": "Missing deletion_id"})
+
+    deletion_id = unquote(deletion_id)
+
+    # Determine which bucket to check based on query param
+    query_params = event.get("queryStringParameters", {}) or {}
+    bucket_type = query_params.get("bucket_type", "files")
+
+    if bucket_type == "pricecode":
+        bucket = os.environ.get("PRICECODE_BUCKET")
+    elif bucket_type == "pricecode-vector":
+        bucket = os.environ.get("PRICECODE_VECTOR_BUCKET")
+    else:
+        bucket = FILE_PROCESSING_BUCKET
+
+    if not bucket:
+        return create_response(500, {"error": f"Bucket not configured for type: {bucket_type}"})
+
+    try:
+        obj = s3_client.get_object(
+            Bucket=bucket,
+            Key=f"deletion-status/{deletion_id}.json"
+        )
+        status_data = json.loads(obj['Body'].read())
+        return create_response(200, status_data)
+    except s3_client.exceptions.NoSuchKey:
+        return create_response(404, {"error": "Deletion status not found"})
+    except Exception as e:
+        return create_response(500, {"error": f"Failed to get status: {str(e)}"})
+
+
+# ============================================================
+# DISPATCHERS (fast — return 202 immediately)
+# ============================================================
+
+def dispatch_delete_datasheet(event, context):
+    """
+    Dispatch async deletion of a datasheet.
+    Returns 202 with deletion_id for polling.
+    """
+    if event.get('httpMethod') == 'OPTIONS':
+        return create_response(200, {})
+
+    path_params = event.get("pathParameters", {}) or {}
+    sheet_name = path_params.get("sheet_name")
+
+    if sheet_name:
+        sheet_name = unquote(sheet_name)
+    if not sheet_name:
+        return create_response(400, {"error": "Missing sheet name"})
+
+    deletion_id = f"ds_{int(time.time())}_{sheet_name.replace(' ', '_')}"
+
+    # Write pending status
+    _write_deletion_status(FILE_PROCESSING_BUCKET, deletion_id, {
+        "status": "pending",
+        "deletion_id": deletion_id,
+        "set_name": sheet_name,
+        "type": "datasheet",
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    })
+
+    # Async invoke the worker
+    worker_arn = os.environ.get("WORKER_LAMBDA_ARN_DATASHEET")
+    if worker_arn:
+        lambda_client.invoke(
+            FunctionName=worker_arn,
+            InvocationType="Event",
+            Payload=json.dumps({
+                **event,
+                "deletion_id": deletion_id,
+                "status_bucket": FILE_PROCESSING_BUCKET,
+            })
+        )
+
+    return create_response(202, {
+        "deletion_id": deletion_id,
+        "message": f"Delete of '{sheet_name}' started",
+        "bucket_type": "files"
+    })
+
+
+def dispatch_delete_price_code_set(event, context):
+    """
+    Dispatch async deletion of a price code set.
+    Returns 202 with deletion_id for polling.
+    """
+    if event.get('httpMethod') == 'OPTIONS':
+        return create_response(200, {})
+
+    path_params = event.get("pathParameters", {}) or {}
+    set_name = path_params.get("set_name")
+
+    if set_name:
+        set_name = unquote(set_name)
+    if not set_name:
+        return create_response(400, {"error": "Missing set name"})
+
+    bucket = os.environ.get("PRICECODE_BUCKET")
+    if not bucket:
+        return create_response(500, {"error": "PRICECODE_BUCKET not configured"})
+
+    deletion_id = f"pc_{int(time.time())}_{set_name.replace(' ', '_')}"
+
+    _write_deletion_status(bucket, deletion_id, {
+        "status": "pending",
+        "deletion_id": deletion_id,
+        "set_name": set_name,
+        "type": "pricecode",
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    })
+
+    worker_arn = os.environ.get("WORKER_LAMBDA_ARN_PRICECODE")
+    if worker_arn:
+        lambda_client.invoke(
+            FunctionName=worker_arn,
+            InvocationType="Event",
+            Payload=json.dumps({
+                **event,
+                "deletion_id": deletion_id,
+                "status_bucket": bucket,
+            })
+        )
+
+    return create_response(202, {
+        "deletion_id": deletion_id,
+        "message": f"Delete of '{set_name}' started",
+        "bucket_type": "pricecode"
+    })
+
+
+def dispatch_delete_pricecode_vector_set(event, context):
+    """
+    Dispatch async deletion of a price code vector set.
+    Returns 202 with deletion_id for polling.
+    """
+    if event.get('httpMethod') == 'OPTIONS':
+        return create_response(200, {})
+
+    path_params = event.get("pathParameters", {}) or {}
+    set_name = path_params.get("set_name")
+
+    if set_name:
+        set_name = unquote(set_name)
+    if not set_name:
+        return create_response(400, {"error": "Missing set name"})
+
+    pcv_bucket = os.environ.get("PRICECODE_VECTOR_BUCKET")
+    if not pcv_bucket:
+        return create_response(500, {"error": "PRICECODE_VECTOR_BUCKET not configured"})
+
+    deletion_id = f"pcv_{int(time.time())}_{set_name.replace(' ', '_')}"
+
+    _write_deletion_status(pcv_bucket, deletion_id, {
+        "status": "pending",
+        "deletion_id": deletion_id,
+        "set_name": set_name,
+        "type": "pricecode-vector",
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    })
+
+    worker_arn = os.environ.get("WORKER_LAMBDA_ARN_PCV")
+    if worker_arn:
+        lambda_client.invoke(
+            FunctionName=worker_arn,
+            InvocationType="Event",
+            Payload=json.dumps({
+                **event,
+                "deletion_id": deletion_id,
+                "status_bucket": pcv_bucket,
+            })
+        )
+
+    return create_response(202, {
+        "deletion_id": deletion_id,
+        "message": f"Delete of '{set_name}' started",
+        "bucket_type": "pricecode-vector"
+    })
+
+
+# ============================================================
+# WORKERS (existing logic, now write completion status to S3)
+# ============================================================
 
 def delete_datasheet(event, context):
     """
@@ -29,6 +243,10 @@ def delete_datasheet(event, context):
     if event.get('httpMethod') == 'OPTIONS':
          return create_response(200, {})
 
+    # Extract deletion tracking info (set by dispatcher)
+    deletion_id = event.get("deletion_id")
+    status_bucket = event.get("status_bucket", FILE_PROCESSING_BUCKET)
+
     path_params = event.get("pathParameters", {}) or {}
     sheet_name = path_params.get("sheet_name")
     
@@ -37,6 +255,11 @@ def delete_datasheet(event, context):
         sheet_name = unquote(sheet_name)
     
     if not sheet_name:
+        if deletion_id:
+            _write_deletion_status(status_bucket, deletion_id, {
+                "status": "error", "deletion_id": deletion_id,
+                "error": "Missing sheet name"
+            })
         return create_response(400, {"error": "Missing sheet name"})
         
     print(f"Deleting datasheet: {sheet_name}")
@@ -65,6 +288,11 @@ def delete_datasheet(event, context):
             print(f"Deleted vectors for sheet: {sheet_name} from index {index_name}")
         except Exception as e:
             print(f"Vector store deletion failed: {e}")
+            if deletion_id:
+                _write_deletion_status(status_bucket, deletion_id, {
+                    "status": "error", "deletion_id": deletion_id,
+                    "set_name": sheet_name, "error": f"Failed to delete vectors: {str(e)}"
+                })
             return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})
     else:
         print("Skipping vector deletion (missing bucket name)")
@@ -104,7 +332,19 @@ def delete_datasheet(event, context):
             print(f"Sheet {sheet_name} not found in registry")
             
     except Exception as e:
+        if deletion_id:
+            _write_deletion_status(status_bucket, deletion_id, {
+                "status": "error", "deletion_id": deletion_id,
+                "set_name": sheet_name, "error": f"Failed to update registry: {str(e)}"
+            })
         return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
+
+    # Write completion status
+    if deletion_id:
+        _write_deletion_status(status_bucket, deletion_id, {
+            "status": "complete", "deletion_id": deletion_id,
+            "set_name": sheet_name, "message": f"Sheet {sheet_name} deleted successfully"
+        })
         
     return create_response(200, {"message": f"Sheet {sheet_name} deleted successfully"})
 
@@ -128,6 +368,10 @@ def delete_price_code_set(event, context):
     if event.get('httpMethod') == 'OPTIONS':
          return create_response(200, {})
 
+    # Extract deletion tracking info
+    deletion_id = event.get("deletion_id")
+    status_bucket = event.get("status_bucket")
+
     path_params = event.get("pathParameters", {}) or {}
     set_name = path_params.get("set_name")
 
@@ -136,13 +380,26 @@ def delete_price_code_set(event, context):
         set_name = unquote(set_name)
 
     if not set_name:
+        if deletion_id and status_bucket:
+            _write_deletion_status(status_bucket, deletion_id, {
+                "status": "error", "deletion_id": deletion_id,
+                "error": "Missing set name"
+            })
         return create_response(400, {"error": "Missing set name"})
 
     print(f"Deleting Price Code Set: {set_name}")
 
     bucket = os.environ.get("PRICECODE_BUCKET")
     if not bucket:
+        if deletion_id and status_bucket:
+            _write_deletion_status(status_bucket, deletion_id, {
+                "status": "error", "deletion_id": deletion_id,
+                "set_name": set_name, "error": "PRICECODE_BUCKET env var not set"
+            })
         return create_response(500, {"error": "PRICECODE_BUCKET env var not set"})
+
+    if not status_bucket:
+        status_bucket = bucket
 
     # ── 1. Remove rows from SQLite index ────────────────────────────────
     db_s3_key = "metadata/pricecode_index.db"
@@ -156,6 +413,11 @@ def delete_price_code_set(event, context):
             print("No existing index – nothing to prune")
         else:
             print(f"Failed to download index: {e}")
+            if deletion_id:
+                _write_deletion_status(status_bucket, deletion_id, {
+                    "status": "error", "deletion_id": deletion_id,
+                    "set_name": set_name, "error": f"Failed to download index: {str(e)}"
+                })
             return create_response(500, {"error": f"Failed to download index: {str(e)}"})
         db_local = None
 
@@ -237,7 +499,7 @@ def delete_price_code_set(event, context):
                 print(f"Pruned index: {before_count} -> {after_count} refs "
                       f"(removed {len(ref_ids)} rows for '{set_name}')")
 
-                # VACUUM to reclaim space
+                # VACUUM to reclaim space (shrink the .db file)
                 conn.execute("VACUUM")
             else:
                 after_count = before_count
@@ -252,6 +514,11 @@ def delete_price_code_set(event, context):
 
         except Exception as e:
             print(f"SQLite prune failed: {e}")
+            if deletion_id:
+                _write_deletion_status(status_bucket, deletion_id, {
+                    "status": "error", "deletion_id": deletion_id,
+                    "set_name": set_name, "error": f"Failed to prune index: {str(e)}"
+                })
             return create_response(500, {"error": f"Failed to prune index: {str(e)}"})
 
     # ── 2. Delete source Excel from S3 ──────────────────────────────────
@@ -296,7 +563,19 @@ def delete_price_code_set(event, context):
         else:
             print(f"Set {set_name} not found in registry")
     except Exception as e:
+        if deletion_id:
+            _write_deletion_status(status_bucket, deletion_id, {
+                "status": "error", "deletion_id": deletion_id,
+                "set_name": set_name, "error": f"Failed to update registry: {str(e)}"
+            })
         return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
+
+    # Write completion status
+    if deletion_id:
+        _write_deletion_status(status_bucket, deletion_id, {
+            "status": "complete", "deletion_id": deletion_id,
+            "set_name": set_name, "message": f"Set {set_name} deleted successfully"
+        })
 
     return create_response(200, {"message": f"Set {set_name} deleted successfully"})
 
@@ -317,6 +596,10 @@ def delete_pricecode_vector_set(event, context):
     if event.get('httpMethod') == 'OPTIONS':
         return create_response(200, {})
 
+    # Extract deletion tracking info
+    deletion_id = event.get("deletion_id")
+    status_bucket = event.get("status_bucket")
+
     path_params = event.get("pathParameters", {}) or {}
     set_name = path_params.get("set_name")
 
@@ -324,9 +607,18 @@ def delete_pricecode_vector_set(event, context):
         set_name = unquote(set_name)
 
     if not set_name:
+        if deletion_id and status_bucket:
+            _write_deletion_status(status_bucket, deletion_id, {
+                "status": "error", "deletion_id": deletion_id,
+                "error": "Missing set name"
+            })
         return create_response(400, {"error": "Missing set name"})
 
     print(f"Deleting Price Code Vector Set: {set_name}")
+
+    pcv_bucket = os.environ.get("PRICECODE_VECTOR_BUCKET")
+    if not status_bucket:
+        status_bucket = pcv_bucket
 
     # ── 1. Delete from S3 Vectors ───────────────────────────────────────
     bucket_name = os.environ.get("S3_VECTORS_BUCKET", "almabani-vectors")
@@ -351,10 +643,14 @@ def delete_pricecode_vector_set(event, context):
         print(f"Deleted {deleted} vectors for set '{set_name}' from index {index_name}")
     except Exception as e:
         print(f"Vector store deletion failed: {e}")
+        if deletion_id and status_bucket:
+            _write_deletion_status(status_bucket, deletion_id, {
+                "status": "error", "deletion_id": deletion_id,
+                "set_name": set_name, "error": f"Failed to delete vectors: {str(e)}"
+            })
         return create_response(500, {"error": f"Failed to delete vectors: {str(e)}"})
 
     # ── 2. Delete source Excel from S3 ──────────────────────────────────
-    pcv_bucket = os.environ.get("PRICECODE_VECTOR_BUCKET")
     if pcv_bucket:
         try:
             prefix = "input/pricecode-vector/index/"
@@ -395,6 +691,19 @@ def delete_pricecode_vector_set(event, context):
             else:
                 print(f"Set '{set_name}' not found in registry")
         except Exception as e:
+            if deletion_id and status_bucket:
+                _write_deletion_status(status_bucket, deletion_id, {
+                    "status": "error", "deletion_id": deletion_id,
+                    "set_name": set_name, "error": f"Failed to update registry: {str(e)}"
+                })
             return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
 
+    # Write completion status
+    if deletion_id and status_bucket:
+        _write_deletion_status(status_bucket, deletion_id, {
+            "status": "complete", "deletion_id": deletion_id,
+            "set_name": set_name, "message": f"Price Code Vector set '{set_name}' deleted successfully"
+        })
+
     return create_response(200, {"message": f"Price Code Vector set '{set_name}' deleted successfully"})
+

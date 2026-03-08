@@ -56,9 +56,8 @@ def _build_services():
     )
 
     embeddings = EmbeddingsService(
-        client=openai_async,
+        async_client=openai_async,
         model=settings.openai_embedding_model,
-        rpm_limit=settings.embeddings_rpm,
         batch_size=settings.batch_size,
     )
 

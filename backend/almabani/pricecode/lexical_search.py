@@ -599,10 +599,10 @@ _NORMALIZE_PC_RE = re.compile(
 
 
 def normalize_price_code(price_code: str) -> str:
-    """Normalize a price code to canonical spaced uppercase form.
+    """Normalize a price code to canonical spaced form, preserving original case.
 
     Both compact ``p1316ACC`` and spaced ``p 13 16 ACC`` become
-    ``P 13 16 ACC``.  Already-spaced codes are uppercased and cleaned.
+    ``p 13 16 ACC``.  Case is never changed.
     """
     code = price_code.strip()
     if not code:
@@ -610,13 +610,13 @@ def normalize_price_code(price_code: str) -> str:
     # Already spaced?
     parts = code.split()
     if len(parts) >= 4:
-        return (" ".join(parts)).upper()
+        return " ".join(parts)
     # Compact?
     m = _NORMALIZE_PC_RE.match(code)
     if m:
-        return f"{m.group(1).upper()} {m.group(2)} {m.group(3)} {m.group(4).upper()}"
-    # Fallback: just uppercase
-    return code.upper()
+        return f"{m.group(1)} {m.group(2)} {m.group(3)} {m.group(4)}"
+    # Fallback: return as-is (no case change)
+    return code
 
 
 # ── Data-driven V-suffix & family profile building ──────────────────

@@ -7,7 +7,8 @@ from aws_cdk import (
     aws_ssm as ssm,
     aws_s3 as s3,
     Duration,
-    CfnOutput
+    CfnOutput,
+    Size,
 )
 from constructs import Construct
 import os
@@ -44,7 +45,7 @@ class DeletionStack(Stack):
             pcv_bucket = None
             pcv_bucket_name = ""
 
-        # 2. Lambda Function & Layer
+        # 2. Lambda Functions & Layer
         backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend')
         layer_dir = os.path.join(os.path.dirname(__file__), 'layers', 'deletion_dependencies')
         
@@ -53,15 +54,19 @@ class DeletionStack(Stack):
             compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
             description="Dependencies for deletion lambda (boto3)"
         )
+
+        code_asset = _lambda.Code.from_asset(backend_dir, exclude=[
+            "*.pyc", "__pycache__", ".venv", "venv", "tests",
+            "data", "layers", "*.xlsx", "*.json", "scripts",
+            "app", ".env", "*.egg-info"
+        ])
         
-        deletion_lambda = _lambda.Function(self, "DeleteDatasheetLambda",
+        # ── WORKER LAMBDAS (do the actual work, invoked async) ──────────
+
+        worker_datasheet = _lambda.Function(self, "WorkerDeleteDatasheetLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_datasheet", 
-            code=_lambda.Code.from_asset(backend_dir, exclude=[
-                "*.pyc", "__pycache__", ".venv", "venv", "tests",
-                "data", "layers", "*.xlsx", "*.json", "scripts",
-                "app", ".env", "*.egg-info"
-            ]),
+            code=code_asset,
             layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
@@ -69,38 +74,27 @@ class DeletionStack(Stack):
                 "S3_VECTORS_BUCKET": "almabani-vectors",
                 "S3_VECTORS_INDEX_NAME": os.getenv("S3_VECTORS_INDEX_NAME", "almabani"),
             },
-            timeout=Duration.seconds(30)
+            timeout=Duration.seconds(120)
         )
 
-        # 2b. Price Code Deletion Lambda (Separate Function for specific handler)
-        # Uses the SAME code asset but different handler.
-        # Needs longer timeout for SQLite download+prune+reupload.
-        pc_deletion_lambda = _lambda.Function(self, "DeletePriceCodeLambda",
+        worker_pricecode = _lambda.Function(self, "WorkerDeletePriceCodeLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_price_code_set",
-            code=_lambda.Code.from_asset(backend_dir, exclude=[
-                "*.pyc", "__pycache__", ".venv", "venv", "tests",
-                "data", "layers", "*.xlsx", "*.json", "scripts",
-                "app", ".env", "*.egg-info"
-            ]),
+            code=code_asset,
             layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
             },
-            memory_size=1024,
-            timeout=Duration.seconds(120)
+            memory_size=2048,
+            ephemeral_storage_size=Size.mebibytes(2048),
+            timeout=Duration.minutes(15)
         )
 
-        # 2c. Price Code Vector Deletion Lambda
-        pcv_deletion_lambda = _lambda.Function(self, "DeletePriceCodeVectorLambda",
+        worker_pcv = _lambda.Function(self, "WorkerDeletePriceCodeVectorLambda",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_pricecode_vector_set",
-            code=_lambda.Code.from_asset(backend_dir, exclude=[
-                "*.pyc", "__pycache__", ".venv", "venv", "tests",
-                "data", "layers", "*.xlsx", "*.json", "scripts",
-                "app", ".env", "*.egg-info"
-            ]),
+            code=code_asset,
             layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
@@ -111,21 +105,89 @@ class DeletionStack(Stack):
             timeout=Duration.seconds(120)
         )
 
-        # 3. Permissions
-        bucket.grant_read_write(deletion_lambda)
+        # ── DISPATCHER LAMBDAS (fast, return 202, invoke workers async) ─
+
+        dispatcher_datasheet = _lambda.Function(self, "DispatchDeleteDatasheetLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_handler.dispatch_delete_datasheet",
+            code=code_asset,
+            layers=[dependencies_layer],
+            environment={
+                "FILE_PROCESSING_BUCKET": bucket.bucket_name,
+                "WORKER_LAMBDA_ARN_DATASHEET": worker_datasheet.function_arn,
+            },
+            timeout=Duration.seconds(10)
+        )
+
+        dispatcher_pricecode = _lambda.Function(self, "DispatchDeletePriceCodeLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_handler.dispatch_delete_price_code_set",
+            code=code_asset,
+            layers=[dependencies_layer],
+            environment={
+                "FILE_PROCESSING_BUCKET": bucket.bucket_name,
+                "PRICECODE_BUCKET": pc_bucket_name,
+                "WORKER_LAMBDA_ARN_PRICECODE": worker_pricecode.function_arn,
+            },
+            timeout=Duration.seconds(10)
+        )
+
+        dispatcher_pcv = _lambda.Function(self, "DispatchDeletePriceCodeVectorLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_handler.dispatch_delete_pricecode_vector_set",
+            code=code_asset,
+            layers=[dependencies_layer],
+            environment={
+                "FILE_PROCESSING_BUCKET": bucket.bucket_name,
+                "PRICECODE_VECTOR_BUCKET": pcv_bucket_name,
+                "WORKER_LAMBDA_ARN_PCV": worker_pcv.function_arn,
+            },
+            timeout=Duration.seconds(10)
+        )
+
+        # ── STATUS LAMBDA ───────────────────────────────────────────────
+
+        status_lambda = _lambda.Function(self, "DeletionStatusLambda",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="delete_handler.get_deletion_status",
+            code=code_asset,
+            layers=[dependencies_layer],
+            environment={
+                "FILE_PROCESSING_BUCKET": bucket.bucket_name,
+                "PRICECODE_BUCKET": pc_bucket_name,
+                "PRICECODE_VECTOR_BUCKET": pcv_bucket_name,
+            },
+            timeout=Duration.seconds(10)
+        )
+
+        # 3. Permissions — S3
+        bucket.grant_read_write(worker_datasheet)
+        bucket.grant_read_write(status_lambda)
+        bucket.grant_write(dispatcher_datasheet)  # Write deletion-status markers
+
         if pc_bucket:
-            pc_bucket.grant_read_write(pc_deletion_lambda)
+            pc_bucket.grant_read_write(worker_pricecode)
+            pc_bucket.grant_read(status_lambda)
+            pc_bucket.grant_write(dispatcher_pricecode)
+
         if pcv_bucket:
-            pcv_bucket.grant_read_write(pcv_deletion_lambda)
+            pcv_bucket.grant_read_write(worker_pcv)
+            pcv_bucket.grant_read(status_lambda)
+            pcv_bucket.grant_write(dispatcher_pcv)
             
-        # Grant S3 Vectors data API access
+        # Grant S3 Vectors data API access to workers
         s3v_policy = iam.PolicyStatement(
             actions=["s3vectors:*"],
             resources=["*"]
         )
-        deletion_lambda.add_to_role_policy(s3v_policy)
-        pc_deletion_lambda.add_to_role_policy(s3v_policy)
-        pcv_deletion_lambda.add_to_role_policy(s3v_policy)
+        worker_datasheet.add_to_role_policy(s3v_policy)
+        worker_pricecode.add_to_role_policy(s3v_policy)
+        worker_pcv.add_to_role_policy(s3v_policy)
+
+        # Grant dispatchers permission to invoke workers
+        worker_datasheet.grant_invoke(dispatcher_datasheet)
+        worker_pricecode.grant_invoke(dispatcher_pricecode)
+        worker_pcv.grant_invoke(dispatcher_pcv)
         
         # 4. API Gateway
         api = apigw.RestApi(self, "DeletionApi",
@@ -140,10 +202,9 @@ class DeletionStack(Stack):
         )
 
         # Gateway responses: add CORS headers to 4XX/5XX errors
-        # (so even Lambda crashes / timeouts return Access-Control-Allow-Origin)
         _cors_headers = {
             "Access-Control-Allow-Origin": "'*'",
-            "Access-Control-Allow-Methods": "'DELETE,OPTIONS'",
+            "Access-Control-Allow-Methods": "'DELETE,GET,OPTIONS'",
             "Access-Control-Allow-Headers": "'Content-Type,Authorization'",
         }
         api.add_gateway_response("GW4XX",
@@ -155,23 +216,29 @@ class DeletionStack(Stack):
             response_headers=_cors_headers,
         )
 
-        # Resource: /files/sheets/{sheet_name}
+        # Resource: /files/sheets/{sheet_name} → dispatcher
         files = api.root.add_resource("files")
         sheets = files.add_resource("sheets")
         sheet_resource = sheets.add_resource("{sheet_name}")
-        sheet_resource.add_method("DELETE", apigw.LambdaIntegration(deletion_lambda))
+        sheet_resource.add_method("DELETE", apigw.LambdaIntegration(dispatcher_datasheet))
 
-        # Resource: /pricecode/sets/{set_name}
+        # Resource: /pricecode/sets/{set_name} → dispatcher
         pricecode = api.root.add_resource("pricecode")
         sets = pricecode.add_resource("sets")
         set_resource = sets.add_resource("{set_name}")
-        set_resource.add_method("DELETE", apigw.LambdaIntegration(pc_deletion_lambda))
+        set_resource.add_method("DELETE", apigw.LambdaIntegration(dispatcher_pricecode))
 
-        # Resource: /pricecode-vector/sets/{set_name}
+        # Resource: /pricecode-vector/sets/{set_name} → dispatcher
         pcv = api.root.add_resource("pricecode-vector")
         pcv_sets = pcv.add_resource("sets")
         pcv_set_resource = pcv_sets.add_resource("{set_name}")
-        pcv_set_resource.add_method("DELETE", apigw.LambdaIntegration(pcv_deletion_lambda))
+        pcv_set_resource.add_method("DELETE", apigw.LambdaIntegration(dispatcher_pcv))
+
+        # Resource: /deletion-status/{deletion_id} → status lambda
+        deletion_status = api.root.add_resource("deletion-status")
+        deletion_status_resource = deletion_status.add_resource("{deletion_id}")
+        deletion_status_resource.add_method("GET", apigw.LambdaIntegration(status_lambda))
 
         # Outputs
         CfnOutput(self, "DeletionApiUrl", value=api.url)
+

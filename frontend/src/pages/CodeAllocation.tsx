@@ -1158,11 +1158,160 @@ const CodeAllocation: React.FC = () => {
 
     // Vector Allocate / Vector Index View
     if (currentView === 'vector-allocate' || currentView === 'vector-index') {
-        return <VectorAllocationView
-            mode={currentView === 'vector-allocate' ? 'allocate' : 'index'}
-            onBack={() => setCurrentView('landing')}
-            onViewSummary={handleViewVectorSummary}
-        />;
+        return (
+            <>
+                <VectorAllocationView
+                    mode={currentView === 'vector-allocate' ? 'allocate' : 'index'}
+                    onBack={() => setCurrentView('landing')}
+                    onViewSummary={handleViewVectorSummary}
+                />
+
+                {/* Summary Modal */}
+                {((resultData && showSummary) || viewContent || viewSummaryData) && (
+                    <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+                        <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => { setShowSummary(false); setViewContent(null); setViewSummaryData(null); }}></div>
+                            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                            <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                                <div>
+                                    <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+                                        <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    </div>
+                                    <div className="mt-3 text-center sm:mt-5">
+                                        <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                                            {viewTitle || 'Allocation Summary'}
+                                        </h3>
+                                        <div className="mt-4 text-left">
+                                            {viewSummaryData ? (
+                                                <div className="space-y-4">
+                                                    <div className="bg-gray-50 rounded-lg p-4">
+                                                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">File Information</h4>
+                                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                                            <div><span className="text-gray-500">Input File:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.inputFile}</span></div>
+                                                            <div><span className="text-gray-500">Sheet:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.sheet}</span></div>
+                                                            <div className="col-span-2"><span className="text-gray-500">Generated:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.generated}</span></div>
+                                                            <div className="col-span-2"><span className="text-gray-500">Time:</span> <span className="font-medium text-gray-900">{viewSummaryData.fileInfo.processingTime}</span></div>
+                                                        </div>
+                                                    </div>
+
+                                                    {viewSummaryData.filters && viewSummaryData.filters.length > 0 && (
+                                                        <div className="bg-gray-50 rounded-lg p-4">
+                                                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Filters Used</h4>
+                                                            <div className="space-y-1">
+                                                                {viewSummaryData.filters.map((filter, i) => (
+                                                                    <p key={i} className="text-sm font-medium text-gray-900">{filter}</p>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="bg-gray-50 rounded-lg p-4">
+                                                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Processing Statistics</h4>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500">Total Items</p>
+                                                                <p className="mt-1 text-2xl font-semibold text-gray-900">{viewSummaryData.stats.totalItems}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500">Match Rate</p>
+                                                                <p className="mt-1 text-2xl font-semibold text-green-600">
+                                                                    {viewSummaryData.stats.matchRate}
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500">Matched</p>
+                                                                <p className="mt-1 text-lg font-medium text-green-600">{viewSummaryData.stats.matched}</p>
+                                                                {(viewSummaryData.stats.exactMatch !== undefined || viewSummaryData.stats.highConf !== undefined) && (
+                                                                    <div className="mt-1 text-xs space-y-1">
+                                                                        <div className="flex justify-between items-center text-gray-600">
+                                                                            <span>Exact:</span>
+                                                                            <span className="font-semibold text-green-700">{viewSummaryData.stats.exactMatch || 0}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between items-center text-gray-600">
+                                                                            <span>High Conf:</span>
+                                                                            <span className="font-semibold text-yellow-700">{viewSummaryData.stats.highConf || 0}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-500">Not Matched</p>
+                                                                <p className="mt-1 text-lg font-medium text-red-600">{viewSummaryData.stats.notMatched}</p>
+                                                            </div>
+                                                            {viewSummaryData.stats.errors > 0 && (
+                                                                <div className="col-span-2 mt-2 pt-2 border-t border-gray-200">
+                                                                    <p className="text-sm font-medium text-red-600">Errors: {viewSummaryData.stats.errors}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : viewContent ? (
+                                                <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-auto">
+                                                    <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
+                                                        {viewContent}
+                                                    </pre>
+                                                </div>
+                                            ) : resultData ? (
+                                                <div className="bg-gray-50 rounded-lg p-4">
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500">Total Items</p>
+                                                            <p className="mt-1 text-2xl font-semibold text-gray-900">{resultData.matched + resultData.not_matched}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500">Match Rate</p>
+                                                            <p className={`mt-1 text-2xl font-semibold ${resultData.match_rate > 0.8 ? 'text-green-600' :
+                                                                resultData.match_rate > 0.5 ? 'text-yellow-600' : 'text-red-600'
+                                                                }`}>
+                                                                {(resultData.match_rate * 100).toFixed(1)}%
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500">Matched</p>
+                                                            <p className="mt-1 text-lg font-medium text-green-600">{resultData.matched}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-500">Not Matched</p>
+                                                            <p className="mt-1 text-lg font-medium text-red-600">{resultData.not_matched}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : null}
+
+                                            {/* Note: I removed handleDownload for simplicity on the vector view if not needed, as vector view provides its own download link outside this modal usually. But I will keep it conditional. */}
+                                            {!viewContent && !viewSummaryData && completedFilePath && (
+                                                <div className="mt-4 flex justify-center">
+                                                    <a
+                                                        href={completedFilePath}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm"
+                                                    >
+                                                        Download Result File
+                                                    </a>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-5 sm:mt-6">
+                                    <button
+                                        type="button"
+                                        className="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:text-sm"
+                                        onClick={() => { setShowSummary(false); setViewContent(null); setViewSummaryData(null); }}
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </>
+        );
     }
 
     return (

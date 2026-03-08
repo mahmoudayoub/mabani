@@ -102,6 +102,56 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
 };
 
 
+const parsePriceCodeVectorSummary = (text: string): PriceCodeSummary | null => {
+    try {
+        const lines = text.split('\n').map(l => l.trim());
+        const summary: any = { fileInfo: {}, stats: {} };
+        let currentSection = 'info';
+
+        lines.forEach(line => {
+            if (line.includes('RESULTS')) currentSection = 'stats';
+            else if (line.startsWith('FILTERS:')) {
+                const filterValue = line.substring(8).trim();
+                summary.filters = [filterValue];
+            }
+            else if (line.includes(':') && !line.startsWith('=======')) {
+                const cleanLine = line.replace(/^-\s+/, '');
+                const parts = cleanLine.split(':');
+                const key = parts[0];
+                const value = parts.slice(1).join(':').trim();
+                const cleanKey = key.trim().toLowerCase();
+
+                if (currentSection === 'info') {
+                    if (cleanKey === 'input') summary.fileInfo.inputFile = value;
+                    else if (cleanKey === 'output') summary.fileInfo.outputFile = value;
+                    else if (cleanKey === 'sheet') summary.fileInfo.sheet = value;
+                    else if (cleanKey === 'time') summary.fileInfo.processingTime = value;
+                } else if (currentSection === 'stats') {
+                    if (cleanKey === 'total items') summary.stats.totalItems = parseInt(value) || 0;
+                    else if (cleanKey === 'matched') {
+                        summary.stats.matched = parseInt(value) || 0;
+                        const matchMatchRate = value.match(/\(([^)]+)\)/);
+                        if (matchMatchRate) summary.stats.matchRate = matchMatchRate[1];
+                    }
+                    else if (cleanKey === 'not matched') summary.stats.notMatched = parseInt(value) || 0;
+                    else if (cleanKey.includes('exact')) summary.stats.exactMatch = parseInt(value) || 0;
+                    else if (cleanKey.includes('high')) summary.stats.highConf = parseInt(value) || 0;
+                }
+            }
+        });
+
+        if (!summary.stats.totalItems && !summary.fileInfo.inputFile) return null;
+        if (!summary.fileInfo.generated) summary.fileInfo.generated = summary.fileInfo.outputFile || '';
+        if (!summary.stats.matchRate) summary.stats.matchRate = '0%';
+        if (!summary.stats.errors) summary.stats.errors = 0;
+
+        return summary as PriceCodeSummary;
+    } catch (e) {
+        console.error('Failed to parse vector summary:', e);
+        return null;
+    }
+};
+
 // ============================================================
 // VECTOR ALLOCATION SUB-COMPONENT
 // ============================================================
@@ -109,9 +159,10 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
 interface VectorAllocationViewProps {
     mode: 'allocate' | 'index';
     onBack: () => void;
+    onViewSummary: (file: PriceCodeVectorOutputFile) => void;
 }
 
-const VectorAllocationView: React.FC<VectorAllocationViewProps> = ({ mode, onBack }) => {
+const VectorAllocationView: React.FC<VectorAllocationViewProps> = ({ mode, onBack, onViewSummary }) => {
     // File Upload State
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -393,20 +444,20 @@ const VectorAllocationView: React.FC<VectorAllocationViewProps> = ({ mode, onBac
                             </button>
 
                             {showSetPicker && (
-                                <div className="mt-2 p-4 border rounded-lg bg-white max-h-60 overflow-y-auto">
+                                <div className="mt-2 p-4 border rounded-lg bg-white max-h-60 overflow-y-auto shadow-inner">
                                     {loadingSets ? (
                                         <p className="text-gray-500 text-center">Loading sets...</p>
                                     ) : availableSets.length === 0 ? (
                                         <p className="text-gray-500 text-center">No vector sets available. Upload files to index first.</p>
                                     ) : (
                                         <>
-                                            <div className="flex justify-between mb-2">
-                                                <button onClick={() => setSelectedSets(availableSets)} className="text-xs text-indigo-600 hover:text-indigo-800">Select All</button>
-                                                <button onClick={() => setSelectedSets([])} className="text-xs text-gray-500 hover:text-gray-700">Clear All</button>
+                                            <div className="flex justify-between mb-3 border-b pb-2">
+                                                <button onClick={() => setSelectedSets(availableSets)} className="text-sm font-medium text-indigo-600 hover:text-indigo-800">Select All</button>
+                                                <button onClick={() => setSelectedSets([])} className="text-sm font-medium text-gray-500 hover:text-gray-700">Clear All</button>
                                             </div>
                                             {availableSets.map(setName => (
                                                 <div key={setName} className="flex items-center justify-between py-2 border-b last:border-b-0">
-                                                    <label className="flex items-center space-x-2 cursor-pointer flex-1">
+                                                    <label className="flex items-center space-x-3 cursor-pointer flex-1">
                                                         <input
                                                             type="checkbox"
                                                             checked={selectedSets.includes(setName)}
@@ -414,17 +465,47 @@ const VectorAllocationView: React.FC<VectorAllocationViewProps> = ({ mode, onBac
                                                                 if (e.target.checked) setSelectedSets(prev => [...prev, setName]);
                                                                 else setSelectedSets(prev => prev.filter(s => s !== setName));
                                                             }}
-                                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
                                                         />
                                                         <span className="text-sm text-gray-700">{setName}</span>
                                                     </label>
-                                                    <button onClick={() => handleDeleteSet(setName)} className="ml-2 text-red-400 hover:text-red-600 text-xs">Delete</button>
                                                 </div>
                                             ))}
                                         </>
                                     )}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* Vector Library Management (index mode only) */}
+                    {mode === 'index' && (
+                        <div className="mb-6 border rounded-lg overflow-hidden bg-white">
+                            <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                                <h3 className="font-medium text-gray-900">Indexed Vector Sets</h3>
+                                <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full">{availableSets.length} Total</span>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto p-4">
+                                {loadingSets ? (
+                                    <p className="text-gray-500 text-center py-4">Loading library...</p>
+                                ) : availableSets.length === 0 ? (
+                                    <p className="text-gray-500 text-center py-4">No vector sets indexed yet.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {availableSets.map(setName => (
+                                            <div key={setName} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-100 hover:border-indigo-200 transition-colors">
+                                                <span className="text-sm font-medium text-gray-800">{setName}</span>
+                                                <button
+                                                    onClick={() => handleDeleteSet(setName)}
+                                                    className="px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded transition-colors"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -522,9 +603,19 @@ const VectorAllocationView: React.FC<VectorAllocationViewProps> = ({ mode, onBac
                                                 {new Date(file.lastModified).toLocaleDateString()} · {(file.size / 1024).toFixed(0)} KB
                                             </p>
                                         </div>
-                                        <a href={file.downloadUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
-                                            Download
-                                        </a>
+                                        <div className="flex items-center space-x-4">
+                                            {file.filename.endsWith('.txt') && (
+                                                <button
+                                                    onClick={() => onViewSummary(file)}
+                                                    className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                                                >
+                                                    View
+                                                </button>
+                                            )}
+                                            <a href={file.downloadUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
+                                                Download
+                                            </a>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -575,6 +666,27 @@ const CodeAllocation: React.FC = () => {
             if (parsed) {
                 setViewSummaryData(parsed);
                 setViewTitle('Allocation Summary');
+                setViewContent(null);
+            } else {
+                setViewContent(text);
+                setViewSummaryData(null);
+                setViewTitle(file.filename);
+            }
+            setShowSummary(true); // Ensure modal opens
+        } catch (error) {
+            console.error('Failed to view file:', error);
+            alert('Failed to view file content.');
+        }
+    };
+
+    const handleViewVectorSummary = async (file: PriceCodeVectorOutputFile) => {
+        try {
+            const text = await fetchTextContent(file.downloadUrl);
+            const parsed = parsePriceCodeVectorSummary(text);
+
+            if (parsed) {
+                setViewSummaryData(parsed);
+                setViewTitle('Vector Allocation Summary');
                 setViewContent(null);
             } else {
                 setViewContent(text);
@@ -1042,7 +1154,11 @@ const CodeAllocation: React.FC = () => {
 
     // Vector Allocate / Vector Index View
     if (currentView === 'vector-allocate' || currentView === 'vector-index') {
-        return <VectorAllocationView mode={currentView === 'vector-allocate' ? 'allocate' : 'index'} onBack={() => setCurrentView('landing')} />;
+        return <VectorAllocationView
+            mode={currentView === 'vector-allocate' ? 'allocate' : 'index'}
+            onBack={() => setCurrentView('landing')}
+            onViewSummary={handleViewVectorSummary}
+        />;
     }
 
     return (
@@ -1087,25 +1203,31 @@ const CodeAllocation: React.FC = () => {
                             </button>
 
                             {showCodePicker && (
-                                <div className="mt-2 p-4 bg-gray-50 rounded-lg">
+                                <div className="mt-2 p-4 bg-gray-50 rounded-lg shadow-inner">
                                     {loadingCodes ? (
                                         <p className="text-gray-400">Loading codes...</p>
                                     ) : availableCodes.length === 0 ? (
                                         <p className="text-gray-400">No price codes in library. Use "Smart Library" mode first.</p>
                                     ) : (
-                                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                                            {availableCodes.map(code => (
-                                                <label key={code} className="flex items-center space-x-2 cursor-pointer p-2 hover:bg-white rounded">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedCodes.includes(code)}
-                                                        onChange={(e) => handleCodeToggle(code, e.target.checked)}
-                                                        className="rounded"
-                                                    />
-                                                    <span className="text-gray-900">{code}</span>
-                                                </label>
-                                            ))}
-                                        </div>
+                                        <>
+                                            <div className="flex justify-between mb-3 border-b border-gray-200 pb-2">
+                                                <button onClick={() => setSelectedCodes(availableCodes)} className="text-sm font-medium text-blue-600 hover:text-blue-800">Select All</button>
+                                                <button onClick={() => setSelectedCodes([])} className="text-sm font-medium text-gray-500 hover:text-gray-700">Clear All</button>
+                                            </div>
+                                            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                                {availableCodes.map(code => (
+                                                    <label key={code} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-white rounded border border-transparent hover:border-gray-200 transition-colors">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedCodes.includes(code)}
+                                                            onChange={(e) => handleCodeToggle(code, e.target.checked)}
+                                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700 w-full">{code}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </>
                                     )}
                                 </div>
                             )}

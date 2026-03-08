@@ -12,6 +12,18 @@ import {
     PriceCodeEstimate,
     PriceCodeOutputFile
 } from '../services/priceCodeService';
+import {
+    uploadPriceCodeVectorFile,
+    getPriceCodeVectorStatus,
+    getPriceCodeVectorDownloadUrl,
+    listAvailablePriceCodeVectors,
+    listPriceCodeVectorOutputFiles,
+    listActivePriceCodeVectorJobs,
+    deletePriceCodeVectorEstimate,
+    deletePriceCodeVectorSet,
+    PriceCodeVectorEstimate,
+    PriceCodeVectorOutputFile
+} from '../services/priceCodeVectorService';
 import ChatInterface from '../components/chat/ChatInterface';
 
 type Mode = 'index' | 'allocate';
@@ -89,9 +101,448 @@ const parsePriceCodeSummary = (text: string): PriceCodeSummary | null => {
     }
 };
 
+
+// ============================================================
+// VECTOR ALLOCATION SUB-COMPONENT
+// ============================================================
+
+interface VectorAllocationViewProps {
+    mode: 'allocate' | 'index';
+    onBack: () => void;
+}
+
+const VectorAllocationView: React.FC<VectorAllocationViewProps> = ({ mode, onBack }) => {
+    // File Upload State
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
+
+    // Processing State
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [progressPercent, setProgressPercent] = useState(0);
+    const [processingStatus, setProcessingStatus] = useState('');
+    const [timeRemaining, setTimeRemaining] = useState('');
+    const [estimateData, setEstimateData] = useState<PriceCodeVectorEstimate | null>(null);
+    const [startTime, setStartTime] = useState<number | null>(null);
+
+    // Completion State
+    const [completedFilePath, setCompletedFilePath] = useState<string | null>(null);
+    const [resultData, setResultData] = useState<{ matched: number; not_matched: number; match_rate: number } | null>(null);
+
+    // Available Sets (for allocation mode)
+    const [availableSets, setAvailableSets] = useState<string[]>([]);
+    const [loadingSets, setLoadingSets] = useState(false);
+    const [selectedSets, setSelectedSets] = useState<string[]>([]);
+    const [showSetPicker, setShowSetPicker] = useState(false);
+
+    // Output Files State
+    const [outputFiles, setOutputFiles] = useState<PriceCodeVectorOutputFile[]>([]);
+    const [loadingOutputFiles, setLoadingOutputFiles] = useState(false);
+
+    // Refs for intervals
+    const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Load available sets on mount
+    useEffect(() => {
+        const fetchSets = async () => {
+            setLoadingSets(true);
+            try {
+                const sets = await listAvailablePriceCodeVectors();
+                setAvailableSets(sets);
+                setSelectedSets(sets); // Select all by default
+            } catch (error) {
+                console.error('Failed to fetch vector sets:', error);
+            } finally {
+                setLoadingSets(false);
+            }
+        };
+        fetchSets();
+    }, []);
+
+    // Check for active jobs on mount
+    useEffect(() => {
+        const checkActiveJobs = async () => {
+            try {
+                const activeJobs = await listActivePriceCodeVectorJobs();
+                if (activeJobs.length > 0) {
+                    const job = activeJobs[0];
+                    if (job.complete) {
+                        console.log('Vector job already complete, skipping resume');
+                        return;
+                    }
+                    setIsProcessing(true);
+                    setEstimateData(job);
+                    setProcessingStatus('Resuming processing...');
+                    const jobStartTime = new Date(job.started_at + 'Z').getTime();
+                    setStartTime(jobStartTime);
+                    const elapsed = (Date.now() - jobStartTime) / 1000;
+                    const initialProgress = Math.min((elapsed / job.estimated_seconds) * 100, 95);
+                    setProgressPercent(initialProgress);
+                    setProcessingStatus(initialProgress >= 95 ? 'Finalizing...' : 'Processing...');
+                    startPolling(job.filename);
+                }
+            } catch (error) {
+                console.error('Failed to check active vector jobs:', error);
+            }
+        };
+        if (mode === 'allocate') checkActiveJobs();
+    }, []);
+
+    // Load output files on mount
+    useEffect(() => {
+        const fetchOutputFiles = async () => {
+            setLoadingOutputFiles(true);
+            try {
+                const files = await listPriceCodeVectorOutputFiles();
+                setOutputFiles(files);
+            } catch (error) {
+                console.error('Failed to load vector output files:', error);
+            } finally {
+                setLoadingOutputFiles(false);
+            }
+        };
+        fetchOutputFiles();
+    }, []);
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (!file.name.toLowerCase().endsWith('.xlsx')) {
+                setUploadError('Please select an Excel (.xlsx) file');
+                return;
+            }
+            setSelectedFile(file);
+            setUploadError(null);
+        }
+    };
+
+    const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsDragOver(false);
+        const file = event.dataTransfer.files?.[0];
+        if (file) {
+            if (!file.name.toLowerCase().endsWith('.xlsx')) {
+                setUploadError('Please select an Excel (.xlsx) file');
+                return;
+            }
+            setSelectedFile(file);
+            setUploadError(null);
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!selectedFile) return;
+        setIsUploading(true);
+        setUploadError(null);
+
+        try {
+            await uploadPriceCodeVectorFile(
+                selectedFile,
+                mode,
+                mode === 'allocate' && selectedSets.length > 0 ? selectedSets : undefined
+            );
+
+            if (mode === 'allocate') {
+                setIsProcessing(true);
+                setProcessingStatus('Processing started...');
+                setStartTime(Date.now());
+                startPolling(selectedFile.name);
+            } else {
+                setProcessingStatus('File uploaded for indexing. Processing will begin shortly.');
+                setTimeout(() => {
+                    setProcessingStatus('');
+                    listAvailablePriceCodeVectors().then(sets => setAvailableSets(sets));
+                }, 3000);
+            }
+            setSelectedFile(null);
+        } catch (error) {
+            console.error('Upload failed:', error);
+            setUploadError(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const startPolling = (filename: string) => {
+        const filenameBase = filename.replace('.xlsx', '');
+
+        pollIntervalRef.current = setInterval(async () => {
+            try {
+                const status = await getPriceCodeVectorStatus(filename);
+                console.log('[Vector Polling] Status:', status);
+
+                if (status.complete) {
+                    cleanupProgressTracking();
+                    if (status.success) {
+                        setProgressPercent(100);
+                        setProcessingStatus('Complete!');
+                        setCompletedFilePath(`output/pricecode-vector/fills/${filenameBase}_pricecode_vector.xlsx`);
+                        setTimeRemaining('');
+                        setResultData(status.result || null);
+
+                        try { await deletePriceCodeVectorEstimate(filename); } catch (err) { console.error('Failed to delete estimate:', err); }
+                        try { const files = await listPriceCodeVectorOutputFiles(); setOutputFiles(files); } catch (err) { console.error('Failed to refresh file list:', err); }
+                    } else {
+                        setIsProcessing(false);
+                        setProcessingStatus(`Failed: ${status.error || 'Unknown error'}`);
+                        setProgressPercent(0);
+                        try { await deletePriceCodeVectorEstimate(filename); } catch (err) { console.error('Failed to delete estimate:', err); }
+                    }
+                    return;
+                } else {
+                    setEstimateData(status);
+                }
+            } catch (error) {
+                console.log('[Vector Polling] Waiting for estimate file...');
+            }
+        }, 3000);
+    };
+
+    // Progress Animation Effect
+    useEffect(() => {
+        if (!isProcessing || !startTime || !estimateData?.estimated_seconds) return;
+        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+
+        progressIntervalRef.current = setInterval(() => {
+            const elapsed = (Date.now() - startTime) / 1000;
+            const progress = Math.min((elapsed / estimateData.estimated_seconds) * 95, 95);
+            setProgressPercent(Math.round(progress));
+
+            const remaining = Math.max(0, estimateData.estimated_seconds - elapsed);
+            if (remaining > 60) {
+                setTimeRemaining(`~${Math.ceil(remaining / 60)} min remaining`);
+            } else {
+                setTimeRemaining(`~${Math.ceil(remaining)} sec remaining`);
+            }
+        }, 1000);
+
+        return () => { if (progressIntervalRef.current) clearInterval(progressIntervalRef.current); };
+    }, [isProcessing, startTime, estimateData?.estimated_seconds]);
+
+    const cleanupProgressTracking = () => {
+        if (progressIntervalRef.current) { clearInterval(progressIntervalRef.current); progressIntervalRef.current = null; }
+        if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+    };
+
+    useEffect(() => { return () => { cleanupProgressTracking(); }; }, []);
+
+    const handleDownload = async () => {
+        if (!completedFilePath) return;
+        try {
+            const filename = completedFilePath.split('/').pop() || 'output.xlsx';
+            const { url } = await getPriceCodeVectorDownloadUrl(filename);
+            window.open(url, '_blank');
+        } catch (error) {
+            console.error('Download failed:', error);
+        }
+    };
+
+    const handleDeleteSet = async (setName: string) => {
+        if (!confirm(`Are you sure you want to delete "${setName}"?`)) return;
+        try {
+            await deletePriceCodeVectorSet(setName);
+            setAvailableSets(prev => prev.filter(s => s !== setName));
+            setSelectedSets(prev => prev.filter(s => s !== setName));
+        } catch (error) {
+            console.error('Failed to delete set:', error);
+            alert(`Failed to delete set: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-100 py-8">
+            <div className="max-w-4xl mx-auto px-4">
+                {/* Header with Back Button */}
+                <div className="mb-8 flex items-center justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900">
+                            {mode === 'allocate' ? 'Vector Code Allocation' : 'Vector Library'}
+                        </h1>
+                        <p className="text-gray-600 mt-2">
+                            {mode === 'allocate' ? 'Allocate codes to BOQ using vector matching' : 'Manage Vector Library'}
+                        </p>
+                    </div>
+                    <button onClick={onBack} className="text-sm text-gray-600 hover:text-gray-900 flex items-center">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                        Back
+                    </button>
+                </div>
+
+                {/* Upload Section */}
+                <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+                    <h2 className="text-lg font-semibold mb-4">
+                        {mode === 'index' ? 'Upload to Vector Library' : 'Upload BOQ File'}
+                    </h2>
+
+                    {/* Set Selection (allocate mode only, optional) */}
+                    {mode === 'allocate' && (
+                        <div className="mb-6">
+                            <button
+                                onClick={() => setShowSetPicker(!showSetPicker)}
+                                className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                                <span className="font-medium text-gray-900">Choose Vector Sets (optional)</span>
+                                {selectedSets.length > 0 && (
+                                    <span className="text-sm text-indigo-600">{selectedSets.length} selected</span>
+                                )}
+                            </button>
+
+                            {showSetPicker && (
+                                <div className="mt-2 p-4 border rounded-lg bg-white max-h-60 overflow-y-auto">
+                                    {loadingSets ? (
+                                        <p className="text-gray-500 text-center">Loading sets...</p>
+                                    ) : availableSets.length === 0 ? (
+                                        <p className="text-gray-500 text-center">No vector sets available. Upload files to index first.</p>
+                                    ) : (
+                                        <>
+                                            <div className="flex justify-between mb-2">
+                                                <button onClick={() => setSelectedSets(availableSets)} className="text-xs text-indigo-600 hover:text-indigo-800">Select All</button>
+                                                <button onClick={() => setSelectedSets([])} className="text-xs text-gray-500 hover:text-gray-700">Clear All</button>
+                                            </div>
+                                            {availableSets.map(setName => (
+                                                <div key={setName} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                                                    <label className="flex items-center space-x-2 cursor-pointer flex-1">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedSets.includes(setName)}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) setSelectedSets(prev => [...prev, setName]);
+                                                                else setSelectedSets(prev => prev.filter(s => s !== setName));
+                                                            }}
+                                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                        <span className="text-sm text-gray-700">{setName}</span>
+                                                    </label>
+                                                    <button onClick={() => handleDeleteSet(setName)} className="ml-2 text-red-400 hover:text-red-600 text-xs">Delete</button>
+                                                </div>
+                                            ))}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Drag and Drop Upload Area */}
+                    {!isProcessing && (
+                        <div
+                            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                            onDragLeave={() => setIsDragOver(false)}
+                            onDrop={handleDrop}
+                            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${isDragOver ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-gray-400'}`}
+                        >
+                            <input type="file" accept=".xlsx,.XLSX" onChange={handleFileSelect} className="hidden" id="vector-file-upload" />
+                            <label htmlFor="vector-file-upload" className="cursor-pointer">
+                                <div className="text-4xl mb-2">📄</div>
+                                <p className="text-gray-600">
+                                    {selectedFile ? selectedFile.name : 'Click or drag and drop an Excel file (.xlsx)'}
+                                </p>
+                            </label>
+                        </div>
+                    )}
+
+                    {/* Upload Button */}
+                    {selectedFile && !isProcessing && (
+                        <button
+                            onClick={handleUpload}
+                            disabled={isUploading}
+                            className="mt-4 w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 transition-colors font-medium"
+                        >
+                            {isUploading ? 'Uploading...' : `Upload for ${mode === 'index' ? 'Indexing' : 'Allocation'}`}
+                        </button>
+                    )}
+
+                    {uploadError && <p className="mt-2 text-red-600 text-sm">{uploadError}</p>}
+
+                    {/* Processing Status */}
+                    {isProcessing && (
+                        <div className="mt-6">
+                            <div className="flex justify-between mb-2">
+                                <span className="text-sm font-medium text-gray-700">{processingStatus}</span>
+                                <span className="text-sm text-gray-500">{timeRemaining}</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-3">
+                                <div className="bg-indigo-600 h-3 rounded-full transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500 text-right">{progressPercent}%</p>
+                        </div>
+                    )}
+
+                    {/* Completion Actions */}
+                    {completedFilePath && (
+                        <div className="mt-6 p-4 bg-green-50 rounded-lg">
+                            <p className="text-green-800 font-medium mb-3">✅ Processing Complete!</p>
+                            {resultData && (
+                                <div className="grid grid-cols-3 gap-4 mb-4">
+                                    <div className="text-center">
+                                        <p className="text-sm text-gray-500">Matched</p>
+                                        <p className="text-lg font-semibold text-green-600">{resultData.matched}</p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-sm text-gray-500">Not Matched</p>
+                                        <p className="text-lg font-semibold text-red-600">{resultData.not_matched}</p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-sm text-gray-500">Match Rate</p>
+                                        <p className="text-lg font-semibold text-indigo-600">{(resultData.match_rate * 100).toFixed(1)}%</p>
+                                    </div>
+                                </div>
+                            )}
+                            <button onClick={handleDownload} className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                                Download Result
+                            </button>
+                        </div>
+                    )}
+
+                    {processingStatus && !isProcessing && !completedFilePath && (
+                        <p className="mt-4 text-sm text-gray-600">{processingStatus}</p>
+                    )}
+                </div>
+
+                {/* Output Files Section */}
+                {mode === 'allocate' && (
+                    <div className="bg-white rounded-xl shadow-sm p-6">
+                        <h2 className="text-lg font-semibold mb-4">Previous Results</h2>
+                        {loadingOutputFiles ? (
+                            <p className="text-gray-500 text-center py-4">Loading files...</p>
+                        ) : outputFiles.length === 0 ? (
+                            <p className="text-gray-500 text-center py-4">No output files yet.</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {outputFiles.map(file => (
+                                    <div key={file.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-900">{file.filename}</p>
+                                            <p className="text-xs text-gray-500">
+                                                {new Date(file.lastModified).toLocaleDateString()} · {(file.size / 1024).toFixed(0)} KB
+                                            </p>
+                                        </div>
+                                        <a href={file.downloadUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
+                                            Download
+                                        </a>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// ============================================================
+// MAIN CODE ALLOCATION COMPONENT
+// ============================================================
+
 const CodeAllocation: React.FC = () => {
     // View State
-    const [currentView, setCurrentView] = useState<'landing' | 'allocate' | 'index' | 'chat'>('landing');
+    const [currentView, setCurrentView] = useState<'landing' | 'allocate' | 'index' | 'chat' | 'vector-allocate' | 'vector-index'>('landing');
     // Mode Toggle
     const [currentMode, setCurrentMode] = useState<Mode>('allocate');
 
@@ -477,7 +928,9 @@ const CodeAllocation: React.FC = () => {
                     </div>
 
                     {/* Mode Selection Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Lexical Section */}
+                    <h2 className="text-lg font-semibold text-gray-700 mb-3">Lexical Matching</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         {/* AI Assistant Option */}
                         <button
                             onClick={() => setCurrentView('chat')}
@@ -520,6 +973,34 @@ const CodeAllocation: React.FC = () => {
                             </p>
                         </button>
                     </div>
+
+                    {/* Vector Section */}
+                    <h2 className="text-lg font-semibold text-gray-700 mb-3">Vector Matching</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Vector Allocate Option */}
+                        <button
+                            onClick={() => setCurrentView('vector-allocate')}
+                            className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-indigo-500 group"
+                        >
+                            <div className="text-5xl mb-4">🧬</div>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Vector Fill BOQ</h2>
+                            <p className="text-gray-600">
+                                Fill BOQ with price codes using vector-based semantic matching.
+                            </p>
+                        </button>
+
+                        {/* Vector Library Option */}
+                        <button
+                            onClick={() => setCurrentView('vector-index')}
+                            className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-200 p-8 text-left border-2 border-transparent hover:border-teal-500 group"
+                        >
+                            <div className="text-5xl mb-4">📚</div>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload to Vector Library</h2>
+                            <p className="text-gray-600">
+                                Upload and add price code files to the vector library.
+                            </p>
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -557,6 +1038,11 @@ const CodeAllocation: React.FC = () => {
                 </div>
             </div>
         );
+    }
+
+    // Vector Allocate / Vector Index View
+    if (currentView === 'vector-allocate' || currentView === 'vector-index') {
+        return <VectorAllocationView mode={currentView === 'vector-allocate' ? 'allocate' : 'index'} onBack={() => setCurrentView('landing')} />;
     }
 
     return (

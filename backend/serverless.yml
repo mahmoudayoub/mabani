@@ -26,6 +26,7 @@ provider:
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
     FILE_PROCESSING_BUCKET: almabanistack-almabanidataf54b245b-big4a9rsdgn2
     PRICECODE_BUCKET: pricecodestack-pricecodedata88b02d08-ciqjcb0pjn80
+    PRICECODE_VECTOR_BUCKET: pricecodevectorstack-pricecodevectordata3f9b10d9-0tepgcznykob
   iam:
     role:
       statements:
@@ -916,6 +917,304 @@ functions:
     events:
       - http:
           path: /pricecode/active-jobs
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  # ============================================================
+  # PRICE CODE VECTOR ALLOCATION ENDPOINTS
+  # ============================================================
+
+  priceCodeVectorUploadUrl:
+    handler: lambdas/file_processing.pricecode_vector_upload_url
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /pricecode-vector/upload-url
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  priceCodeVectorStatus:
+    handler: lambdas/file_processing.pricecode_vector_status
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /pricecode-vector/status/{filename}
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  priceCodeVectorDownload:
+    handler: lambdas/file_processing.pricecode_vector_download
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /pricecode-vector/download/{filename}
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  listAvailablePriceCodeVectors:
+    handler: lambdas/file_processing.list_available_pricecode_vectors
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /pricecode-vector/codes
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  deletePriceCodeVectorEstimate:
+    handler: lambdas/file_processing.delete_pricecode_vector_estimate
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /pricecode-vector/estimate/{filename}
+          method: delete
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  listPriceCodeVectorOutputFiles:
+    handler: lambdas/file_processing.list_pricecode_vector_output_files
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /pricecode-vector/files
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: ${env:COGNITO_USER_POOL_ARN}
+
+  listPriceCodeVectorActiveJobs:
+    handler: lambdas/file_processing.list_pricecode_vector_active_jobs
+    package:
+      patterns:
+        - "!.venv/**"
+        - "!venv/**"
+        - "!node_modules/**"
+        - "!tests/**"
+        - "!__pycache__/**"
+        - "!*.pyc"
+        - "!.pytest_cache/**"
+        - "!.serverless/**"
+        - "!package.json"
+        - "!package-lock.json"
+        - "!serverless.yml"
+        - "!.python-version"
+        - "!.git/**"
+        - "!layers/**"
+        - "!*.md"
+        - "!*.sh"
+        - "!*.log"
+        - "!*.txt"
+        - "!*.json"
+        - "!numpy/**"
+        - "!numpy-*/**"
+        - "!faiss/**"
+        - "!faiss-*/**"
+        - "lambdas/file_processing.py"
+        - "lambdas/__init__.py"
+    layers:
+      - { Ref: PythonRequirementsLambdaLayer }
+      - { Ref: SharedCodeLambdaLayer }
+    events:
+      - http:
+          path: /pricecode-vector/active-jobs
           method: get
           cors: true
           authorizer:

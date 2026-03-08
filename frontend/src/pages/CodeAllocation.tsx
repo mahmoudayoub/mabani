@@ -112,14 +112,16 @@ const parsePriceCodeVectorSummary = (text: string): PriceCodeSummary | null => {
             if (line.includes('RESULTS')) currentSection = 'stats';
             else if (line.startsWith('FILTERS:')) {
                 const filterValue = line.substring(8).trim();
-                summary.filters = [filterValue];
+                summary.filters = filterValue.split(',').map(f => f.trim()).filter(f => f);
             }
             else if (line.includes(':') && !line.startsWith('=======')) {
                 const cleanLine = line.replace(/^-\s+/, '');
                 const parts = cleanLine.split(':');
                 const key = parts[0];
                 const value = parts.slice(1).join(':').trim();
-                const cleanKey = key.trim().toLowerCase();
+
+                // Strip anything in parentheses from the key, e.g. "Exact (green)" -> "exact"
+                const cleanKey = key.replace(/\([^)]*\)/g, '').trim().toLowerCase();
 
                 if (currentSection === 'info') {
                     if (cleanKey === 'input') summary.fileInfo.inputFile = value;
@@ -134,8 +136,8 @@ const parsePriceCodeVectorSummary = (text: string): PriceCodeSummary | null => {
                         if (matchMatchRate) summary.stats.matchRate = matchMatchRate[1];
                     }
                     else if (cleanKey === 'not matched') summary.stats.notMatched = parseInt(value) || 0;
-                    else if (cleanKey.includes('exact')) summary.stats.exactMatch = parseInt(value) || 0;
-                    else if (cleanKey.includes('high')) summary.stats.highConf = parseInt(value) || 0;
+                    else if (cleanKey === 'exact') summary.stats.exactMatch = parseInt(value) || 0;
+                    else if (cleanKey === 'high') summary.stats.highConf = parseInt(value) || 0;
                 }
             }
         });
@@ -682,7 +684,9 @@ const CodeAllocation: React.FC = () => {
     const handleViewVectorSummary = async (file: PriceCodeVectorOutputFile) => {
         try {
             const text = await fetchTextContent(file.downloadUrl);
+            console.log("Fetched text length:", text.length, "Preview:", text.substring(0, 100)); // Debug log
             const parsed = parsePriceCodeVectorSummary(text);
+            console.log("Parsed vector result:", parsed); // Debug log
 
             if (parsed) {
                 setViewSummaryData(parsed);

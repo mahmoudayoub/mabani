@@ -29,7 +29,6 @@ RUN pip install --no-cache-dir gunicorn
 
 # Copy application code
 COPY almabani/ ./almabani/
-COPY app/ ./app/
 COPY pyproject.toml setup.py ./
 COPY worker.py ./
 
@@ -37,10 +36,7 @@ COPY worker.py ./
 RUN pip install --no-cache-dir -e .
 
 # Create data directories
-RUN mkdir -p /app/app/data/uploads \
-    /app/app/data/fills \
-    /app/app/data/indexes \
-    /app/data/logs
+RUN mkdir -p /app/data/logs
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser \

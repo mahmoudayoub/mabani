@@ -597,15 +597,16 @@ class PriceCodePipeline:
                 candidates = candidates[:_max]
 
                 # ── LLM pick from top candidates ──────────────────────
-                result = await self.matcher.llm_match(
-                    description=item_dict["description"],
-                    candidates=candidates,
-                    parent=item_dict.get("parent"),
-                    grandparent=item_dict.get("grandparent"),
-                    unit=item_dict.get("unit"),
-                    item_code=item_dict.get("item_code"),
-                    category_path=item_dict.get("category_path"),
-                )
+                async with _llm_sem:
+                    result = await self.matcher.llm_match(
+                        description=item_dict["description"],
+                        candidates=candidates,
+                        parent=item_dict.get("parent"),
+                        grandparent=item_dict.get("grandparent"),
+                        unit=item_dict.get("unit"),
+                        item_code=item_dict.get("item_code"),
+                        category_path=item_dict.get("category_path"),
+                    )
 
             _match_cache[cache_key] = result
             _items_completed += 1

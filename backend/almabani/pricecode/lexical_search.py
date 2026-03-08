@@ -2390,6 +2390,76 @@ class LexicalMatcher:
             ref["_tok_tuple"] = tuple(tokenize_normalized(str(_nt))) if _nt else ()
             ref["_leaf_tok_tuple"] = tuple(tokenize_normalized(str(_nl))) if _nl else ()
 
+        # ── Pre-compute clean-text fields ──────────────────────────────
+        # Avoids thousands of redundant clean_text() / normalize_text()
+        # calls per search.  One-time cost ~15s; saves ~10s per search.
+        logger.info("Pre-computing clean-text fields …")
+        for rid, ref in refs.items():
+            ref["_clean_norm_leaf"] = clean_text(ref.get("norm_leaf") or "")
+            ref["_clean_norm_text"] = clean_text(ref.get("norm_text") or "")
+            ref["_clean_prefixed_description"] = clean_text(ref.get("prefixed_description") or "")
+            ref["_clean_leaf_description"] = clean_text(ref.get("leaf_description") or "")
+            ref["_clean_discipline"] = clean_text(ref.get("discipline") or "")
+            ref["_clean_sheet_name"] = clean_text(ref.get("sheet_name") or "")
+            ref["_clean_source_file"] = clean_text(ref.get("source_file") or "")
+            ref["_clean_price_code"] = clean_text(ref.get("price_code") or "")
+            ref["_norm_price_code"] = normalize_price_code(ref.get("price_code") or "")
+
+        # ── Pre-compute intermediate segment tokens ────────────────────
+        # The segment-matching block splits prefixed_description by ";"
+        # and calls normalize_text() + tokenize() on intermediate segs.
+        # normalize_text() runs 84 DOMAIN_ALIASES regex — by far the
+        # most expensive per-ref operation.  Pre-compute once.
+        logger.info("Pre-computing segment tokens …")
+        for rid, ref in refs.items():
+            _pdesc = ref["_clean_prefixed_description"]
+            _segs = [s.strip() for s in _pdesc.split(";")]
+            if len(_segs) > 1:
+                _inter = " ".join(_segs[:-1])
+                _inter_norm = normalize_text(_inter)
+                ref["_inter_alpha_toks"] = frozenset(
+                    LexicalMatcher._alpha_tokens(set(tokenize_normalized(_inter_norm)))
+                )
+                ref["_inter_text_lower"] = _inter.lower()
+            else:
+                ref["_inter_alpha_toks"] = frozenset()
+                ref["_inter_text_lower"] = ""
+
+        # ── Pre-compute CSV sets ──────────────────────────────────────
+        # _csv_to_set() is called ~20× per ref across spec methods.
+        logger.info("Pre-computing CSV sets …")
+        _CSV_COLS = (
+            "dn_csv", "dia_csv", "mm_csv", "mpa_csv", "kv_csv",
+            "dims_csv", "mm2_csv", "core_csv", "thk_csv", "fire_csv",
+            "pn_csv", "pipe_mat_csv", "valve_type_csv",
+            "concrete_elem_csv", "cable_insul_csv", "schedule_csv",
+            "pipe_grade_csv", "fitting_type_csv",
+        )
+        for rid, ref in refs.items():
+            for col in _CSV_COLS:
+                raw = ref.get(col, "")
+                s = clean_text(raw)
+                ref["_set_" + col] = frozenset(x for x in s.split(",") if x) if s else frozenset()
+            # Merged dn+dia for cross-referencing
+            ref["_set_pipe_size"] = ref["_set_dn_csv"] | ref["_set_dia_csv"]
+
+        # ── Pre-compute inferred discipline ────────────────────────────
+        logger.info("Pre-computing inferred discipline …")
+        for rid, ref in refs.items():
+            disc = ref["_clean_discipline"]
+            if disc == "unknown":
+                disc = _infer_discipline_from_context(
+                    ref.get("source_file", ""), ref.get("sheet_name", "")
+                )
+            ref["_inferred_discipline"] = disc
+
+        # ── Pre-compute ref unit family ────────────────────────────────
+        logger.info("Pre-computing ref unit family …")
+        for rid, ref in refs.items():
+            ref["_ref_unit_family"] = _infer_ref_unit_family(
+                ref["_clean_prefixed_description"]
+            )
+
         conn.close()
         logger.info(
             f"Index loaded: {len(refs):,} refs, "
@@ -2682,7 +2752,7 @@ class LexicalMatcher:
             _cref = ref_rows.get(_crid)
             if not _cref:
                 continue
-            _cpc = (clean_text(_cref["price_code"])).split()
+            _cpc = _cref["_norm_price_code"].split()
             if len(_cpc) >= 3:
                 _cand_families.add(" ".join(_cpc[:3]))
         for _cfam in _cand_families:
@@ -2734,8 +2804,8 @@ class LexicalMatcher:
                 continue
 
             final = lex_score
-            leaf_norm = clean_text(ref["norm_leaf"])
-            full_norm = clean_text(ref["norm_text"])
+            leaf_norm = ref["_clean_norm_leaf"]
+            full_norm = ref["_clean_norm_text"]
             _cached_toks = ref.get("_tok_tuple")
             ref_toks = set(_cached_toks) if _cached_toks else set(tokenize_normalized(full_norm))
             overlap = distinctive & ref_toks
@@ -2791,37 +2861,18 @@ class LexicalMatcher:
             # intermediate segments, boost the candidate — it means the
             # rate-book classification aligns with the BOQ hierarchy.
             if _ctx_alpha:
-                _prefix_desc = clean_text(ref["prefixed_description"])
-                _seg_parts = [s.strip() for s in _prefix_desc.split(";")]
-                if len(_seg_parts) > 1:
-                    # All segments except the last (leaf)
-                    _intermediate = " ".join(_seg_parts[:-1])
-                    _inter_toks = self._alpha_tokens(
-                        set(tokenize_normalized(normalize_text(_intermediate)))
-                    )
-                    if _inter_toks:
-                        _seg_overlap = _ctx_alpha & _inter_toks
-                        _seg_ratio = len(_seg_overlap) / max(1, len(_ctx_alpha))
-                        if _seg_ratio >= 0.3:
-                            final *= 1.0 + 0.35 * _seg_ratio  # up to ~1.35×
-                        # NOTE: no penalty for _seg_ratio==0 — vocabulary
-                        # between BOQ parents and rate-book hierarchy
-                        # segments differs across disciplines (e.g. mech
-                        # BOQ says "Soil pipe work" but ref intermediate
-                        # says "Facility Sanitary Sewerage").  Absence of
-                        # match is not evidence of wrong candidate.
+                _inter_toks = ref["_inter_alpha_toks"]
+                if _inter_toks:
+                    _seg_overlap = _ctx_alpha & _inter_toks
+                    _seg_ratio = len(_seg_overlap) / max(1, len(_ctx_alpha))
+                    if _seg_ratio >= 0.3:
+                        final *= 1.0 + 0.35 * _seg_ratio  # up to ~1.35×
 
-                        # ── In-situ vs Precast concrete routing ────────
-                        # When the BOQ context does NOT mention "precast"
-                        # but the ref's intermediate segment says "Precast",
-                        # penalise — the item is likely cast-in-situ concrete.
-                        # Conversely, if context says "precast" but ref says
-                        # "Cast In Situ", penalise.
-                        _inter_low = _intermediate.lower()
-                        if "precast" in _inter_low and not _ctx_has_precast:
-                            final *= 0.55
-                        elif _ctx_has_precast and "cast in situ" in _inter_low:
-                            final *= 0.65
+                    _inter_low = ref["_inter_text_lower"]
+                    if "precast" in _inter_low and not _ctx_has_precast:
+                        final *= 0.55
+                    elif _ctx_has_precast and "cast in situ" in _inter_low:
+                        final *= 0.65
 
             # Token overlap bonuses
             if distinctive:
@@ -2868,8 +2919,8 @@ class LexicalMatcher:
             # overlap is very weak so wrong-discipline candidates can
             # easily outscore the correct ones (e.g. Z_Utilities HDPE
             # beating plumbing uPVC for "50 mm diameter").
-            ref_disc = clean_text(ref["discipline"])
-            ref_sheet = clean_text(ref["sheet_name"])
+            ref_disc = ref["_clean_discipline"]
+            ref_sheet = ref["_clean_sheet_name"]
             ref_sheet_low = ref_sheet.lower()
 
             # ── Infer discipline for "unknown" refs ──────────────────
@@ -2878,9 +2929,7 @@ class LexicalMatcher:
             # from source-file + sheet name via the shared rule table
             # so they participate in discipline routing correctly.
             if ref_disc == "unknown":
-                ref_disc = _infer_discipline_from_context(
-                    ref["source_file"], ref_sheet
-                )
+                ref_disc = ref["_inferred_discipline"]
 
             if guessed_disc:
                 if guessed_disc == ref_disc:
@@ -2899,7 +2948,7 @@ class LexicalMatcher:
             # common on thin items) but stronger for non-MEP prefixes
             # (Y-insulation, C-civil) which are almost always wrong.
             if expected_mep_prefix:
-                _ref_pc_raw = clean_text(ref["price_code"])
+                _ref_pc_raw = ref["_clean_price_code"]
                 _ref_prefix = _ref_pc_raw[0].upper() if _ref_pc_raw else ""
                 if _ref_prefix and _ref_prefix.isalpha():
                     if _ref_prefix == expected_mep_prefix.upper():
@@ -2950,9 +2999,7 @@ class LexicalMatcher:
             # separate volume (m3=concrete) from area (m2=formwork) from
             # weight (t=reinforcement) etc.
             if boq_unit_fam:
-                ref_unit_fam = _infer_ref_unit_family(
-                    clean_text(ref["prefixed_description"])
-                )
+                ref_unit_fam = ref["_ref_unit_family"]
                 if ref_unit_fam:
                     if ref_unit_fam == boq_unit_fam:
                         final *= 1.15  # reward matching unit family
@@ -2968,7 +3015,7 @@ class LexicalMatcher:
             # Subcategory "00" is a generic/template placeholder; codes
             # like C 31 13, C 11 13, F 30 36 are project-specific and
             # should be preferred when both exist.
-            _pc = normalize_price_code(ref["price_code"])
+            _pc = ref["_norm_price_code"]
             _pc_parts = _pc.split()
             # Subcategory "00" penalty
             _subcat = _pc_parts[2] if len(_pc_parts) >= 3 else None
@@ -3060,11 +3107,11 @@ class LexicalMatcher:
                 "overlap_count": len(overlap),
                 "alpha_overlap_count": len(alpha_overlap),
                 "discipline": ref_disc,
-                "source_file": clean_text(ref["source_file"]),
-                "sheet_name": clean_text(ref["sheet_name"]),
-                "price_code": normalize_price_code(ref["price_code"]),
-                "description": clean_text(ref["prefixed_description"]),
-                "leaf_description": clean_text(ref["leaf_description"]),
+                "source_file": ref["_clean_source_file"],
+                "sheet_name": ref["_clean_sheet_name"],
+                "price_code": ref["_norm_price_code"],
+                "description": ref["_clean_prefixed_description"],
+                "leaf_description": ref["_clean_leaf_description"],
                 # Spec columns for LLM display
                 "dn_csv": ref.get("dn_csv", ""),
                 "dia_csv": ref.get("dia_csv", ""),
@@ -3156,11 +3203,7 @@ class LexicalMatcher:
                     sib_score *= self._spec_multiplier(desc_specs, ctx_specs, sref)
 
                     # Discipline routing
-                    sib_disc = clean_text(sref["discipline"])
-                    if sib_disc == "unknown":
-                        sib_disc = _infer_discipline_from_context(
-                            sref["source_file"], sref.get("sheet_name", "")
-                        )
+                    sib_disc = sref["_inferred_discipline"]
                     if guessed_disc:
                         if guessed_disc == sib_disc:
                             sib_score *= 1.15
@@ -3171,7 +3214,7 @@ class LexicalMatcher:
 
                     # Scope scoring
                     if expected_scope:
-                        sib_pc = normalize_price_code(sref["price_code"])
+                        sib_pc = sref["_norm_price_code"]
                         sib_scope = _extract_scope_letter(sib_pc)
                         if sib_scope:
                             if expected_scope in ("E", "F"):
@@ -3182,9 +3225,7 @@ class LexicalMatcher:
 
                     # Unit compatibility for siblings
                     if boq_unit_fam:
-                        sib_unit_fam = _infer_ref_unit_family(
-                            clean_text(sref["prefixed_description"])
-                        )
+                        sib_unit_fam = sref["_ref_unit_family"]
                         if sib_unit_fam:
                             if sib_unit_fam == boq_unit_fam:
                                 sib_score *= 1.15
@@ -3192,7 +3233,7 @@ class LexicalMatcher:
                                 sib_score *= 0.45
 
                     # V-suffix routing for siblings (general, data-driven)
-                    _sib_pc = normalize_price_code(sref["price_code"])
+                    _sib_pc = sref["_norm_price_code"]
                     _sib_parts = _sib_pc.split()
                     if len(_sib_parts) >= 4 and len(_sib_parts[3]) >= 2:
                         _sib_vsuffix = _sib_parts[3]
@@ -3225,11 +3266,11 @@ class LexicalMatcher:
                         "overlap_count": 2,  # minimum to pass filter
                         "alpha_overlap_count": 1,
                         "discipline": sib_disc,
-                        "source_file": clean_text(sref["source_file"]),
-                        "sheet_name": clean_text(sref.get("sheet_name", "")),
-                        "price_code": normalize_price_code(sref["price_code"]),
-                        "description": clean_text(sref["prefixed_description"]),
-                        "leaf_description": clean_text(sref.get("leaf_description", "")),
+                        "source_file": sref["_clean_source_file"],
+                        "sheet_name": sref["_clean_sheet_name"],
+                        "price_code": sref["_norm_price_code"],
+                        "description": sref["_clean_prefixed_description"],
+                        "leaf_description": sref["_clean_leaf_description"],
                         # Spec columns for LLM display
                         "dn_csv": sref.get("dn_csv", ""),
                         "dia_csv": sref.get("dia_csv", ""),
@@ -3566,11 +3607,11 @@ class LexicalMatcher:
             qvals = set(desc_specs.get(key, ()))
             if not qvals:
                 continue
-            rvals = self._csv_to_set(ref.get(col, ""))
+            rvals = ref.get("_set_" + col) or self._csv_to_set(ref.get(col, ""))
             if key == "dia":
-                rvals = rvals | self._csv_to_set(ref.get("dn_csv", ""))
+                rvals = rvals | (ref.get("_set_dn_csv") or self._csv_to_set(ref.get("dn_csv", "")))
             elif key == "dn":
-                rvals = rvals | self._csv_to_set(ref.get("dia_csv", ""))
+                rvals = rvals | (ref.get("_set_dia_csv") or self._csv_to_set(ref.get("dia_csv", "")))
             if not rvals:
                 # Generic ref (no spec value) — small penalty so
                 # specific-matching refs rank above generics.
@@ -3639,15 +3680,15 @@ class LexicalMatcher:
             qvals = set(qspecs.get(key, ()))
             if not qvals:
                 continue
-            rvals = self._csv_to_set(ref.get(col, ""))
+            rvals = ref.get("_set_" + col) or self._csv_to_set(ref.get(col, ""))
             # ── Fix 1: dia ↔ dn cross-reference ─────────────────────
             # BOQ "25 mm diameter" → dia=(25,) but rate-book stores
             # "DN25" → dn_csv=[25], dia_csv=[].  They mean the same
             # pipe size, so merge both columns before checking.
             if key == "dia":
-                rvals = rvals | self._csv_to_set(ref.get("dn_csv", ""))
+                rvals = rvals | (ref.get("_set_dn_csv") or self._csv_to_set(ref.get("dn_csv", "")))
             elif key == "dn":
-                rvals = rvals | self._csv_to_set(ref.get("dia_csv", ""))
+                rvals = rvals | (ref.get("_set_dia_csv") or self._csv_to_set(ref.get("dia_csv", "")))
             if not rvals:
                 # Ref has no value for this spec — allow through (generic ref).
                 # Soft scoring (_spec_multiplier) handles the penalty.

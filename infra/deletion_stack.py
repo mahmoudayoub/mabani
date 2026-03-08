@@ -79,7 +79,7 @@ class DeletionStack(Stack):
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
             },
-            memory_size=512,
+            memory_size=1024,
             timeout=Duration.seconds(120)
         )
 
@@ -102,8 +102,26 @@ class DeletionStack(Stack):
             description="API for deleting datasheets and vectors",
             default_cors_preflight_options=apigw.CorsOptions(
                 allow_origins=apigw.Cors.ALL_ORIGINS,
-                allow_methods=apigw.Cors.ALL_METHODS
+                allow_methods=apigw.Cors.ALL_METHODS,
+                allow_headers=["Content-Type", "Authorization", "X-Amz-Date",
+                               "X-Api-Key", "X-Amz-Security-Token"],
             )
+        )
+
+        # Gateway responses: add CORS headers to 4XX/5XX errors
+        # (so even Lambda crashes / timeouts return Access-Control-Allow-Origin)
+        _cors_headers = {
+            "Access-Control-Allow-Origin": "'*'",
+            "Access-Control-Allow-Methods": "'DELETE,OPTIONS'",
+            "Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        }
+        api.add_gateway_response("GW4XX",
+            type=apigw.ResponseType.DEFAULT_4_XX,
+            response_headers=_cors_headers,
+        )
+        api.add_gateway_response("GW5XX",
+            type=apigw.ResponseType.DEFAULT_5_XX,
+            response_headers=_cors_headers,
         )
 
         # Resource: /files/sheets/{sheet_name}

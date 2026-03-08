@@ -38,7 +38,7 @@ def get_services():
     openai_async = AsyncOpenAI(
         api_key=settings.openai_api_key,
         timeout=settings.openai_timeout,
-        max_retries=settings.openai_max_retries,
+        max_retries=0,  # Disable SDK-level retries; matcher.py handles retries with full cause logging
     )
     return settings, openai_async
 

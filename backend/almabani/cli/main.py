@@ -385,35 +385,10 @@ def delete_sheet(
 
 
 @app.command()
-def gui(
-    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind to"),
-    port: int = typer.Option(5000, "--port", "-p", help="Port to bind to"),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug mode"),
-):
-    """🌐 Start the web GUI interface."""
-    console.print(Panel.fit(
-        f"[bold cyan]Almabani Web GUI[/bold cyan]\n"
-        f"Starting server on http://{host}:{port}",
-        border_style="cyan"
-    ))
-    
-    try:
-        import sys
-        from pathlib import Path
-        # Add project root to path so 'app' module can be found
-        project_root = Path(__file__).parent.parent.parent
-        if str(project_root) not in sys.path:
-            sys.path.insert(0, str(project_root))
-        
-        from app.main import run_app
-        run_app(host=host, port=port, debug=debug)
-    except ImportError as e:
-        console.print(f"[red]✗ Error:[/red] {e}")
-        console.print("[yellow]Make sure Flask is installed: pip install flask[/yellow]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]✗ Error:[/red] {e}")
-        raise typer.Exit(1)
+def gui():
+    """🌐 Web GUI (moved to external repo)."""
+    console.print("[yellow]The web GUI has been moved to an external repository.[/yellow]")
+    raise typer.Exit(0)
 
 
 @app.command()

@@ -168,13 +168,32 @@ class PriceCodeMatcher:
                 last_err = e
                 if attempt < _LLM_MAX_RETRIES - 1:
                     delay = _LLM_BASE_DELAY * (2 ** attempt)
+                    # Build detailed cause string for logs
+                    cause_parts = [f"{type(e).__name__}: {e}"]
+                    status = getattr(e, "status_code", None) or getattr(e, "http_status", None)
+                    if status is not None:
+                        cause_parts.append(f"HTTP {status}")
+                    err_body = getattr(e, "body", None) or getattr(e, "response", None)
+                    if err_body is not None:
+                        body_text = getattr(err_body, "text", None) if hasattr(err_body, "text") else str(err_body)
+                        if body_text:
+                            cause_parts.append(f"body={body_text[:500]}")
                     logger.warning(
-                        f"LLM call failed (attempt {attempt + 1}/{_LLM_MAX_RETRIES}), "
-                        f"retrying in {delay:.1f}s: {e}"
+                        "LLM call failed (attempt %d/%d), retrying in %.1fs \u2013 %s",
+                        attempt + 1, _LLM_MAX_RETRIES, delay,
+                        " | ".join(cause_parts),
                     )
                     await asyncio.sleep(delay)
 
-        logger.error(f"LLM match error after {_LLM_MAX_RETRIES} attempts: {last_err}")
+        # Final failure \u2013 log with full detail
+        final_parts = [f"{type(last_err).__name__}: {last_err}"]
+        status = getattr(last_err, "status_code", None) or getattr(last_err, "http_status", None)
+        if status is not None:
+            final_parts.append(f"HTTP {status}")
+        logger.error(
+            "LLM match failed after %d attempts \u2013 %s",
+            _LLM_MAX_RETRIES, " | ".join(final_parts),
+        )
         return {"matched": False, "reason": f"LLM error: {str(last_err)}"}
 
     # ── prompt helpers (unchanged) ──────────────────────────────────────

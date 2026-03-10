@@ -178,9 +178,10 @@ async def process_allocate(input_path: Path, storage):
         df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
         total_items = len(df)
 
+        # Calibrated from cloud runs (~0.002s/item for batched embed + S3 Vectors)
         COLD_START_SECONDS = 15
-        SECONDS_PER_ITEM = 0.15  # embedding + search per item
-        BASE_OVERHEAD = 10
+        SECONDS_PER_ITEM = 0.002  # batch embedding + S3 Vectors bulk query
+        BASE_OVERHEAD = 10        # file I/O + upload
         estimated_seconds = max(
             30,
             COLD_START_SECONDS + int(total_items * SECONDS_PER_ITEM) + BASE_OVERHEAD,

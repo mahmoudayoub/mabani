@@ -217,27 +217,16 @@ async def process_fill(input_path: Path, storage):
         total_items = len(items_to_fill)
         logger.info(f"📊 Total items to fill: {total_items}")
         
-        # Calculate estimate accounting for async parallel processing
-        # Calibrated from actual performance data (59K items, 594 min total)
-        # Formula: cold_start + (batches * seconds_per_batch) + overhead
-        COLD_START_SECONDS = 15        # ECS/Fargate cold start time
-        SECONDS_PER_BATCH = 35         # Time to process one batch of 200 items in parallel
-        BASE_OVERHEAD_SECONDS = 10     # File download, setup, upload
-        CONCURRENT_WORKERS = settings.max_workers  # Number of parallel workers (200)
-        
-        # With parallel processing, time = cold_start + (batches * time_per_batch) + overhead
-        if total_items <= CONCURRENT_WORKERS:
-            # All items processed in parallel - just one "batch"
-            estimated_seconds = int(COLD_START_SECONDS + SECONDS_PER_BATCH + BASE_OVERHEAD_SECONDS)
-        else:
-            # Multiple batches needed
-            batches = (total_items + CONCURRENT_WORKERS - 1) // CONCURRENT_WORKERS  # Ceiling division
-            estimated_seconds = int(COLD_START_SECONDS + (batches * SECONDS_PER_BATCH) + BASE_OVERHEAD_SECONDS)
+        # Calibrated from 23 actual runs (regression R²=0.93)
+        # Formula: time ≈ 0.25s per item + 40s baseline (cold start + file I/O)
+        SECONDS_PER_ITEM = 0.25   # embedding + vector search + LLM match
+        BASE_OVERHEAD = 40        # ECS cold start + download + setup + upload
+        estimated_seconds = max(30, int(SECONDS_PER_ITEM * total_items + BASE_OVERHEAD))
         
         estimated_minutes = estimated_seconds / 60
         
         logger.info(f"📊 Estimated processing time: {estimated_minutes:.1f} minutes ({estimated_seconds}s)")
-        logger.info(f"📊 Processing {total_items} items with {CONCURRENT_WORKERS} workers in ~{batches if total_items > CONCURRENT_WORKERS else 1} batch(es)")
+        logger.info(f"📊 Processing {total_items} items with {settings.max_workers} workers")
         
         # Get task ARN from ECS metadata endpoint
         task_arn = None

@@ -170,12 +170,12 @@ async def process_allocate(input_path: Path, storage):
         df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
         total_items = len(df)
 
-        COLD_START_SECONDS = 15
-        SECONDS_PER_BATCH = 4  # lexical is faster than embedding
-        BASE_OVERHEAD = 10
-        CONCURRENT = settings.pricecode_max_concurrent
-        batches = (total_items + CONCURRENT - 1) // CONCURRENT
-        estimated_seconds = max(30, COLD_START_SECONDS + batches * SECONDS_PER_BATCH + BASE_OVERHEAD)
+        # Calibrated from 24 actual runs (assumes no LLM retries)
+        # Formula: DB download + 0.04s per item + base overhead
+        DB_LOAD_SECONDS = 20      # SQLite index download from S3
+        SECONDS_PER_ITEM = 0.04   # lexical search + LLM validation (no retries)
+        BASE_OVERHEAD = 10        # cold start + file I/O
+        estimated_seconds = max(30, int(DB_LOAD_SECONDS + SECONDS_PER_ITEM * total_items + BASE_OVERHEAD))
 
         task_arn = None
         try:

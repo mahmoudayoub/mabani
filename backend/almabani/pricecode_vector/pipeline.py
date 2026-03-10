@@ -21,6 +21,7 @@ from almabani.core.vector_store import VectorStoreService
 from almabani.parsers.excel_parser import ExcelParser
 from almabani.parsers.hierarchy_processor import HierarchyProcessor
 from almabani.core.models import ItemType
+from almabani.pricecode_vector.matcher import PriceCodeVectorMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,8 @@ class PriceCodeVectorPipeline:
         self,
         embeddings_service: EmbeddingsService,
         vector_store: VectorStoreService,
+        async_openai_client=None,
+        model: str = None,
         top_k: int = 5,
         similarity_threshold: float = 0.40,
     ):
@@ -47,6 +50,14 @@ class PriceCodeVectorPipeline:
         self.excel_parser = ExcelParser()
         self.hierarchy_processor = HierarchyProcessor()
 
+        # LLM matcher – used when an OpenAI client is provided
+        self.llm_matcher: Optional[PriceCodeVectorMatcher] = None
+        if async_openai_client is not None:
+            self.llm_matcher = PriceCodeVectorMatcher(
+                async_openai_client=async_openai_client,
+                model=model,
+            )
+
     # ── public API ──────────────────────────────────────────────────────
 
     async def process_file(
@@ -54,7 +65,7 @@ class PriceCodeVectorPipeline:
         input_file: Path,
         output_file: Optional[Path] = None,
         source_files: Optional[List[str]] = None,
-        max_concurrent: int = 50,
+        max_concurrent: int = 100,
     ) -> Dict[str, Any]:
         """
         Allocate price codes to *input_file* and write *output_file*.
@@ -131,19 +142,24 @@ class PriceCodeVectorPipeline:
 
                 result: Dict[str, Any]
                 if matches and matches[0]["score"] >= self.similarity_threshold:
-                    best = matches[0]
-                    meta = best.get("metadata", {})
-                    result = {
-                        "matched": True,
-                        "price_code": meta.get("price_code", ""),
-                        "price_description": meta.get("description", ""),
-                        "source_file": meta.get("source_file", ""),
-                        "reference_sheet": meta.get("sheet_name", ""),
-                        "score": best["score"],
-                        "confidence_level": (
-                            "EXACT" if best["score"] >= 0.92 else "HIGH"
-                        ),
-                    }
+                    if self.llm_matcher is not None:
+                        # ── LLM judge step ──────────────────────────────
+                        result = await self.llm_matcher.match(item, matches)
+                    else:
+                        # ── Fallback: score-only (no LLM client) ────────
+                        best = matches[0]
+                        meta = best.get("metadata", {})
+                        result = {
+                            "matched": True,
+                            "price_code": meta.get("price_code", ""),
+                            "price_description": meta.get("description", ""),
+                            "source_file": meta.get("source_file", ""),
+                            "reference_sheet": meta.get("sheet_name", ""),
+                            "score": best["score"],
+                            "confidence_level": (
+                                "EXACT" if best["score"] >= 0.92 else "HIGH"
+                            ),
+                        }
                 else:
                     result = {
                         "matched": False,
@@ -381,6 +397,7 @@ class PriceCodeVectorPipeline:
                 if result.get("price_description"):
                     parts.append(result["price_description"])
                 ws.cell(row=row_idx, column=ref_col).value = " - ".join(parts)
+                ws.cell(row=row_idx, column=reason_col).value = result.get("reason", "")
                 ws.cell(row=row_idx, column=score_col).value = round(result.get("score", 0), 3)
             else:
                 ws.cell(row=row_idx, column=reason_col).value = result.get("reason", "")
@@ -403,8 +420,8 @@ class PriceCodeVectorPipeline:
             "RESULTS",
             f"  Total Items:     {report['total_items']}",
             f"  Matched:         {report['matched']}  ({report['match_rate']:.0%})",
-            f"    Exact (≥ 0.92):  {report['matched_exact']}",
-            f"    High  (< 0.92):  {report['matched_high']}",
+            f"    Exact (green):   {report['matched_exact']}",
+            f"    High  (yellow):  {report['matched_high']}",
             f"  Not Matched:     {report['not_matched']}",
             "",
         ]

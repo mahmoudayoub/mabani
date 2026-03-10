@@ -1,8 +1,7 @@
 aiohttp-3.13.3.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
 aiohttp-3.13.3.dist-info/METADATA,sha256=CQROZCStho-eb7xiFIuAzj30JuupEU_jHpYDFiG_HhM,8145
 aiohttp-3.13.3.dist-info/RECORD,,
-aiohttp-3.13.3.dist-info/REQUESTED,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
-aiohttp-3.13.3.dist-info/WHEEL,sha256=2iHh9e2o6T3nHtu_NVT7Cs7pebIqF94rZK8zrQfgoJI,190
+aiohttp-3.13.3.dist-info/WHEEL,sha256=BvA_i88wcFUl5ehXLgmhwyDL4XPGrCKn6CTUA9axFDE,190
 aiohttp-3.13.3.dist-info/licenses/LICENSE.txt,sha256=n4DQ2311WpQdtFchcsJw7L2PCCuiFd3QlZhZQu2Uqes,588
 aiohttp-3.13.3.dist-info/licenses/vendor/llhttp/LICENSE,sha256=68qFTgE0zSVtZzYnwgSZ9CV363S6zwi58ltianPJEnc,1105
 aiohttp-3.13.3.dist-info/top_level.txt,sha256=iv-JIaacmTl-hSho3QmphcKnbRRYx1st47yjz_178Ro,8
@@ -64,9 +63,9 @@ aiohttp/_cookie_helpers.py,sha256=_p7y-B8OCAk7FLjByiuwFIpDLGuNoJn3_vixzymAFnE,13
 aiohttp/_cparser.pxd,sha256=UnbUYCHg4NdXfgyRVYAMv2KTLWClB4P-xCrvtj_r7ew,4295
 aiohttp/_find_header.pxd,sha256=0GfwFCPN2zxEKTO1_MA5sYq2UfzsG8kcV3aTqvwlz3g,68
 aiohttp/_headers.pxi,sha256=n701k28dVPjwRnx5j6LpJhLTfj7dqu2vJt7f0O60Oyg,2007
-aiohttp/_http_parser.cpython-313-x86_64-linux-gnu.so,sha256=160haCVT52vor9LgBg6usUfWpdlyARNZ3uP3Ug2mPcE,2817968
+aiohttp/_http_parser.cpython-311-x86_64-linux-gnu.so,sha256=PObtJEOjKDBqrkmgccbJHcbvu_Kl_uxPiB6Aowzp82c,2794568
 aiohttp/_http_parser.pyx,sha256=-YI8YIY4uKd_7Bwr0o3FwEPwjHdexZ5-Ji3XS067c4Q,28261
-aiohttp/_http_writer.cpython-313-x86_64-linux-gnu.so,sha256=hza1GeOo_l51LoJEYq0SSCHlASBp7kQ-HfhVDwwiabM,539824
+aiohttp/_http_writer.cpython-311-x86_64-linux-gnu.so,sha256=Vpk9H46UhD2wm3VA8YAMz221EqyT5oBdkmR3TWH9sm0,533008
 aiohttp/_http_writer.pyx,sha256=VlFEBM6HoVv8a0AAJtc6JwFlsv2-cDE8-gB94p3dfhQ,4664
 aiohttp/_websocket/.hash/mask.pxd.hash,sha256=Y0zBddk_ck3pi9-BFzMcpkcvCKvwvZ4GTtZFb9u1nxQ,128
 aiohttp/_websocket/.hash/mask.pyx.hash,sha256=90owpXYM8_kIma4KUcOxhWSk-Uv4NVMBoCYeFM1B3d0,128
@@ -80,12 +79,12 @@ aiohttp/_websocket/__pycache__/reader_c.cpython-313.pyc,,
 aiohttp/_websocket/__pycache__/reader_py.cpython-313.pyc,,
 aiohttp/_websocket/__pycache__/writer.cpython-313.pyc,,
 aiohttp/_websocket/helpers.py,sha256=P-XLv8IUaihKzDenVUqfKU5DJbWE5HvG8uhvUZK8Ic4,5038
-aiohttp/_websocket/mask.cpython-313-x86_64-linux-gnu.so,sha256=e2EZncw1YnRuIQn9O_-eZSosdge6iwqG18ckdeqdx1k,246592
+aiohttp/_websocket/mask.cpython-311-x86_64-linux-gnu.so,sha256=a4UBGy0mRIUT6RM3kVyNJKj5rQs3h2I8WW9jXsIfuSY,238600
 aiohttp/_websocket/mask.pxd,sha256=sBmZ1Amym9kW4Ge8lj1fLZ7mPPya4LzLdpkQExQXv5M,112
 aiohttp/_websocket/mask.pyx,sha256=BHjOtV0O0w7xp9p0LNADRJvGmgfPn9sGeJvSs0fL__4,1397
 aiohttp/_websocket/models.py,sha256=XAzjs_8JYszWXIgZ6R3ZRrF-tX9Q_6LiD49WRYojopM,2121
 aiohttp/_websocket/reader.py,sha256=eC4qS0c5sOeQ2ebAHLaBpIaTVFaSKX79pY2xvh3Pqyw,1030
-aiohttp/_websocket/reader_c.cpython-313-x86_64-linux-gnu.so,sha256=kqy_NigBXCVD411HOUdmBkvEWvdl2IcYG4gC24uil8g,1821608
+aiohttp/_websocket/reader_c.cpython-311-x86_64-linux-gnu.so,sha256=vFqv6jKbkwDhazMnZ8ZjKmCofmqRodyoVrWxI2w1Pdo,1864328
 aiohttp/_websocket/reader_c.pxd,sha256=nl_njtDrzlQU0rjgGGjZDB-swguE0tX_bCPobkShVa4,2625
 aiohttp/_websocket/reader_c.py,sha256=V5YtZ2gj2BjE2Q-W9sR_MdAl1VAm1pB7ZjozVJcOpbg,18868
 aiohttp/_websocket/reader_py.py,sha256=V5YtZ2gj2BjE2Q-W9sR_MdAl1VAm1pB7ZjozVJcOpbg,18868

@@ -46,7 +46,7 @@ logger = logging.getLogger("pricecode_vector_worker")
 # ═══════════════════════════════════════════════════════════════════════
 
 def _build_services():
-    """Return (settings, embeddings_service, vector_store)."""
+    """Return (settings, embeddings_service, vector_store, openai_async)."""
     settings = get_settings()
 
     openai_async = AsyncOpenAI(
@@ -67,7 +67,7 @@ def _build_services():
         index_name=PRICECODE_VECTOR_INDEX,
     )
 
-    return settings, embeddings, vector_store
+    return settings, embeddings, vector_store, openai_async
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -86,7 +86,7 @@ async def process_index(input_path: Path, storage):
     """
     logger.info(f"Starting INDEX job (triggered by {input_path.name})")
 
-    settings, embeddings, vector_store = _build_services()
+    settings, embeddings, vector_store, _openai = _build_services()
     bucket_name = os.getenv("S3_BUCKET_NAME")
     s3 = boto3.client("s3")
 
@@ -166,7 +166,7 @@ async def process_allocate(input_path: Path, storage):
     """Allocate price codes to a BOQ using S3 Vectors similarity search."""
     logger.info(f"Starting ALLOCATE job for {input_path}")
 
-    settings, embeddings, vector_store = _build_services()
+    settings, embeddings, vector_store, openai_async = _build_services()
     bucket_name = os.getenv("S3_BUCKET_NAME")
     s3 = boto3.client("s3")
 
@@ -240,6 +240,8 @@ async def process_allocate(input_path: Path, storage):
     pipeline = PriceCodeVectorPipeline(
         embeddings_service=embeddings,
         vector_store=vector_store,
+        async_openai_client=openai_async,
+        model=settings.openai_chat_model,
         top_k=settings.pricecode_vector_top_k,
         similarity_threshold=settings.pricecode_vector_threshold,
     )
@@ -252,6 +254,7 @@ async def process_allocate(input_path: Path, storage):
             input_file=input_path,
             output_file=output_path,
             source_files=source_files,
+            max_concurrent=settings.pricecode_vector_max_concurrent,
         )
 
         # Upload result

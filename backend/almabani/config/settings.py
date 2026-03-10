@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     # ==================== Price Code Vector Settings ==============
     pricecode_vector_top_k: int = 5
     pricecode_vector_threshold: float = 0.40
+    pricecode_vector_max_concurrent: int = 100
     
     # ==================== Logging Settings ====================
     log_level: str = 'INFO'

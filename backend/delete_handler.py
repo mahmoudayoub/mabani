@@ -33,6 +33,34 @@ def _write_deletion_status(bucket, deletion_id, status_data):
     )
 
 
+def _cleanup_s3_prefix(bucket, prefix, set_name=None):
+    """Delete all S3 objects under *prefix* whose basename contains *set_name*.
+
+    Handles multiple encoding variants:
+    - raw spaces  (``AI Codes Mechanical``)
+    - underscores (``AI_Codes_Mechanical``)
+    - URL-encoded (``AI%20Codes%20Mechanical``)
+
+    If *set_name* is None every object under the prefix is deleted.
+    """
+    try:
+        needles = set()
+        if set_name:
+            needles.add(set_name)                         # spaces
+            needles.add(set_name.replace(" ", "_"))        # underscores
+            needles.add(set_name.replace(" ", "%20"))      # url-encoded
+        paginator = s3_client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                base = os.path.basename(key)
+                if not needles or any(n in base for n in needles):
+                    s3_client.delete_object(Bucket=bucket, Key=key)
+                    print(f"Cleaned up: s3://{bucket}/{key}")
+    except Exception as e:
+        print(f"Warning: cleanup of {prefix} failed: {e}")
+
+
 # ============================================================
 # STATUS ENDPOINT (shared across all delete types)
 # ============================================================
@@ -69,11 +97,20 @@ def get_deletion_status(event, context):
         return create_response(500, {"error": f"Bucket not configured for type: {bucket_type}"})
 
     try:
+        status_key = f"deletion-status/{deletion_id}.json"
         obj = s3_client.get_object(
             Bucket=bucket,
-            Key=f"deletion-status/{deletion_id}.json"
+            Key=status_key,
         )
         status_data = json.loads(obj['Body'].read())
+
+        # Auto-cleanup: once the frontend reads a terminal status, delete the marker
+        if status_data.get("status") in ("complete", "error"):
+            try:
+                s3_client.delete_object(Bucket=bucket, Key=status_key)
+            except Exception:
+                pass
+
         return create_response(200, status_data)
     except s3_client.exceptions.NoSuchKey:
         return create_response(404, {"error": "Deletion status not found"})
@@ -339,6 +376,12 @@ def delete_datasheet(event, context):
             })
         return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
 
+    # ── 3. Cleanup estimates, outputs, and old deletion-status markers ──
+    if FILE_PROCESSING_BUCKET:
+        _cleanup_s3_prefix(FILE_PROCESSING_BUCKET, "estimates/", sheet_name)
+        _cleanup_s3_prefix(FILE_PROCESSING_BUCKET, "output/", sheet_name)
+        _cleanup_s3_prefix(FILE_PROCESSING_BUCKET, "deletion-status/", sheet_name)
+
     # Write completion status
     if deletion_id:
         _write_deletion_status(status_bucket, deletion_id, {
@@ -570,6 +613,12 @@ def delete_price_code_set(event, context):
             })
         return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
 
+    # ── 4. Cleanup estimates, outputs, and old deletion-status markers ──
+    if bucket:
+        _cleanup_s3_prefix(bucket, "estimates/", set_name)
+        _cleanup_s3_prefix(bucket, "output/pricecode/fills/", set_name)
+        _cleanup_s3_prefix(bucket, "deletion-status/", set_name)
+
     # Write completion status
     if deletion_id:
         _write_deletion_status(status_bucket, deletion_id, {
@@ -697,6 +746,12 @@ def delete_pricecode_vector_set(event, context):
                     "set_name": set_name, "error": f"Failed to update registry: {str(e)}"
                 })
             return create_response(500, {"error": f"Failed to update registry: {str(e)}"})
+
+    # ── 4. Cleanup estimates, outputs, and old deletion-status markers ──
+    if pcv_bucket:
+        _cleanup_s3_prefix(pcv_bucket, "estimates/", set_name)
+        _cleanup_s3_prefix(pcv_bucket, "output/pricecode-vector/fills/", set_name)
+        _cleanup_s3_prefix(pcv_bucket, "deletion-status/", set_name)
 
     # Write completion status
     if deletion_id and status_bucket:

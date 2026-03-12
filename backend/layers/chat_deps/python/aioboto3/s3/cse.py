@@ -17,8 +17,8 @@ from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import CBC, CTR, ECB
 from cryptography.hazmat.primitives.padding import PKCS7
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.backends.openssl.rsa import _RSAPrivateKey, _RSAPublicKey
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes, PublicKeyTypes
 from cryptography.hazmat.primitives import serialization
 
 
@@ -94,8 +94,8 @@ class AsymmetricCryptoContext(CryptoContext):
     :param loop: Event loop
     """
 
-    def __init__(self, public_key: Optional[PublicKeyTypes] = None,
-                 private_key: Optional[PrivateKeyTypes] = None, loop: Optional[asyncio.AbstractEventLoop] = None):
+    def __init__(self, public_key: Optional[_RSAPublicKey] = None,
+                 private_key: Optional[_RSAPrivateKey] = None, loop: Optional[asyncio.AbstractEventLoop] = None):
 
         self.public_key = public_key
         self.private_key = private_key
@@ -136,7 +136,7 @@ class AsymmetricCryptoContext(CryptoContext):
         return random_bytes, {}, base64.b64encode(ciphertext).decode()
 
     @staticmethod
-    def from_der_public_key(data: bytes) -> PublicKeyTypes:
+    def from_der_public_key(data: bytes) -> _RSAPublicKey:
         """
         Convert public key in DER encoding to a Public key object
 
@@ -146,7 +146,7 @@ class AsymmetricCryptoContext(CryptoContext):
         return serialization.load_der_public_key(data, default_backend())
 
     @staticmethod
-    def from_der_private_key(data: bytes, password: Optional[str] = None) -> PrivateKeyTypes:
+    def from_der_private_key(data: bytes, password: Optional[str] = None) -> _RSAPrivateKey:
         """
         Convert private key in DER encoding to a Private key object
 
@@ -235,11 +235,9 @@ class KMSCryptoContext(CryptoContext):
         # Store the client instead of creating one every time, performance wins when doing many files
         self._kms_client = None
         self._kms_client_args = kms_client_args if kms_client_args else {}
-        self._session = None
 
     async def setup(self):
-        self._session = aioboto3.Session()
-        self._kms_client = await self._session.client('kms', **self._kms_client_args).__aenter__()
+        self._kms_client = aioboto3.client('kms', **self._kms_client_args)
 
     async def close(self):
         await self._kms_client.close()
@@ -305,7 +303,6 @@ class S3CSE(object):
         self._backend = default_backend()
 
         self._crypto_context = crypto_context
-        self._session = None
         self._s3_client = None
         self._s3_client_args = s3_client_args if s3_client_args else {}
 
@@ -315,8 +312,7 @@ class S3CSE(object):
         else:
             self._loop = asyncio.get_running_loop()
 
-        self._session = aioboto3.Session()
-        self._s3_client = await self._session.client('s3', **self._s3_client_args).__aenter__()
+        self._s3_client = aioboto3.client('s3', **self._s3_client_args)
         await self._crypto_context.setup()
 
     async def close(self):

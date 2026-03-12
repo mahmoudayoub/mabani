@@ -1,7 +1,7 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 // External allocation chatbot API URL
-const CHAT_API_URL = 'https://wio42z6ftqwg6dblphsfnpmz6e0petwm.lambda-url.eu-west-1.on.aws/';
+const CHAT_API_URL = import.meta.env.VITE_BOQ_CHAT_API_URL || '';
 
 export interface ChatMessage {
     role: 'user' | 'assistant';

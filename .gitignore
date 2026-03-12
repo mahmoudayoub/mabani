@@ -143,6 +143,7 @@ backend/.env/
 boq-backend/venv/
 boq-backend/.venv/
 boq-backend/env/
+boq-backend/env
 
 # Frontend specific
 frontend/dist/

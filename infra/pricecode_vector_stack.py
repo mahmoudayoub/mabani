@@ -155,24 +155,25 @@ class PriceCodeVectorStack(Stack):
             iam.PolicyStatement(actions=["s3vectors:*"], resources=["*"])
         )
 
-        # Grant an external IAM role access to this bucket (e.g. Serverless Framework Lambda)
-        # Set EXTERNAL_ROLE_NAME in env to enable (e.g. "taskflow-backend-dev-eu-west-1-lambdaRole")
-        external_role_name = os.getenv("EXTERNAL_ROLE_NAME", "")
-        if external_role_name:
-            bucket.add_to_resource_policy(
-                iam.PolicyStatement(
-                    actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"],
-                    resources=[
-                        bucket.bucket_arn,
-                        bucket.arn_for_objects("*"),
-                    ],
-                    principals=[
-                        iam.ArnPrincipal(
-                            f"arn:aws:iam::{self.account}:role/{external_role_name}"
-                        )
-                    ],
-                )
+        # Grant the Serverless backend Lambda role access to this bucket.
+        # Role name follows Serverless Framework pattern: {service}-{stage}-{region}-lambdaRole
+        sls_service = os.getenv("SERVERLESS_SERVICE_NAME", "taskflow-backend")
+        sls_stage = os.getenv("SERVERLESS_STAGE", "dev")
+        external_role_name = f"{sls_service}-{sls_stage}-{self.region}-lambdaRole"
+        bucket.add_to_resource_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"],
+                resources=[
+                    bucket.bucket_arn,
+                    bucket.arn_for_objects("*"),
+                ],
+                principals=[
+                    iam.ArnPrincipal(
+                        f"arn:aws:iam::{self.account}:role/{external_role_name}"
+                    )
+                ],
             )
+        )
 
         # Security Group
         task_sg = ec2.SecurityGroup(

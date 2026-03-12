@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir gunicorn
 
 # Copy application code
 COPY almabani/ ./almabani/
-COPY pyproject.toml setup.py ./
+COPY pyproject.toml ./
 COPY worker.py ./
 
 # Install the package

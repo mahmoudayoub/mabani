@@ -32,7 +32,7 @@ class ChatStack(Stack):
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         deps_layer = _lambda.LayerVersion(
             self, "ChatDepsLayer",
-            code=_lambda.Code.from_asset(os.path.join(project_root, "backend", "layers", "chat_deps")),
+            code=_lambda.Code.from_asset(os.path.join(project_root, "boq-backend", "layers", "chat_deps")),
             compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
             description="Dependencies for Chat Lambda (openai, boto3)"
         )
@@ -48,7 +48,7 @@ class ChatStack(Stack):
             self, "ChatHandler",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="chat_handler.handler",
-            code=_lambda.Code.from_asset(os.path.join(project_root, "backend"), exclude=[
+            code=_lambda.Code.from_asset(os.path.join(project_root, "boq-backend"), exclude=[
                 "*.pyc", "__pycache__", ".venv", "venv", "tests",
                 "data", "layers", "*.xlsx", "*.json"
             ]),

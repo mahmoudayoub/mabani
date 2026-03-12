@@ -79,7 +79,7 @@ class PriceCodeStack(Stack):
         cluster = ecs.Cluster(self, "PriceCodeCluster", vpc=vpc)
 
         # 4. Container Image - uses the same backend but different entrypoint
-        backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend')
+        backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'boq-backend')
         asset = ecr_assets.DockerImageAsset(self, "PriceCodeJobImage",
             directory=backend_dir,
             file="Dockerfile.pricecode",  # Separate Dockerfile for price code

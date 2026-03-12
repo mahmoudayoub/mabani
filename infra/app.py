@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 # Load env vars from project root
 # .env is in parent directory relative to infra/
 # We moved env to backend/env
-env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend', 'env')
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'boq-backend', 'env')
 if os.path.exists(env_path):
     load_dotenv(env_path, override=True)
 else:

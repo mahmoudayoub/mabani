@@ -88,7 +88,7 @@ class PriceCodeVectorStack(Stack):
 
         # ── 4. Container Image ─────────────────────────────────────────
         backend_dir = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "backend"
+            os.path.dirname(os.path.dirname(__file__)), "boq-backend"
         )
         asset = ecr_assets.DockerImageAsset(
             self,

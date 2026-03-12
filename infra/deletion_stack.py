@@ -46,7 +46,7 @@ class DeletionStack(Stack):
             pcv_bucket_name = ""
 
         # 2. Lambda Functions & Layer
-        backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend')
+        backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'boq-backend')
         layer_dir = os.path.join(os.path.dirname(__file__), 'layers', 'deletion_dependencies')
         
         dependencies_layer = _lambda.LayerVersion(self, "DeletionDependenciesLayer",

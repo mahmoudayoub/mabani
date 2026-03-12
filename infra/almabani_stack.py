@@ -54,7 +54,7 @@ class AlmabaniStack(Stack):
         cluster = ecs.Cluster(self, "AlmabaniCluster", vpc=vpc)
 
         # 4. Container Image
-        backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backend')
+        backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'boq-backend')
         asset = ecr_assets.DockerImageAsset(self, "AlmabaniJobImage",
             directory=backend_dir,
             file="Dockerfile",

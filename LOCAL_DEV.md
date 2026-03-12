@@ -6,14 +6,14 @@ You can simulate the cloud "Process & Die" behavior on your local machine to ver
 
 ### Prerequisites
 - Python 3.11+
-- Dependencies installed (`pip install -r backend/requirements.txt && pip install -e backend/`)
+- Dependencies installed (`pip install -r boq-backend/requirements.txt && pip install -e boq-backend/`)
 - Valid AWS credentials in your environment
-- `.env` file in `backend/` with API keys
+- `.env` file in `boq-backend/` with API keys
 
 ### Unit Rate Worker
 
 ```bash
-cd backend
+cd boq-backend
 
 # Parse job (Excel → JSON)
 export JOB_MODE=PARSE
@@ -31,7 +31,7 @@ Results appear in S3 under `output/indexes/` (parse) or `output/fills/` (fill).
 ### Price Code Worker (Lexical)
 
 ```bash
-cd backend
+cd boq-backend
 
 # Index price codes (build SQLite TF-IDF index)
 export JOB_MODE=INDEX
@@ -49,7 +49,7 @@ Results appear in S3 under `output/pricecode/`.
 ### Price Code Worker (Vector)
 
 ```bash
-cd backend
+cd boq-backend
 
 # Index price codes (embed → S3 Vectors)
 export JOB_MODE=INDEX
@@ -86,7 +86,7 @@ print(result)
 ```
 
 ```bash
-cd backend
+cd boq-backend
 python test_chat.py
 ```
 
@@ -97,7 +97,7 @@ python test_chat.py
 The `almabani` package includes a Typer-based CLI:
 
 ```bash
-cd backend
+cd boq-backend
 pip install -e .
 
 # View available commands

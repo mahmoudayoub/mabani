@@ -50,12 +50,12 @@ aws sts get-caller-identity
 
 ## 2. Environment Configuration
 
-The CDK app reads environment variables from `backend/env` (primary) or `.env` (fallback)
+The CDK app reads environment variables from `boq-backend/env` (primary) or `.env` (fallback)
 at the project root. These values are used to populate SSM parameters and Lambda env vars.
 
 ```bash
 # Copy the example and fill in real values
-cp backend/.env.example backend/env
+cp boq-backend/.env.example boq-backend/env
 ```
 
 **Required variables:**
@@ -88,7 +88,7 @@ PRICECODE_MAX_CANDIDATES=1
 LOG_LEVEL=INFO
 ```
 
-> **Important:** The `backend/env` file is loaded by `infra/app.py` using `python-dotenv`.
+> **Important:** The `boq-backend/env` file is loaded by `infra/app.py` using `python-dotenv`.
 > The OPENAI_API_KEY is injected into SSM Parameter Store for Fargate stacks and as a
 > Lambda environment variable for ChatStack. Do **not** commit this file to git.
 
@@ -375,7 +375,7 @@ aws ssm put-parameter --name "/pricecode-vector/OPENAI_API_KEY" \
 When you change Python code, workers, or Lambda handlers:
 
 ```bash
-# Update backend/.env (or backend/env) if settings changed
+# Update boq-backend/.env (or boq-backend/env) if settings changed
 # Then redeploy the affected stacks
 
 # If you changed worker.py or almabani/ package:

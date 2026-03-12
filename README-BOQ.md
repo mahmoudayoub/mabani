@@ -51,7 +51,7 @@ AI-powered construction Bill of Quantities (BOQ) processing platform. Parses Exc
 
 ```
 Almabani/
-├── backend/
+├── boq-backend/
 │   ├── almabani/                  # Python package (pip install -e .)
 │   │   ├── parsers/               # Excel → JSON parsing pipeline
 │   │   ├── rate_matcher/          # Unit rate AI matching (3-stage)

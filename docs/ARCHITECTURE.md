@@ -485,9 +485,9 @@ ChatStack and DeletionStack receive the OpenAI API key as a Lambda environment v
 
 | Dockerfile | Entrypoint | Stack |
 |------------|-----------|-------|
-| `backend/Dockerfile` | `python3 worker.py` | AlmabaniStack |
-| `backend/Dockerfile.pricecode` | `python3 pricecode_worker.py` | PriceCodeStack |
-| `backend/Dockerfile.pricecode_vector` | `python3 pricecode_vector_worker.py` | PriceCodeVectorStack |
+| `boq-backend/Dockerfile` | `python3 worker.py` | AlmabaniStack |
+| `boq-backend/Dockerfile.pricecode` | `python3 pricecode_worker.py` | PriceCodeStack |
+| `boq-backend/Dockerfile.pricecode_vector` | `python3 pricecode_vector_worker.py` | PriceCodeVectorStack |
 
 All images: Python 3.11-slim, non-root `appuser`, package installed in editable mode.
 

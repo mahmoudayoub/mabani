@@ -291,13 +291,13 @@ source .venv/bin/activate
 pip install -r infra/requirements.txt
 
 # 4. Configure environment variables
-cp backend/.env.example backend/env
-# Edit backend/env with your actual OPENAI_API_KEY
+cp boq-backend/.env.example boq-backend/env
+# Edit boq-backend/env with your actual OPENAI_API_KEY
 ```
 
 ### 6.3 Required Environment Variables
 
-Edit `backend/env` (or `.env` in the project root):
+Edit `boq-backend/env` (or `.env` in the project root):
 
 ```ini
 # REQUIRED — OpenAI API key
@@ -394,7 +394,7 @@ ChatStack and DeletionStack receive the OpenAI API key as a Lambda environment v
 set at deploy time. To update:
 
 ```bash
-# Option 1: Update backend/env and redeploy the stack
+# Option 1: Update boq-backend/env and redeploy the stack
 cdk deploy --app "python3 infra/app.py" ChatStack
 
 # Option 2: Update Lambda directly (no CDK redeploy)
@@ -497,13 +497,13 @@ aws s3vectors get-index --index-bucket almabani-vectors --index-name almabani
 
 ## 10. Docker Images
 
-Each pipeline stack builds its own Docker image from the `backend/` directory.
+Each pipeline stack builds its own Docker image from the `boq-backend/` directory.
 
 | Dockerfile | Entrypoint | Stack | Base Image |
 |------------|-----------|-------|------------|
-| `backend/Dockerfile` | `python3 worker.py` | AlmabaniStack | python:3.11-slim |
-| `backend/Dockerfile.pricecode` | `python3 pricecode_worker.py` | PriceCodeStack | python:3.11-slim |
-| `backend/Dockerfile.pricecode_vector` | `python3 pricecode_vector_worker.py` | PriceCodeVectorStack | python:3.11-slim |
+| `boq-backend/Dockerfile` | `python3 worker.py` | AlmabaniStack | python:3.11-slim |
+| `boq-backend/Dockerfile.pricecode` | `python3 pricecode_worker.py` | PriceCodeStack | python:3.11-slim |
+| `boq-backend/Dockerfile.pricecode_vector` | `python3 pricecode_vector_worker.py` | PriceCodeVectorStack | python:3.11-slim |
 
 CDK builds these images locally using Docker and pushes them to ECR automatically
 during deployment. Ensure Docker is running before deploying pipeline stacks.
@@ -519,7 +519,7 @@ during deployment. Ensure Docker is running before deploying pipeline stacks.
 | DeletionDependenciesLayer | DeletionStack | aioboto3, aiobotocore, aiohttp, boto3 | ~15 MB |
 
 Layer code is stored in:
-- `backend/layers/chat_deps/` — ChatStack dependencies
+- `boq-backend/layers/chat_deps/` — ChatStack dependencies
 - `infra/layers/deletion_dependencies/` — DeletionStack dependencies
 
 ---
@@ -602,7 +602,7 @@ for compute.
 
 ```
 Almabani/
-├── backend/                          # Python application code
+├── boq-backend/                      # Python application code
 │   ├── almabani/                     # Core package (parsers, matchers, config)
 │   │   ├── parsers/                  # Excel → JSON parsing
 │   │   ├── rate_matcher/             # AI unit rate matching (3-stage)

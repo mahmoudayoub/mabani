@@ -116,12 +116,6 @@ Matches BOQ items to price codes using OpenAI embeddings + S3 Vectors + LLM vali
 | `embeddings_rpm` | `3000` | OpenAI embeddings rate limit |
 | `chat_rpm` | `5000` | OpenAI chat rate limit |
 
-### `cli/` — Command-Line Interface
-
-| File | Purpose |
-|------|---------|
-| `main.py` | Typer-based CLI for running pipelines from the command line |
-
 ---
 
 ## Workers

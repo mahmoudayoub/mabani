@@ -58,8 +58,7 @@ boq-backend/
 │   ├── pricecode_vector/      # Price code allocation (embedding-based)
 │   ├── vectorstore/           # S3 Vectors indexing
 │   ├── core/                  # Shared utilities (embeddings, storage, models)
-│   ├── config/                # Pydantic settings + logging
-│   └── cli/                   # Typer CLI tool
+│   └── config/                # Pydantic settings + logging
 ├── worker.py                  # Fargate worker (unit rate: parse + fill)
 ├── pricecode_worker.py        # Fargate worker (pricecode lexical: index + allocate)
 ├── pricecode_vector_worker.py # Fargate worker (pricecode vector: index + allocate)
@@ -134,5 +133,4 @@ Upload a file to S3 and the pipeline runs automatically:
 | Compute | ECS Fargate (batch), Lambda (APIs) |
 | Storage | S3 (files), SSM Parameter Store (secrets) |
 | Config | Pydantic Settings |
-| CLI | Typer + Rich |
 | Containers | Docker (python:3.11-slim) |

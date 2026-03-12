@@ -1,17 +1,21 @@
 # Almabani BOQ Management System
 
-AI-powered construction Bill of Quantities (BOQ) processing platform. Parses Excel BOQ datasheets, indexes them into a vector database, and uses AI to match unit rates and allocate price codes — either through batch processing (cloud) or a natural language chat interface.
+AI-powered construction Bill of Quantities (BOQ) processing platform. Parses Excel BOQ datasheets, indexes them into vector databases, and uses AI to match unit rates and allocate price codes — either through batch processing (cloud) or a natural language chat interface.
 
 ## Features
 
 ### Unit Rate Pipeline
 - **Parse** — Extract structured items from Excel BOQ datasheets into JSON
-- **Index** — Embed items with OpenAI and store in Pinecone vector database
+- **Index** — Embed items with OpenAI and store in S3 Vectors
 - **Fill** — AI-powered rate matching: finds similar items and fills missing rates using 3-stage matching (exact → close → approximation)
 
-### Price Code Pipeline
-- **Index** — Index price code catalogs into a dedicated Pinecone index (`almabani-pricecode`)
-- **Allocate** — Match BOQ items to price codes with unit compatibility and specificity checks
+### Price Code Pipeline (Lexical)
+- **Index** — Build SQLite TF-IDF index from reference Excel catalogs
+- **Allocate** — Match BOQ items to price codes using domain-aware lexical search + LLM validation
+
+### Price Code Pipeline (Vector)
+- **Index** — Embed price code catalogs with OpenAI and store in S3 Vectors
+- **Allocate** — Match BOQ items to price codes using embedding similarity + LLM validation
 
 ### Chat Interface
 - Natural language queries against both unit rate and price code indexes
@@ -19,13 +23,9 @@ AI-powered construction Bill of Quantities (BOQ) processing platform. Parses Exc
 - Deployed as Lambda with Function URL (no timeout) + API Gateway (29s limit, backward compat)
 
 ### Deletion API
-- Delete individual datasheets or price code sets from Pinecone and S3 registry
-- REST API: `DELETE /files/sheets/{sheet_name}` and `DELETE /pricecode/sets/{set_name}`
-
-### Web GUI (Local Dev)
-- Flask-based interface at `http://localhost:5000`
-- Pages for Parse, Index, Fill, Query, Files management, and Settings
-- Supports both local filesystem and S3 storage backends
+- Delete individual datasheets or price code sets from S3 Vectors and S3 registry
+- Async dispatcher/worker pattern with status polling
+- REST API: `DELETE /files/sheets/{name}`, `DELETE /pricecode/sets/{name}`, `DELETE /pricecode-vector/sets/{name}`
 
 ---
 
@@ -33,14 +33,15 @@ AI-powered construction Bill of Quantities (BOQ) processing platform. Parses Exc
 
 **Event-driven "Process & Die"** — no persistent servers. Files uploaded to S3 trigger Lambda functions which launch Fargate containers. Containers process the file, upload results, and exit.
 
-| Stack | Compute | Resources | Trigger |
-|-------|---------|-----------|---------|
-| **AlmabaniStack** | Fargate (1 vCPU, 2 GB) | VPC, S3, ECS, Lambda, SSM | `input/parse/`, `input/fill/` |
-| **PriceCodeStack** | Fargate (2 vCPU, 8 GB) | VPC, S3, ECS, Lambda, SSM | `input/pricecode/index/`, `input/pricecode/allocate/` |
-| **ChatStack** | Lambda (1 GB, 120s) | API Gateway, Function URL | POST `/chat` |
-| **DeletionStack** | Lambda (30s) | API Gateway | DELETE endpoints |
+| Stack | Compute | Purpose | Trigger Paths |
+|-------|---------|---------|---------------|
+| **AlmabaniStack** | Fargate (1 vCPU, 2 GB) | Unit rate parse + fill | `input/parse/`, `input/fill/` |
+| **PriceCodeStack** | Fargate (2 vCPU, 16 GB) | Price code lexical index + allocate | `input/pricecode/index/`, `input/pricecode/allocate/` |
+| **PriceCodeVectorStack** | Fargate (2 vCPU, 8 GB) | Price code vector index + allocate | `input/pricecode-vector/index/`, `input/pricecode-vector/allocate/` |
+| **ChatStack** | Lambda (1 GB, 120s) | Natural language chat API | POST `/chat` or Function URL |
+| **DeletionStack** | Lambda (30s-120s) | Async deletion API | DELETE endpoints |
 
-**AI Stack**: OpenAI (GPT-5-mini, text-embedding-3-small) + Pinecone (2 indexes: `almabani-1`, `almabani-pricecode`)
+**AI Stack**: OpenAI (GPT-5-mini, text-embedding-3-small) + S3 Vectors (cosine similarity, 1536 dims)
 
 **Secrets**: AWS SSM Parameter Store (`/almabani/*`, `/pricecode/*`)
 
@@ -53,57 +54,37 @@ Almabani/
 ├── backend/
 │   ├── almabani/                  # Python package (pip install -e .)
 │   │   ├── parsers/               # Excel → JSON parsing pipeline
-│   │   │   ├── excel_parser.py    # BOQ Excel reader
-│   │   │   ├── hierarchy_processor.py  # Item hierarchy builder
-│   │   │   ├── json_exporter.py   # JSON output formatter
-│   │   │   └── pipeline.py        # Parse pipeline orchestrator
-│   │   ├── rate_matcher/          # Unit rate AI matching
-│   │   │   ├── matcher.py         # 3-stage matching engine
-│   │   │   ├── pipeline.py        # Rate filler pipeline
-│   │   │   └── prompts.py         # LLM prompts for matching
-│   │   ├── pricecode/             # Price code allocation
-│   │   │   ├── indexer.py         # Price code indexing
-│   │   │   ├── matcher.py         # Price code matching
-│   │   │   ├── pipeline.py        # Allocation pipeline
-│   │   │   └── prompts.py         # LLM prompts for allocation
-│   │   ├── vectorstore/           # Pinecone vector DB integration
-│   │   │   └── indexer.py         # JSON → embeddings → Pinecone
-│   │   ├── core/                  # Shared utilities
-│   │   │   ├── embeddings.py      # OpenAI embedding helpers
-│   │   │   ├── models.py          # Data models
-│   │   │   ├── excel.py           # Excel I/O utilities
-│   │   │   ├── storage.py         # Local/S3 storage abstraction
-│   │   │   ├── vector_store.py    # Pinecone client wrapper
-│   │   │   ├── async_vector_store.py  # Async Pinecone operations
-│   │   │   └── rate_limits.py     # API rate limiting
-│   │   ├── config/                # Configuration
-│   │   │   ├── settings.py        # Pydantic-based settings
-│   │   │   └── logging_config.py  # Logging setup
-│   │   └── cli/                   # CLI tool (typer)
-│   │       └── main.py            # Command-line interface
-│   ├── app/                       # Flask web GUI
-│   │   ├── main.py                # Routes and API endpoints
-│   │   ├── templates/             # Jinja2 HTML templates
-│   │   └── static/                # CSS/JS assets
-│   ├── worker.py                  # Fargate worker (parse + fill)
-│   ├── pricecode_worker.py        # Fargate worker (index + allocate)
-│   ├── chat_handler.py            # Lambda handler (NL chat API)
+│   │   ├── rate_matcher/          # Unit rate AI matching (3-stage)
+│   │   ├── pricecode/             # Price code allocation (lexical TF-IDF)
+│   │   ├── pricecode_vector/      # Price code allocation (embedding-based)
+│   │   ├── vectorstore/           # S3 Vectors indexing
+│   │   ├── core/                  # Shared utilities (embeddings, storage, models)
+│   │   ├── config/                # Pydantic settings + logging
+│   │   └── cli/                   # Typer CLI tool
+│   ├── worker.py                  # Fargate worker (unit rate: parse + fill)
+│   ├── pricecode_worker.py        # Fargate worker (pricecode lexical: index + allocate)
+│   ├── pricecode_vector_worker.py # Fargate worker (pricecode vector: index + allocate)
+│   ├── chat_handler.py            # Lambda handler (chat API)
 │   ├── delete_handler.py          # Lambda handler (deletion API)
-│   ├── Dockerfile                 # Worker container image
-│   ├── Dockerfile.pricecode       # Price code worker container image
-│   ├── docker-compose.yml         # Local Docker dev setup
-│   └── requirements.txt           # Python dependencies
+│   ├── Dockerfile                 # Unit rate worker image
+│   ├── Dockerfile.pricecode       # Pricecode lexical worker image
+│   ├── Dockerfile.pricecode_vector # Pricecode vector worker image
+│   ├── layers/                    # Lambda layer dependencies
+│   ├── requirements.txt           # Python dependencies
+│   └── pyproject.toml             # Package configuration
 ├── infra/                         # AWS CDK (Python)
-│   ├── app.py                     # CDK app entry point (4 stacks)
-│   ├── almabani_stack.py          # Main stack (VPC, S3, ECS, Lambda)
-│   ├── pricecode_stack.py         # Price code stack (ECS, Lambda)
-│   ├── chat_stack.py              # Chat API stack (Lambda, API GW)
-│   ├── deletion_stack.py          # Deletion API stack (Lambda, API GW)
+│   ├── app.py                     # CDK app entry point (5 stacks)
+│   ├── almabani_stack.py          # Unit rate stack
+│   ├── pricecode_stack.py         # Pricecode lexical stack
+│   ├── pricecode_vector_stack.py  # Pricecode vector stack
+│   ├── chat_stack.py              # Chat API stack
+│   ├── deletion_stack.py          # Deletion API stack
 │   └── lambdas/                   # Lambda trigger functions
-│       ├── trigger.py             # S3 → Fargate (parse/fill)
-│       └── pricecode_trigger.py   # S3 → Fargate (index/allocate)
-├── data/                          # Sample data files
-├── scripts/                       # Utility scripts
+│       ├── trigger.py             # S3 → Fargate (unit rate)
+│       ├── pricecode_trigger.py   # S3 → Fargate (pricecode lexical)
+│       └── pricecode_vector_trigger.py  # S3 → Fargate (pricecode vector)
+├── docs/                          # Architecture & backend documentation
+├── scripts/                       # Debug & analysis utilities
 ├── DEPLOYMENT.md                  # Cloud deployment guide
 └── LOCAL_DEV.md                   # Local development guide
 ```
@@ -111,23 +92,6 @@ Almabani/
 ---
 
 ## Quick Start
-
-### Local Development
-
-```bash
-# 1. Install dependencies
-cd backend
-pip install -r requirements.txt
-pip install -e .
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your OpenAI and Pinecone API keys
-
-# 3. Run the web GUI
-python app/main.py
-# Open http://localhost:5000
-```
 
 ### Cloud Deployment
 
@@ -140,6 +104,13 @@ cdk bootstrap aws://239146712026/eu-west-1
 
 # 3. Deploy all stacks
 cdk deploy --app "python3 infra/app.py" --all
+
+# Or deploy individual stacks
+cdk deploy --app "python3 infra/app.py" AlmabaniStack
+cdk deploy --app "python3 infra/app.py" PriceCodeStack
+cdk deploy --app "python3 infra/app.py" PriceCodeVectorStack
+cdk deploy --app "python3 infra/app.py" ChatStack
+cdk deploy --app "python3 infra/app.py" DeletionStack
 ```
 
 ### Running a Job (Cloud)
@@ -150,8 +121,10 @@ Upload a file to S3 and the pipeline runs automatically:
 |-----|-----------|-----------|
 | Parse Excel → JSON | `input/parse/myfile.xlsx` | `output/indexes/myfile.json` |
 | Fill Rates | `input/fill/myfile.xlsx` | `output/fills/myfile_filled.xlsx` |
-| Index Price Codes | `input/pricecode/index/catalog.xlsx` | Vectors stored in Pinecone |
-| Allocate Price Codes | `input/pricecode/allocate/boq.xlsx` | `output/pricecode/boq_allocated.xlsx` |
+| Index Price Codes (Lexical) | `input/pricecode/index/catalog.xlsx` | SQLite index in S3 |
+| Allocate Price Codes (Lexical) | `input/pricecode/allocate/boq.xlsx` | `output/pricecode/boq_allocated.xlsx` |
+| Index Price Codes (Vector) | `input/pricecode-vector/index/catalog.xlsx` | Embeddings in S3 Vectors |
+| Allocate Price Codes (Vector) | `input/pricecode-vector/allocate/boq.xlsx` | `output/pricecode-vector/boq_allocated.xlsx` |
 
 ---
 
@@ -161,11 +134,10 @@ Upload a file to S3 and the pipeline runs automatically:
 |-----------|-----------|
 | Language | Python 3.11 |
 | AI Models | OpenAI GPT-5-mini (chat), text-embedding-3-small (embeddings) |
-| Vector DB | Pinecone (gRPC + async) |
+| Vector DB | AWS S3 Vectors (1536 dims, cosine similarity) |
 | Infrastructure | AWS CDK (Python) |
 | Compute | ECS Fargate (batch), Lambda (APIs) |
 | Storage | S3 (files), SSM Parameter Store (secrets) |
-| Web GUI | Flask + Jinja2 |
 | Config | Pydantic Settings |
 | CLI | Typer + Rich |
 | Containers | Docker (python:3.11-slim) |

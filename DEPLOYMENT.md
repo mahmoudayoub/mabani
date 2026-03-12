@@ -1,154 +1,148 @@
-# Almabani Event-Driven Processing Deployment Guide
+# Almabani Deployment Guide
 
 ## 1. Architecture: Event-Driven Batch Processing
 
 This deployment implements a **"Process & Die"** architecture using AWS Fargate and S3 Events. There is **no persistent server** running. The system only wakes up when a file is uploaded, processes it, and then terminates.
 
 ### Workflow
-1.  **Frontend/User** uploads a file to the **S3 Bucket** (`AlmabaniData`) in the `input/` folder.
-2.  **S3 Event Notification** triggers a lightweight **AWS Lambda** function.
-3.  **Lambda** (`infra/lambdas/trigger.py`) inspection the file path and launches a **Fargate Task** (Docker Container) in a public subnet.
-4.  **Fargate Container**:
-    *   Downloads the file from S3.
-    *   Fetches secrets (API Keys) securely from **AWS SSM Parameter Store**.
-    *   Runs the `worker.py` script.
-    *   Uploads the result back to S3.
-    *   **Exits immediately**.
+1. **Frontend/User** uploads a file to S3 in the `input/` folder.
+2. **S3 Event Notification** triggers a **Lambda** function.
+3. **Lambda** inspects the file path and launches a **Fargate Task**.
+4. **Fargate Container** downloads the file, fetches secrets from SSM, runs the worker, uploads results, and **exits**.
 
-### Resources Created
-| Resource | Purpose | Configuration |
-| :--- | :--- | :--- |
-| **VPC** | Network isolation | • **Public Subnets Only** (No NAT Gateway = Low Cost) |
-| **ECS Cluster** | Logical grouping | • Fargate (Serverless) capacity provider |
-| **Fargate Task** | Compute Unit | • **vCPU**: 1 vCPU<br>• **Memory**: 2 GB<br>• **Image**: Docker from ECR |
-| **SSM Parameters** | Secrets Management | • Stores API Keys (OpenAI, Pinecone) |
-| **Lambda** | Trigger | • Python script to launch tasks |
-| **S3 Bucket** | Storage | • Event notifications on `input/` prefix |
+### CDK Stacks
+
+| Stack | Compute | Resources |
+|-------|---------|-----------|
+| **AlmabaniStack** | Fargate (1 vCPU, 2 GB) | VPC, S3, ECS, Lambda trigger, SSM params |
+| **PriceCodeStack** | Fargate (2 vCPU, 16 GB) | VPC, S3, ECS, Lambda trigger, SSM params |
+| **PriceCodeVectorStack** | Fargate (2 vCPU, 8 GB) | VPC, S3, ECS, Lambda trigger |
+| **ChatStack** | Lambda (1 GB, 120s) | API Gateway, Function URL, Lambda layers |
+| **DeletionStack** | Lambda (30s-120s) | API Gateway, dispatchers + workers |
 
 ---
 
 ## 2. Configuration & Secrets (AWS SSM)
 
-Environment variables (API keys, model names) are **NOT** hardcoded in the deployment or container. They are stored in **AWS Systems Manager (SSM) Parameter Store**.
+Secrets are stored in **AWS Systems Manager (SSM) Parameter Store**. You do **not** need to redeploy to change them.
 
-### **Managed Parameters**
-The following parameters are stored at the path `/almabani/...`:
-*   `OPENAI_API_KEY`
-*   `OPENAI_EMBEDDING_MODEL`
-*   `OPENAI_CHAT_MODEL`
-*   `PINECONE_API_KEY`
-*   `PINECONE_ENVIRONMENT`
-*   `PINECONE_INDEX_NAME`
+### Managed Parameters
 
-### **How to Update configuration**
-You do **NOT** need to redeploy the stack to change an API key or switch models.
+| Path | Parameters |
+|------|------------|
+| `/almabani/*` | `OPENAI_API_KEY`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_CHAT_MODEL`, `S3_VECTORS_BUCKET`, `S3_VECTORS_INDEX` |
+| `/pricecode/*` | `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `S3_VECTORS_BUCKET`, `S3_VECTORS_INDEX` |
 
-1.  Log in to the **AWS Console**.
-2.  Navigate to **Systems Manager** > **Parameter Store**.
-3.  Click on the parameter you want to change (e.g., `/almabani/OPENAI_CHAT_MODEL`).
-4.  Click **Edit**, update the **Value**, and click **Save changes**.
-
-**Effect**: The very next file uploaded will trigger a container that fetches this new value at startup.
+### How to Update
+1. Navigate to **AWS Console** → **Systems Manager** → **Parameter Store**
+2. Edit the parameter value and save
+3. The next Fargate task or Lambda invocation will use the new value
 
 ---
 
 ## 3. Cost Analysis (Zero Idle Cost)
 
-This architecture is optimized for minimal cost. You pay **only** for the seconds the container is running.
-
-### **1. AWS Fargate (Compute)**
-*   **Cost**: Per vCPU-hour + GB-hour.
-*   **Rate** (eu-west-1): ~$0.04048 / vCPU-hour + ~$0.004445 / GB-hour.
-*   **Job Cost Example**:
-    *   If a file takes **5 minutes** to process:
-    *   Compute: (1 vCPU * $0.04) * (5/60) ≈ $0.0033
-    *   Memory: (2 GB * $0.004) * (5/60) ≈ $0.0007
-    *   **Total per file**: **$0.004 USD** (less than half a cent).
-
-### **2. Networking (Public Subnets)**
-*   **NAT Gateway**: **None** ($0 cost).
-
-### **Total Estimated Monthly Cost**
-*   **Idle**: **$0.00**.
-*   **Active**: **~$0.004 per file processed**.
+| Component | Idle Cost | Per-Job Cost |
+|-----------|----------|-------------|
+| Fargate (AlmabaniStack, 1 vCPU/2 GB) | $0.00 | ~$0.004 (5 min job) |
+| Fargate (PriceCodeStack, 2 vCPU/16 GB) | $0.00 | ~$0.030 (5 min job) |
+| Fargate (PriceCodeVectorStack, 2 vCPU/8 GB) | $0.00 | ~$0.016 (5 min job) |
+| Lambda (Chat/Deletion) | $0.00 | ~$0.0001 per invocation |
+| NAT Gateway | $0.00 | N/A (public subnets only) |
+| S3 | ~$0.02/GB/month | Minimal |
 
 ---
 
-## 4. Usage Instructions
-
-### Deployment
-To deploy all stacks to your AWS account:
+## 4. Deployment
 
 ```bash
-# 1. Install dependencies
+# Install CDK dependencies
 pip install -r infra/requirements.txt
 
-# 2. Bootstrap (first time only)
+# Bootstrap (first time only)
 cdk bootstrap aws://239146712026/eu-west-1
 
-# 3. Deploy all 4 stacks
+# Deploy all stacks
 cdk deploy --app "python3 infra/app.py" --all
-```
 
-To deploy a single stack:
-```bash
-cdk deploy --app "python3 infra/app.py" AlmabaniStack     # Unit rate pipeline
-cdk deploy --app "python3 infra/app.py" PriceCodeStack     # Price code pipeline
-cdk deploy --app "python3 infra/app.py" ChatStack          # Chat API
-cdk deploy --app "python3 infra/app.py" DeletionStack      # Deletion API
+# Deploy individual stacks
+cdk deploy --app "python3 infra/app.py" AlmabaniStack
+cdk deploy --app "python3 infra/app.py" PriceCodeStack
+cdk deploy --app "python3 infra/app.py" PriceCodeVectorStack
+cdk deploy --app "python3 infra/app.py" ChatStack
+cdk deploy --app "python3 infra/app.py" DeletionStack
 ```
-
-*Note: The first deployment populates SSM parameters using values from your local `backend/env` or root `.env` file.*
 
 ---
 
-### How to Run a Job (AlmabaniStack)
+## 5. Running Jobs
 
-**1. Parse (Excel → JSON)**:
-*   Upload to: `s3://<bucket>/input/parse/myfile.xlsx`
-*   **Result**: `s3://<bucket>/output/indexes/myfile.json`
+### Unit Rate Pipeline (AlmabaniStack)
 
-**2. Fill Rates (Excel → Excel)**:
-*   Upload to: `s3://<bucket>/input/fill/myfile.xlsx`
-*   **Result**: `s3://<bucket>/output/fills/myfile_filled.xlsx`
+| Job | Upload to | Result |
+|-----|-----------|--------|
+| **Parse** (Excel → JSON) | `s3://<bucket>/input/parse/myfile.xlsx` | `output/indexes/myfile.json` |
+| **Fill** (rate matching) | `s3://<bucket>/input/fill/myfile.xlsx` | `output/fills/myfile_filled.xlsx` |
 
-### How to Run a Job (PriceCodeStack)
+### Price Code Pipeline — Lexical (PriceCodeStack)
 
-**3. Index Price Codes (Excel → Pinecone)**:
-*   Upload to: `s3://<bucket>/input/pricecode/index/catalog.xlsx`
-*   **Result**: Vectors stored in Pinecone index `almabani-pricecode`
+| Job | Upload to | Result |
+|-----|-----------|--------|
+| **Index** (build SQLite index) | `s3://<bucket>/input/pricecode/index/catalog.xlsx` | SQLite index stored in S3 |
+| **Allocate** (match BOQ items) | `s3://<bucket>/input/pricecode/allocate/boq.xlsx` | `output/pricecode/boq_allocated.xlsx` |
 
-**4. Allocate Price Codes (Excel → Excel)**:
-*   Upload to: `s3://<bucket>/input/pricecode/allocate/boq.xlsx`
-*   **Result**: `s3://<bucket>/output/pricecode/boq_allocated.xlsx`
+### Price Code Pipeline — Vector (PriceCodeVectorStack)
+
+| Job | Upload to | Result |
+|-----|-----------|--------|
+| **Index** (embed to S3 Vectors) | `s3://<bucket>/input/pricecode-vector/index/catalog.xlsx` | Embeddings in S3 Vectors |
+| **Allocate** (match BOQ items) | `s3://<bucket>/input/pricecode-vector/allocate/boq.xlsx` | `output/pricecode-vector/boq_allocated.xlsx` |
 
 ---
 
-### Chat API (ChatStack)
+## 6. Chat API (ChatStack)
 
 Natural language queries for unit rates and price codes.
 
 **Endpoints** (check CloudFormation outputs for URLs):
-- **API Gateway**: `POST <ChatApiUrl>` (29-second timeout)
-- **Function URL**: `POST <ChatFunctionUrl>` (no timeout — recommended)
+- **Function URL**: `POST <ChatFunctionUrl>` — no timeout (recommended)
+- **API Gateway**: `POST <ChatApiUrl>/chat` — 29-second timeout
 
 **Example**:
 ```bash
+# Unit rate query
 curl -X POST <ChatFunctionUrl> \
   -H "Content-Type: application/json" \
-  -d '{"message": "HDPE pipe DN200 PN16", "chat_type": "unitrate"}'
+  -d '{"message": "HDPE pipe DN200 PN16", "type": "unitrate"}'
+
+# Price code query
+curl -X POST <ChatFunctionUrl> \
+  -H "Content-Type: application/json" \
+  -d '{"message": "supply and install HDPE pipe DN200", "type": "pricecode"}'
 ```
-
-### Deletion API (DeletionStack)
-
-**Endpoints** (check CloudFormation output `DeletionApiUrl`):
-- `DELETE <DeletionApiUrl>/files/sheets/{sheet_name}` — Remove a datasheet
-- `DELETE <DeletionApiUrl>/pricecode/sets/{set_name}` — Remove a price code set
 
 ---
 
-### Monitoring
-*   **AlmabaniStack**: CloudWatch log group `AlmabaniWorker`, ECS cluster `AlmabaniCluster`
-*   **PriceCodeStack**: CloudWatch log group `PriceCodeWorker`, ECS cluster `PriceCodeCluster`
-*   **ChatStack**: CloudWatch log group for `ChatHandler` Lambda
-*   **DeletionStack**: CloudWatch log groups for deletion Lambdas
+## 7. Deletion API (DeletionStack)
+
+Async deletion with status polling.
+
+**Endpoints** (check CloudFormation output `DeletionApiUrl`):
+- `DELETE <url>/files/sheets/{sheet_name}` — Delete a unit rate datasheet
+- `DELETE <url>/pricecode/sets/{set_name}` — Delete a price code set (lexical)
+- `DELETE <url>/pricecode-vector/sets/{set_name}` — Delete a price code set (vector)
+- `GET <url>/deletion-status/{deletion_id}` — Poll deletion status
+
+All DELETE endpoints return `202 Accepted` with a `deletion_id` for polling.
+
+---
+
+## 8. Monitoring
+
+| Stack | CloudWatch Log Group |
+|-------|---------------------|
+| AlmabaniStack | Fargate container logs (unit rate worker) |
+| PriceCodeStack | Fargate container logs (pricecode worker) |
+| PriceCodeVectorStack | Fargate container logs (pricecode vector worker) |
+| ChatStack | Lambda `ChatHandler` logs |
+| DeletionStack | Lambda logs per deletion handler |

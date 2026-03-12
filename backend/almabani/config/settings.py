@@ -75,8 +75,7 @@ class Settings(BaseSettings):
     chat_rpm: int = 5000
     
     # ==================== Price Code Settings ====================
-    pricecode_index_name: str = 'almabani-pricecode'
-    pricecode_top_k: int = 150  # Price code uses more candidates
+    pricecode_index_name: str = 'almabani-pricecode-vector'
     pricecode_batch_size: int = 100
     pricecode_max_concurrent: int = 200
     pricecode_max_candidates: int = 1  # Lexical candidates to send to LLM

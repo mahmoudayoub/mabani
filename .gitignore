@@ -9,6 +9,7 @@ dist/
 build/
 *.egg
 *.backup
+*.bak
 
 # Virtual Environment
 .venv/

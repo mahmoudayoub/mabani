@@ -190,7 +190,7 @@ def search_vectors(query: str, chat_type: str, top_k: int = None) -> List[Dict]:
     
     # Select index based on type
     if chat_type == "pricecode":
-        index_name = os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode')
+        index_name = os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode-vector')
     else:  # unitrate
         index_name = os.environ.get('S3_VECTORS_INDEX_NAME', 'almabani')
 

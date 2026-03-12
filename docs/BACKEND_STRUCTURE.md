@@ -2,17 +2,16 @@
 
 ## Overview
 
-The backend is a Python 3.11 application structured as an installable package (`almabani` v2.0.0). It runs in three modes:
+The backend is a Python 3.11 application structured as an installable package (`almabani` v2.0.0). It runs in two modes:
 
 1. **Fargate workers** — batch processing triggered by S3 uploads
 2. **Lambda handlers** — serverless APIs (chat, deletion)
-3. **Flask web GUI** — local development interface
 
 ---
 
 ## `almabani/` Package
 
-The core logic is organized into 7 sub-modules:
+The core logic is organized into 8 sub-modules:
 
 ### `parsers/` — Excel → JSON
 
@@ -29,28 +28,40 @@ Extracts structured BOQ items from Excel datasheets.
 
 Fills missing unit rates by finding similar items in the vector database.
 
-| File | Size | Purpose |
-|------|------|---------|
-| `matcher.py` | 30 KB | 3-stage matching engine (exact → close → approximation) |
-| `pipeline.py` | 17 KB | Rate filler pipeline — batch processing with concurrency control |
-| `prompts.py` | 31 KB | LLM prompts for construction-domain matching |
+| File | Purpose |
+|------|---------|
+| `matcher.py` | 3-stage matching engine (exact → close → approximation) |
+| `pipeline.py` | Rate filler pipeline — batch processing with concurrency control |
+| `prompts.py` | LLM prompts for construction-domain matching |
 
-### `pricecode/` — Price Code Allocation
+### `pricecode/` — Price Code Allocation (Lexical)
 
-Matches BOQ items to price codes from indexed catalogs.
+Matches BOQ items to price codes using TF-IDF lexical search + LLM validation.
 
 | File | Purpose |
 |------|---------|
-| `indexer.py` | Indexes price code Excel files into Pinecone |
-| `matcher.py` | Price code matching with unit and specificity checks |
-| `pipeline.py` | Full allocation pipeline (26 KB — the largest module) |
+| `lexical_search.py` | TF-IDF/BM25 lexical engine with domain-aware tokenization, synonym normalization, spec extraction |
+| `indexer.py` | Builds SQLite index from reference Excel files |
+| `matcher.py` | Lexical search → LLM judge (match or reject) |
+| `pipeline.py` | Full allocation pipeline (parse → search → match → color-coded Excel) |
 | `prompts.py` | LLM prompts for price code matching |
 
-### `vectorstore/` — Vector DB Integration
+### `pricecode_vector/` — Price Code Allocation (Embedding-Based)
+
+Matches BOQ items to price codes using OpenAI embeddings + S3 Vectors + LLM validation.
 
 | File | Purpose |
 |------|---------|
-| `indexer.py` | Processes JSON files → OpenAI embeddings → Pinecone upsert |
+| `indexer.py` | Embed price code Excel files → store in S3 Vectors |
+| `matcher.py` | Embedding similarity + LLM one-shot matching |
+| `pipeline.py` | Full allocation pipeline using embeddings |
+| `prompts.py` | LLM prompts for embedding-based matching |
+
+### `vectorstore/` — S3 Vectors Indexing
+
+| File | Purpose |
+|------|---------|
+| `indexer.py` | Process JSON files → OpenAI embeddings → S3 Vectors upsert |
 
 ### `core/` — Shared Utilities
 
@@ -60,8 +71,7 @@ Matches BOQ items to price codes from indexed catalogs.
 | `models.py` | Pydantic data models for BOQ items, matches, results |
 | `excel.py` | Excel read/write utilities (openpyxl) |
 | `storage.py` | Storage abstraction — local filesystem or S3 |
-| `vector_store.py` | Pinecone client wrapper (sync) |
-| `async_vector_store.py` | Pinecone async operations |
+| `vector_store.py` | S3 Vectors client wrapper (index management, upsert, search, delete) |
 | `rate_limits.py` | API rate limiter (RPM-based) |
 
 ### `config/` — Configuration
@@ -77,11 +87,14 @@ Matches BOQ items to price codes from indexed catalogs.
 |---------|---------|-------------|
 | `openai_chat_model` | `gpt-5-mini-2025-08-07` | LLM for matching/chat |
 | `openai_embedding_model` | `text-embedding-3-small` | Embedding model |
-| `pinecone_index_name` | `almabani` | Unit rate index |
-| `pricecode_index_name` | `almabani-pricecode` | Price code index |
+| `s3_vectors_bucket` | (env-based) | S3 Vectors bucket |
+| `s3_vectors_index_name` | `almabani` | Unit rate S3 Vectors index |
+| `pricecode_index_name` | `almabani-pricecode-vector` | Price code S3 Vectors index |
+| `pricecode_vector_index_name` | (env-based) | Price code vector pipeline index |
 | `similarity_threshold` | `0.5` | Minimum cosine similarity |
 | `top_k` | `10` | Candidates per query (rate filler) |
-| `pricecode_top_k` | `150` | Candidates per query (price code) |
+| `pricecode_max_candidates` | `1` | Lexical candidates sent to LLM per item |
+| `pricecode_vector_top_k` | `5` | Candidates per query (vector price code) |
 | `batch_size` | `500` | Items per processing batch |
 | `max_workers` | `200` | Max concurrent embedding tasks |
 | `embeddings_rpm` | `3000` | OpenAI embeddings rate limit |
@@ -99,28 +112,27 @@ Matches BOQ items to price codes from indexed catalogs.
 
 ### `worker.py` (Unit Rate Pipeline)
 
-Fargate entrypoint for the AlmabaniStack. Determines job mode from environment variables and runs the appropriate pipeline.
+Fargate entrypoint for the AlmabaniStack. Determines job mode from environment variables.
 
 **Modes**:
-- `PARSE` — Downloads Excel from S3, runs parse pipeline, uploads JSON to `output/indexes/`
+- `PARSE` — Downloads Excel from S3, runs parse pipeline, uploads JSON to `output/indexes/`, indexes into S3 Vectors
 - `FILL` — Downloads Excel from S3, runs rate filler pipeline, uploads filled Excel to `output/fills/`
 
-**Key functions**:
-- `process_parse()` — Parse pipeline orchestration
-- `process_fill()` — Rate filler with Pinecone search and LLM matching
-- `register_sheet_name()` — Maintains an S3 registry of available sheets
-
-### `pricecode_worker.py` (Price Code Pipeline)
+### `pricecode_worker.py` (Price Code Lexical Pipeline)
 
 Fargate entrypoint for the PriceCodeStack.
 
 **Modes**:
-- `INDEX` — Index price codes from Excel into Pinecone (`almabani-pricecode`)
-- `ALLOCATE` — Allocate price codes to BOQ items, output filled Excel
+- `INDEX` — Index price codes from Excel into SQLite TF-IDF database, upload to S3
+- `ALLOCATE` — Download SQLite index from S3, match BOQ items using lexical search + LLM, output color-coded Excel
 
-**Key functions**:
-- `process_index()` — Parse Excel, create embeddings, upsert to Pinecone
-- `process_allocate()` — Download Excel, match against Pinecone index, write allocated Excel
+### `pricecode_vector_worker.py` (Price Code Vector Pipeline)
+
+Fargate entrypoint for the PriceCodeVectorStack.
+
+**Modes**:
+- `INDEX` — Embed price code items from Excel into S3 Vectors index
+- `ALLOCATE` — Query S3 Vectors for similar items, match via LLM, output allocated Excel
 
 ---
 
@@ -130,90 +142,39 @@ Fargate entrypoint for the PriceCodeStack.
 
 Natural language interface for querying both unit rates and price codes.
 
-**Handler**: `chat_handler.handler`
-
 **Request body**:
 ```json
 {
   "message": "HDPE pipe DN200 PN16 supply and install",
-  "chat_type": "unitrate"  // or "pricecode"
+  "type": "unitrate"
 }
 ```
 
 **Flow**:
 1. `validate_construction_query()` — LLM validates input is construction-related
-2. `search_pinecone()` — Vector search for candidates
+2. `search_vectors()` — Embed query, search S3 Vectors for candidates
 3. `match_unitrate()` or `match_pricecode()` — LLM matching with domain prompts
 4. Return structured results with confidence scores
 
 ### `delete_handler.py` (Deletion API)
 
-Two Lambda handlers in one file:
+Dispatcher/worker Lambda handlers for async deletion:
 
 | Handler | Endpoint | Action |
 |---------|----------|--------|
-| `delete_datasheet` | `DELETE /files/sheets/{sheet_name}` | Remove from Pinecone + S3 registry |
-| `delete_price_code_set` | `DELETE /pricecode/sets/{set_name}` | Remove from price code Pinecone index |
-
----
-
-## Flask Web GUI
-
-**File**: `app/main.py` (628 lines)
-
-Local development interface with these pages:
-
-| Route | Method | Purpose |
-|-------|--------|---------|
-| `/` | GET | Home page with overview |
-| `/parse` | GET | Parse page UI |
-| `/api/parse` | POST | Upload Excel, get JSON |
-| `/index` | GET | Index page UI (list available JSONs) |
-| `/api/index` | POST | Index JSON into Pinecone |
-| `/fill` | GET | Fill page UI |
-| `/api/fill` | POST | Upload Excel, get rate-filled Excel |
-| `/query` | GET | Query page UI |
-| `/api/query` | POST | Search vector store |
-| `/settings` | GET | View current configuration |
-| `/files` | GET | Files management page |
-| `/api/files/delete` | POST | Delete a file |
-| `/api/files/delete_all` | POST | Delete all files in a folder |
-| `/download/<key>` | GET | Download file (S3 presigned URL redirect) |
-
-**Storage mode**: Configurable via `STORAGE_TYPE` env var (`local` or `s3`).
+| `dispatch_delete_datasheet` | `DELETE /files/sheets/{name}` | 202 → async delete from S3 Vectors + registry |
+| `dispatch_delete_price_code_set` | `DELETE /pricecode/sets/{name}` | 202 → async delete from index |
+| `dispatch_delete_pricecode_vector_set` | `DELETE /pricecode-vector/sets/{name}` | 202 → async delete from S3 Vectors |
+| `get_deletion_status` | `GET /deletion-status/{id}` | Poll status (auto-cleanup) |
 
 ---
 
 ## Docker
 
-### `Dockerfile` (Unit Rate Worker)
+| File | Purpose | Entrypoint |
+|------|---------|-----------|
+| `Dockerfile` | Unit rate worker | `python worker.py` |
+| `Dockerfile.pricecode` | Pricecode lexical worker | `python pricecode_worker.py` |
+| `Dockerfile.pricecode_vector` | Pricecode vector worker | `python pricecode_vector_worker.py` |
 
-- Base: `python:3.11-slim`
-- Non-root user (`appuser`)
-- Installs `almabani` package in editable mode
-- Entrypoint: `python worker.py`
-
-### `Dockerfile.pricecode` (Price Code Worker)
-
-- Base: `python:3.11-slim`
-- Same structure, different entrypoint: `python pricecode_worker.py`
-
-### `docker-compose.yml` (Local Dev)
-
-- Runs Flask web GUI on port 8080
-- Mounts persistent volumes for uploads, fills, indexes, and logs
-- Health check on `http://localhost:8080/`
-
----
-
-## Dependencies
-
-**Core**: pandas, openpyxl, pydantic, pydantic-settings, pyyaml
-
-**AI**: openai, pinecone (gRPC + async)
-
-**Web**: Flask, Jinja2, FastAPI, uvicorn
-
-**CLI**: typer, rich, tqdm
-
-**AWS**: boto3, serverless-wsgi
+All images use `python:3.11-slim`, run as non-root `appuser`, and install the `almabani` package in editable mode.

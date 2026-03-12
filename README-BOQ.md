@@ -50,43 +50,38 @@ AI-powered construction Bill of Quantities (BOQ) processing platform. Parses Exc
 ## Directory Structure
 
 ```
-Almabani/
-├── boq-backend/
-│   ├── almabani/                  # Python package (pip install -e .)
-│   │   ├── parsers/               # Excel → JSON parsing pipeline
-│   │   ├── rate_matcher/          # Unit rate AI matching (3-stage)
-│   │   ├── pricecode/             # Price code allocation (lexical TF-IDF)
-│   │   ├── pricecode_vector/      # Price code allocation (embedding-based)
-│   │   ├── vectorstore/           # S3 Vectors indexing
-│   │   ├── core/                  # Shared utilities (embeddings, storage, models)
-│   │   ├── config/                # Pydantic settings + logging
-│   │   └── cli/                   # Typer CLI tool
-│   ├── worker.py                  # Fargate worker (unit rate: parse + fill)
-│   ├── pricecode_worker.py        # Fargate worker (pricecode lexical: index + allocate)
-│   ├── pricecode_vector_worker.py # Fargate worker (pricecode vector: index + allocate)
-│   ├── chat_handler.py            # Lambda handler (chat API)
-│   ├── delete_handler.py          # Lambda handler (deletion API)
-│   ├── Dockerfile                 # Unit rate worker image
-│   ├── Dockerfile.pricecode       # Pricecode lexical worker image
-│   ├── Dockerfile.pricecode_vector # Pricecode vector worker image
-│   ├── layers/                    # Lambda layer dependencies
-│   ├── requirements.txt           # Python dependencies
-│   └── pyproject.toml             # Package configuration
-├── infra/                         # AWS CDK (Python)
-│   ├── app.py                     # CDK app entry point (5 stacks)
-│   ├── almabani_stack.py          # Unit rate stack
-│   ├── pricecode_stack.py         # Pricecode lexical stack
-│   ├── pricecode_vector_stack.py  # Pricecode vector stack
-│   ├── chat_stack.py              # Chat API stack
-│   ├── deletion_stack.py          # Deletion API stack
-│   └── lambdas/                   # Lambda trigger functions
-│       ├── trigger.py             # S3 → Fargate (unit rate)
-│       ├── pricecode_trigger.py   # S3 → Fargate (pricecode lexical)
-│       └── pricecode_vector_trigger.py  # S3 → Fargate (pricecode vector)
-├── docs/                          # Architecture & backend documentation
-├── scripts/                       # Debug & analysis utilities
-├── DEPLOYMENT.md                  # Cloud deployment guide
-└── LOCAL_DEV.md                   # Local development guide
+boq-backend/
+├── almabani/                  # Python package (pip install -e .)
+│   ├── parsers/               # Excel → JSON parsing pipeline
+│   ├── rate_matcher/          # Unit rate AI matching (3-stage)
+│   ├── pricecode/             # Price code allocation (lexical TF-IDF)
+│   ├── pricecode_vector/      # Price code allocation (embedding-based)
+│   ├── vectorstore/           # S3 Vectors indexing
+│   ├── core/                  # Shared utilities (embeddings, storage, models)
+│   ├── config/                # Pydantic settings + logging
+│   └── cli/                   # Typer CLI tool
+├── worker.py                  # Fargate worker (unit rate: parse + fill)
+├── pricecode_worker.py        # Fargate worker (pricecode lexical: index + allocate)
+├── pricecode_vector_worker.py # Fargate worker (pricecode vector: index + allocate)
+├── chat_handler.py            # Lambda handler (chat API)
+├── delete_handler.py          # Lambda handler (deletion API)
+├── Dockerfile                 # Unit rate worker image
+├── Dockerfile.pricecode       # Pricecode lexical worker image
+├── Dockerfile.pricecode_vector # Pricecode vector worker image
+├── layers/                    # Lambda layer dependencies
+├── requirements.txt           # Python dependencies
+└── pyproject.toml             # Package configuration
+infra/                         # AWS CDK (Python)
+├── app.py                     # CDK app entry point (5 stacks)
+├── almabani_stack.py          # Unit rate stack
+├── pricecode_stack.py         # Pricecode lexical stack
+├── pricecode_vector_stack.py  # Pricecode vector stack
+├── chat_stack.py              # Chat API stack
+├── deletion_stack.py          # Deletion API stack
+└── lambdas/                   # Lambda trigger functions
+docs/                          # Architecture & backend documentation
+DEPLOYMENT.md                  # Cloud deployment guide
+README-BOQ.md                  # This file
 ```
 
 ---
@@ -100,7 +95,7 @@ Almabani/
 pip install -r infra/requirements.txt
 
 # 2. Bootstrap (first time only)
-cdk bootstrap aws://239146712026/eu-west-1
+cdk bootstrap aws://<YOUR_ACCOUNT_ID>/eu-west-1
 
 # 3. Deploy all stacks
 cdk deploy --app "python3 infra/app.py" --all

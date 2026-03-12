@@ -43,7 +43,7 @@ Verify access:
 
 ```bash
 aws sts get-caller-identity
-# Should show account 239146712026
+# Should show your AWS account ID
 ```
 
 ---
@@ -92,6 +92,31 @@ LOG_LEVEL=INFO
 > The OPENAI_API_KEY is injected into SSM Parameter Store for Fargate stacks and as a
 > Lambda environment variable for ChatStack. Do **not** commit this file to git.
 
+### Cross-Service Bucket Access (Dynamic Role)
+
+The CDK stacks automatically grant the main Serverless backend (`taskflow-backend`) Lambda
+role read/write access to all 3 BOQ S3 buckets. The role name is constructed dynamically:
+
+```
+{SERVERLESS_SERVICE_NAME}-{SERVERLESS_STAGE}-{region}-lambdaRole
+```
+
+Defaults: `taskflow-backend-dev-eu-west-1-lambdaRole`. Override via `boq-backend/env`:
+
+```ini
+SERVERLESS_SERVICE_NAME=taskflow-backend
+SERVERLESS_STAGE=dev
+```
+
+### Frontend Environment Variables
+
+The React/Vite frontend uses these env vars (in `frontend/.env.local`) to reach the BOQ APIs:
+
+| Variable | Value (from CloudFormation outputs) |
+|----------|-------------------------------------|
+| `VITE_BOQ_DELETION_API_URL` | `DeletionStack` → `DeletionApiUrl` |
+| `VITE_BOQ_CHAT_API_URL` | `ChatStack` → `ChatFunctionUrl` |
+
 ---
 
 ## 3. CDK Bootstrap (First Time Only)
@@ -105,7 +130,7 @@ pip install -r requirements.txt
 cd ..
 
 # Bootstrap the target account/region
-cdk bootstrap aws://239146712026/eu-west-1 --app "python3 infra/app.py"
+cdk bootstrap aws://<YOUR_ACCOUNT_ID>/eu-west-1 --app "python3 infra/app.py"
 ```
 
 This only needs to be run once per account/region.

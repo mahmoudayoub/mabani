@@ -165,6 +165,7 @@ sequenceDiagram
 | Fargate Task Role | `s3vectors:*` | `*` (S3 Vectors API) |
 | Lambda Trigger | `ecs:RunTask` | Task Definition ARN |
 | Lambda Trigger | `iam:PassRole` | Execution Role ARN, Task Role ARN |
+| External Role | `s3:GetObject`, `s3:PutObject`, `s3:ListBucket`, `s3:DeleteObject` | Bucket (dynamic: `{sls_service}-{sls_stage}-{region}-lambdaRole`) |
 
 ---
 
@@ -248,6 +249,7 @@ sequenceDiagram
 | Fargate Task Role | `s3vectors:*` | `*` (S3 Vectors API) |
 | Lambda Trigger | `ecs:RunTask` | Task Definition ARN |
 | Lambda Trigger | `iam:PassRole` | Execution Role ARN, Task Role ARN |
+| External Role | `s3:GetObject`, `s3:PutObject`, `s3:ListBucket`, `s3:DeleteObject` | Bucket (dynamic: `{sls_service}-{sls_stage}-{region}-lambdaRole`) |
 
 ---
 
@@ -323,7 +325,7 @@ sequenceDiagram
 | Fargate Task Role | `s3vectors:*` | `*` (S3 Vectors API) |
 | Lambda Trigger | `ecs:RunTask` | Task Definition ARN |
 | Lambda Trigger | `iam:PassRole` | Execution Role ARN, Task Role ARN |
-| External Role | `s3:GetObject`, `s3:PutObject`, `s3:ListBucket`, `s3:DeleteObject` | Bucket (for `taskflow-backend-dev` Lambda) |
+| External Role | `s3:GetObject`, `s3:PutObject`, `s3:ListBucket`, `s3:DeleteObject` | Bucket (dynamic: `{sls_service}-{sls_stage}-{region}-lambdaRole`) |
 
 ---
 

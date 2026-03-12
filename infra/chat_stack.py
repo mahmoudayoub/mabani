@@ -13,6 +13,7 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_apigateway as apigw,
     aws_iam as iam,
+    aws_ssm as ssm,
     CfnOutput,
 )
 from constructs import Construct
@@ -25,8 +26,11 @@ class ChatStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
-        # Get environment variables
-        openai_api_key = os.environ.get('OPENAI_API_KEY', '')
+        # SSM parameter for OpenAI API key (secure — not plaintext in Lambda env)
+        openai_key_param = ssm.StringParameter.from_string_parameter_name(
+            self, "OpenAIKeyParam",
+            string_parameter_name="/almabani/OPENAI_API_KEY"
+        )
         
         # Lambda Layer for dependencies (reuse from DeletionStack if available)
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -56,8 +60,8 @@ class ChatStack(Stack):
             memory_size=1024,
             layers=[deps_layer, aio_deps_layer],
             environment={
-                "OPENAI_API_KEY": openai_api_key,
-                "S3_VECTORS_BUCKET": "almabani-vectors",
+                "OPENAI_API_KEY": openai_key_param.string_value,
+                "S3_VECTORS_BUCKET": os.environ.get('S3_VECTORS_BUCKET', 'almabani-vectors'),
                 "S3_VECTORS_INDEX_NAME": os.environ.get('S3_VECTORS_INDEX_NAME', 'almabani'),
                 "PRICECODE_INDEX_NAME": os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode-vector'),
                 "OPENAI_CHAT_MODEL": os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),

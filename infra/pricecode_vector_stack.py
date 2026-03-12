@@ -155,23 +155,24 @@ class PriceCodeVectorStack(Stack):
             iam.PolicyStatement(actions=["s3vectors:*"], resources=["*"])
         )
 
-        # Grant the Serverless Framework Lambda role access to this bucket
-        # so the frontend API (taskflow-backend-dev) can list/read/write.
-        # We use a bucket policy since the role is external to this stack.
-        bucket.add_to_resource_policy(
-            iam.PolicyStatement(
-                actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"],
-                resources=[
-                    bucket.bucket_arn,
-                    bucket.arn_for_objects("*"),
-                ],
-                principals=[
-                    iam.ArnPrincipal(
-                        f"arn:aws:iam::{self.account}:role/taskflow-backend-dev-eu-west-1-lambdaRole"
-                    )
-                ],
+        # Grant an external IAM role access to this bucket (e.g. Serverless Framework Lambda)
+        # Set EXTERNAL_ROLE_NAME in env to enable (e.g. "taskflow-backend-dev-eu-west-1-lambdaRole")
+        external_role_name = os.getenv("EXTERNAL_ROLE_NAME", "")
+        if external_role_name:
+            bucket.add_to_resource_policy(
+                iam.PolicyStatement(
+                    actions=["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"],
+                    resources=[
+                        bucket.bucket_arn,
+                        bucket.arn_for_objects("*"),
+                    ],
+                    principals=[
+                        iam.ArnPrincipal(
+                            f"arn:aws:iam::{self.account}:role/{external_role_name}"
+                        )
+                    ],
+                )
             )
-        )
 
         # Security Group
         task_sg = ec2.SecurityGroup(

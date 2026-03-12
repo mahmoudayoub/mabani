@@ -113,7 +113,7 @@ class PriceCodeStack(Stack):
                 "STORAGE_TYPE": "s3",
                 "S3_BUCKET_NAME": bucket.bucket_name,
                 "AWS_REGION": self.region,
-                "S3_VECTORS_BUCKET": "almabani-vectors",
+                "S3_VECTORS_BUCKET": os.getenv("S3_VECTORS_BUCKET", "almabani-vectors"),
                 "S3_VECTORS_INDEX_NAME": os.getenv("S3_VECTORS_INDEX_NAME", "almabani"),
                 # Price code settings (can override via env)
                 "PRICECODE_BATCH_SIZE": os.getenv("PRICECODE_BATCH_SIZE", "100"),

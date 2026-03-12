@@ -7,9 +7,7 @@ from deletion_stack import DeletionStack
 from chat_stack import ChatStack
 from dotenv import load_dotenv
 
-# Load env vars from project root
-# .env is in parent directory relative to infra/
-# We moved env to backend/env
+# Load env vars from boq-backend/env (primary) or root .env (fallback)
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'boq-backend', 'env')
 if os.path.exists(env_path):
     load_dotenv(env_path, override=True)
@@ -22,10 +20,13 @@ print(f"Loaded environment from: {env_path}")
 print(f"OPENAI_CHAT_MODEL: {os.getenv('OPENAI_CHAT_MODEL')}")
 
 app = cdk.App()
-account = '239146712026'
-region = 'eu-west-1'
+account = os.environ.get('CDK_DEFAULT_ACCOUNT', os.getenv('AWS_ACCOUNT_ID', ''))
+region = os.environ.get('CDK_DEFAULT_REGION', os.getenv('AWS_REGION', 'eu-west-1'))
+if not account:
+    raise ValueError(
+        "AWS account not set. Either run 'aws configure' or set AWS_ACCOUNT_ID in your env file."
+    )
 print(f"Deploying to Account: {account}, Region: {region}")
-# Use the current account/region
 env = cdk.Environment(
     account=account, 
     region=region

@@ -26,8 +26,10 @@ class DeletionStack(Stack):
         if shared_bucket:
             bucket = shared_bucket
         else:
-            # Fallback if not passed (not recommended)
-            bucket = s3.Bucket.from_bucket_name(self, "ImportedBucket", "almabanistack-almabanidata...")
+            raise ValueError(
+                "DeletionStack requires shared_bucket from AlmabaniStack. "
+                "Pass shared_bucket=main_stack.bucket when instantiating."
+            )
 
         # 1b. Access Price Code Bucket
         if pricecode_bucket:
@@ -71,7 +73,7 @@ class DeletionStack(Stack):
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
-                "S3_VECTORS_BUCKET": "almabani-vectors",
+                "S3_VECTORS_BUCKET": os.getenv("S3_VECTORS_BUCKET", "almabani-vectors"),
                 "S3_VECTORS_INDEX_NAME": os.getenv("S3_VECTORS_INDEX_NAME", "almabani"),
             },
             timeout=Duration.seconds(120)
@@ -99,7 +101,7 @@ class DeletionStack(Stack):
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_VECTOR_BUCKET": pcv_bucket_name,
-                "S3_VECTORS_BUCKET": "almabani-vectors",
+                "S3_VECTORS_BUCKET": os.getenv("S3_VECTORS_BUCKET", "almabani-vectors"),
             },
             memory_size=512,
             timeout=Duration.seconds(120)

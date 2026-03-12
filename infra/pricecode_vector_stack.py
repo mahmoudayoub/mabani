@@ -124,6 +124,10 @@ class PriceCodeVectorStack(Stack):
                 "OPENAI_EMBEDDING_MODEL",
                 os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
             ),
+            "OPENAI_CHAT_MODEL": _ssm_param(
+                "OPENAI_CHAT_MODEL",
+                os.getenv("OPENAI_CHAT_MODEL", "gpt-5-mini-2025-08-07"),
+            ),
         }
 
         container = task_def.add_container(

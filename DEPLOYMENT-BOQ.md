@@ -8,14 +8,10 @@
 4. [Deploy All Stacks](#4-deploy-all-stacks)
 5. [Deploy Individual Stacks](#5-deploy-individual-stacks)
 6. [Verify Deployment](#6-verify-deployment)
-7. [Running Jobs](#7-running-jobs)
-8. [Chat API Usage](#8-chat-api-usage)
-9. [Deletion API Usage](#9-deletion-api-usage)
-10. [Updating Secrets (No Redeployment)](#10-updating-secrets-no-redeployment)
-11. [Updating Code (Redeployment Required)](#11-updating-code-redeployment-required)
-12. [Monitoring & Logs](#12-monitoring--logs)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Cost Model](#14-cost-model)
+7. [Updating Code (Redeployment Required)](#7-updating-code-redeployment-required)
+8. [Monitoring & Logs](#8-monitoring--logs)
+9. [Troubleshooting](#9-troubleshooting)
+10. [Cost Model](#10-cost-model)
 
 ---
 
@@ -92,7 +88,7 @@ LOG_LEVEL=INFO
 > The OPENAI_API_KEY is injected into SSM Parameter Store for Fargate stacks and as a
 > Lambda environment variable for ChatStack. Do **not** commit this file to git.
 
-### Cross-Service Bucket Access (Dynamic Role)
+### Cross-Service Bucket Access 
 
 The CDK stacks automatically grant the main Serverless backend (`taskflow-backend`) Lambda
 role read/write access to all 3 BOQ S3 buckets. The role name is constructed dynamically:
@@ -201,11 +197,13 @@ After deployment, check the CloudFormation outputs:
 
 ```bash
 # List all stack outputs
-aws cloudformation describe-stacks --query "Stacks[].Outputs" --output table
+aws cloudformation describe-stacks --query "Stacks[].Outputs[].[OutputKey,OutputValue,Description]" --output table
 
 # Or specific stacks
-aws cloudformation describe-stacks --stack-name ChatStack --query "Stacks[0].Outputs"
-aws cloudformation describe-stacks --stack-name DeletionStack --query "Stacks[0].Outputs"
+aws cloudformation describe-stacks --stack-name ChatStack \
+  --query "Stacks[0].Outputs[].[OutputKey,OutputValue,Description]" --output table
+aws cloudformation describe-stacks --stack-name DeletionStack \
+  --query "Stacks[0].Outputs[].[OutputKey,OutputValue,Description]" --output table
 ```
 
 **Expected outputs:**
@@ -218,189 +216,16 @@ aws cloudformation describe-stacks --stack-name DeletionStack --query "Stacks[0]
 | ChatStack | `ChatFunctionUrl` | Lambda Function URL (recommended, no timeout) |
 | ChatStack | `ChatApiUrl` | API Gateway URL (29s timeout limit) |
 | DeletionStack | `DeletionApiUrl` | Deletion API base URL |
-
-Verify the Chat Lambda is working:
-
-```bash
-# Get the Function URL from outputs
-CHAT_URL=$(aws cloudformation describe-stacks --stack-name ChatStack \
-  --query "Stacks[0].Outputs[?OutputKey=='ChatFunctionUrl'].OutputValue" --output text)
-
-# Warmup test
-curl -s -X POST "$CHAT_URL" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "warmup", "type": "unitrate"}' | python3 -m json.tool
-```
+ 
 
 ---
 
-## 7. Running Jobs
-
-### Unit Rate Pipeline (AlmabaniStack)
-
-| Job | Upload To | Result |
-|-----|-----------|--------|
-| **Parse** (Excel → JSON) | `s3://<bucket>/input/parse/myfile.xlsx` | `output/indexes/myfile.json` |
-| **Fill** (rate matching) | `s3://<bucket>/input/fill/myfile.xlsx` | `output/fills/myfile_filled.xlsx` |
-
-```bash
-# Get the bucket name
-BUCKET=$(aws cloudformation describe-stacks --stack-name AlmabaniStack \
-  --query "Stacks[0].Outputs[?OutputKey=='S3BucketName'].OutputValue" --output text)
-
-# Parse a BOQ file
-aws s3 cp my_boq.xlsx s3://$BUCKET/input/parse/my_boq.xlsx
-
-# Fill unit rates
-aws s3 cp my_boq.xlsx s3://$BUCKET/input/fill/my_boq.xlsx
-
-# Check output (after processing completes)
-aws s3 ls s3://$BUCKET/output/indexes/
-aws s3 ls s3://$BUCKET/output/fills/
-```
-
-### Price Code Lexical Pipeline (PriceCodeStack)
-
-| Job | Upload To | Result |
-|-----|-----------|--------|
-| **Index** (build SQLite DB) | `s3://<bucket>/input/pricecode/index/catalog.xlsx` | SQLite DB in S3 |
-| **Allocate** (match BOQ items) | `s3://<bucket>/input/pricecode/allocate/boq.xlsx` | `output/pricecode/boq_allocated.xlsx` |
-
-```bash
-PC_BUCKET=$(aws cloudformation describe-stacks --stack-name PriceCodeStack \
-  --query "Stacks[0].Outputs[?OutputKey=='PriceCodeS3BucketName'].OutputValue" --output text)
-
-# Index price codes
-aws s3 cp catalog.xlsx s3://$PC_BUCKET/input/pricecode/index/catalog.xlsx
-
-# Allocate price codes to BOQ
-aws s3 cp boq.xlsx s3://$PC_BUCKET/input/pricecode/allocate/boq.xlsx
-```
-
-### Price Code Vector Pipeline (PriceCodeVectorStack)
-
-| Job | Upload To | Result |
-|-----|-----------|--------|
-| **Index** (embed → S3 Vectors) | `s3://<bucket>/input/pricecode-vector/index/catalog.xlsx` | Embeddings in S3 Vectors |
-| **Allocate** (similarity match) | `s3://<bucket>/input/pricecode-vector/allocate/boq.xlsx` | `output/pricecode-vector/boq_allocated.xlsx` |
-
-```bash
-PCV_BUCKET=$(aws cloudformation describe-stacks --stack-name PriceCodeVectorStack \
-  --query "Stacks[0].Outputs[?OutputKey=='PriceCodeVectorBucketName'].OutputValue" --output text)
-
-# Index price codes as embeddings
-aws s3 cp catalog.xlsx s3://$PCV_BUCKET/input/pricecode-vector/index/catalog.xlsx
-
-# Allocate using vector search
-aws s3 cp boq.xlsx s3://$PCV_BUCKET/input/pricecode-vector/allocate/boq.xlsx
-```
-
----
-
-## 8. Chat API Usage
-
-```bash
-# Unit rate query
-curl -X POST "$CHAT_URL" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "HDPE pipe DN200 PN16 supply and install", "type": "unitrate"}'
-
-# Price code query
-curl -X POST "$CHAT_URL" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "supply and install HDPE pipe DN200", "type": "pricecode"}'
-```
-
-**Response format:**
-
-```json
-{
-  "status": "success",
-  "message": "Found matching items",
-  "matches": [
-    {
-      "code": "PC-1234",
-      "description": "Supply and install HDPE pipe DN200 PN16",
-      "reference": {
-        "sheet_name": "Piping",
-        "source_file": "catalog_v3.xlsx"
-      }
-    }
-  ]
-}
-```
-
-> **Tip:** Use the Function URL (`ChatFunctionUrl`) instead of API Gateway to avoid
-> the 29-second timeout limit on complex queries.
-
----
-
-## 9. Deletion API Usage
-
-```bash
-DEL_URL=$(aws cloudformation describe-stacks --stack-name DeletionStack \
-  --query "Stacks[0].Outputs[?OutputKey=='DeletionApiUrl'].OutputValue" --output text)
-
-# Delete a unit rate datasheet
-curl -X DELETE "${DEL_URL}files/sheets/my_sheet_name"
-
-# Delete a lexical price code set
-curl -X DELETE "${DEL_URL}pricecode/sets/my_price_set"
-
-# Delete a vector price code set
-curl -X DELETE "${DEL_URL}pricecode-vector/sets/my_vector_set"
-
-# Poll deletion status (returned in the 202 response)
-curl "${DEL_URL}deletion-status/ds_1234567890_my_sheet_name"
-```
-
-All DELETE endpoints return `202 Accepted` with a `deletion_id` for status polling.
-
----
-
-## 10. Updating Secrets (No Redeployment)
-
-Fargate stacks read secrets from **SSM Parameter Store** at container start time.
-You can update them without redeploying:
-
-```bash
-# Update OpenAI API key for unit rate pipeline
-aws ssm put-parameter --name "/almabani/OPENAI_API_KEY" \
-  --value "sk-new-key" --type String --overwrite
-
-# Update for price code pipeline
-aws ssm put-parameter --name "/pricecode/OPENAI_API_KEY" \
-  --value "sk-new-key" --type String --overwrite
-
-# Update for vector pipeline
-aws ssm put-parameter --name "/pricecode-vector/OPENAI_API_KEY" \
-  --value "sk-new-key" --type String --overwrite
-```
-
-**SSM Parameter paths:**
-
-| Path | Parameters |
-|------|------------|
-| `/almabani/*` | `OPENAI_API_KEY`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_CHAT_MODEL` |
-| `/pricecode/*` | `OPENAI_API_KEY`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_CHAT_MODEL` |
-| `/pricecode-vector/*` | `OPENAI_API_KEY`, `OPENAI_EMBEDDING_MODEL` |
-
-> **Note:** ChatStack and DeletionStack receive the API key as a Lambda env var.
-> To update those, you must either redeploy or update the Lambda config directly:
->
-> ```bash
-> aws lambda update-function-configuration --function-name <ChatHandlerName> \
->   --environment "Variables={OPENAI_API_KEY=sk-new-key,...}"
-> ```
-
----
-
-## 11. Updating Code (Redeployment Required)
+## 7. Updating Code (Redeployment Required)
 
 When you change Python code, workers, or Lambda handlers:
 
 ```bash
-# Update boq-backend/.env (or boq-backend/env) if settings changed
+# Update boq-backend/env if settings changed
 # Then redeploy the affected stacks
 
 # If you changed worker.py or almabani/ package:
@@ -423,77 +248,49 @@ CDK automatically rebuilds Docker images and uploads new Lambda code.
 
 ---
 
-## 12. Monitoring & Logs
+## 8. Monitoring & Logs
 
-All services log to **CloudWatch Logs**:
+All services log to **CloudWatch Logs**. Open **AWS Console → CloudWatch → Log groups** and filter by stack name.
 
-| Stack | Log Group | Content |
+| Stack | Filter by | Content |
 |-------|-----------|---------|
-| AlmabaniStack | `/ecs/AlmabaniWorker` | Parse/fill progress, timing, errors |
-| PriceCodeStack | `/ecs/PriceCodeWorker` | Index/allocate progress, LLM calls |
-| PriceCodeVectorStack | `/ecs/PriceCodeVectorWorker` | Embedding/allocation progress |
-| ChatStack | `/aws/lambda/ChatHandler` | Chat queries, matches, latency |
-| DeletionStack | `/aws/lambda/...` | Dispatch/worker/status logs |
+| AlmabaniStack (Fargate) | `AlmabaniStack` + `ecs` | Parse/fill progress and errors |
+| PriceCodeStack (Fargate) | `PriceCodeStack` + `ecs` | Index/allocate progress and errors |
+| PriceCodeVectorStack (Fargate) | `PriceCodeVectorStack` + `ecs` | Vector index/allocate progress |
+| ChatStack (Lambda) | `ChatStack` | Chat queries, matches, latency |
+| DeletionStack (Lambda) | `DeletionStack` | Dispatch/worker/status logs |
 
-```bash
-# Tail Fargate logs live
-aws logs tail /ecs/AlmabaniWorker --follow
-
-# View recent Chat Lambda logs
-aws logs tail /aws/lambda/ChatStack-ChatHandler --since 1h
-```
-
-**Fargate task status:**
-
-```bash
-# List running tasks
-aws ecs list-tasks --cluster AlmabaniCluster --desired-status RUNNING
-
-# List stopped tasks (to check exit codes)
-aws ecs list-tasks --cluster AlmabaniCluster --desired-status STOPPED
-```
+**Fargate task status:** AWS Console → **ECS → Clusters** → select the cluster (find it under **CloudFormation → [Stack] → Resources**) → **Tasks** → filter by `RUNNING` or `STOPPED`. Stopped tasks show exit code and stop reason in the task detail view.
 
 ---
 
-## 13. Troubleshooting
+## 9. Troubleshooting
 
 ### Fargate task fails to start
 
-```bash
-# Check task stopped reason
-TASK_ARN=$(aws ecs list-tasks --cluster AlmabaniCluster --desired-status STOPPED \
-  --query "taskArns[0]" --output text)
-aws ecs describe-tasks --cluster AlmabaniCluster --tasks $TASK_ARN \
-  --query "tasks[0].{status:lastStatus,reason:stoppedReason,exitCode:containers[0].exitCode}"
-```
+Open **ECS → Clusters → [cluster] → Tasks → Stopped**, click the task, and read the **Stopped reason** and **Exit code** in the detail panel.
 
-**Common causes:**
-- **CannotPullContainerError**: Docker image not found → redeploy to push new image
-- **ResourceInitializationError**: Public IP not assigned → check subnet is public
-- **Exit code 1**: Application error → check CloudWatch logs
+- **CannotPullContainerError** — Docker image missing; redeploy the stack to push a fresh image
+- **ResourceInitializationError** — Public IP not assigned; verify the subnet has *Auto-assign public IPv4* enabled
+- **Exit code 1** — Application error; open the linked CloudWatch log stream for details
 
 ### Lambda timeouts
 
-- Chat Lambda: 120s limit. If queries time out, check OpenAI API latency
-- Use the Function URL instead of API Gateway (avoids 29s limit)
+- Chat Lambda has a 120s limit. Check OpenAI API latency in the **CloudWatch → ChatStack** log group.
+- Always use the **Function URL** (`ChatFunctionUrl`) instead of API Gateway to avoid the 29s limit.
 
 ### Permission errors
 
-- `s3vectors:*` permission missing: Redeploy the affected stack
-- `ecs:RunTask` denied: Trigger Lambda role needs `ecs:RunTask` + `iam:PassRole`
+- Missing `s3vectors:*` — redeploy the affected stack to re-apply IAM policies
+- `ecs:RunTask` denied — the trigger Lambda role needs `ecs:RunTask` + `iam:PassRole`; redeploy
 
 ### S3 Vectors index not found
 
-```bash
-# List indices
-aws s3vectors list-indexes --index-bucket almabani-vectors
-```
-
-If an index doesn't exist, run the corresponding indexing job first.
+Open **AWS Console → S3 → [bucket] → Vector indexes** (or **S3 Vectors** service if available in the console). If an index is missing, run the corresponding indexing job first.
 
 ---
 
-## 14. Cost Model
+## 10. Cost Model
 
 This architecture has **zero idle cost**:
 

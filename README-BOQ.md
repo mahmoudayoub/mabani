@@ -5,7 +5,7 @@ AI-powered construction Bill of Quantities (BOQ) processing platform. Parses Exc
 ## Features
 
 ### Unit Rate Pipeline
-- **Parse** — Extract structured items from Excel BOQ datasheets into JSON
+
 - **Index** — Embed items with OpenAI and store in S3 Vectors
 - **Fill** — AI-powered rate matching: finds similar items and fills missing rates using 3-stage matching (exact → close → approximation)
 
@@ -36,14 +36,14 @@ AI-powered construction Bill of Quantities (BOQ) processing platform. Parses Exc
 | Stack | Compute | Purpose | Trigger Paths |
 |-------|---------|---------|---------------|
 | **AlmabaniStack** | Fargate (1 vCPU, 2 GB) | Unit rate parse + fill | `input/parse/`, `input/fill/` |
-| **PriceCodeStack** | Fargate (2 vCPU, 16 GB) | Price code lexical index + allocate | `input/pricecode/index/`, `input/pricecode/allocate/` |
+| **PriceCodeStack** | Fargate (4 vCPU, 16 GB) | Price code lexical index + allocate | `input/pricecode/index/`, `input/pricecode/allocate/` |
 | **PriceCodeVectorStack** | Fargate (2 vCPU, 8 GB) | Price code vector index + allocate | `input/pricecode-vector/index/`, `input/pricecode-vector/allocate/` |
 | **ChatStack** | Lambda (1 GB, 120s) | Natural language chat API | POST `/chat` or Function URL |
-| **DeletionStack** | Lambda (30s-120s) | Async deletion API | DELETE endpoints |
+| **DeletionStack** | Lambda (10s dispatch, 120s-15m workers) | Async deletion API | DELETE endpoints |
 
 **AI Stack**: OpenAI (GPT-5-mini, text-embedding-3-small) + S3 Vectors (cosine similarity, 1536 dims)
 
-**Secrets**: AWS SSM Parameter Store (`/almabani/*`, `/pricecode/*`)
+**Secrets**: AWS SSM Parameter Store (`/almabani/*`, `/pricecode/*`, `/pricecode-vector/*`)
 
 ---
 
@@ -79,7 +79,7 @@ infra/                         # AWS CDK (Python)
 ├── deletion_stack.py          # Deletion API stack
 └── lambdas/                   # Lambda trigger functions
 docs/                          # Architecture & backend documentation
-DEPLOYMENT.md                  # Cloud deployment guide
+DEPLOYMENT-BOQ.md              # Cloud deployment guide
 README-BOQ.md                  # This file
 ```
 

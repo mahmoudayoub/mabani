@@ -18,7 +18,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Get model from environment (same as pipelines)
-OPENAI_CHAT_MODEL = os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini')
+OPENAI_CHAT_MODEL = os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5-mini-2025-08-07')
 
 # Initialize clients lazily
 _openai_client = None

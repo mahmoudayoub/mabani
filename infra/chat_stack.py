@@ -64,7 +64,7 @@ class ChatStack(Stack):
                 "S3_VECTORS_BUCKET": os.environ.get('S3_VECTORS_BUCKET', 'almabani-vectors'),
                 "S3_VECTORS_INDEX_NAME": os.environ.get('S3_VECTORS_INDEX_NAME', 'almabani'),
                 "PRICECODE_INDEX_NAME": os.environ.get('PRICECODE_INDEX_NAME', 'almabani-pricecode-vector'),
-                "OPENAI_CHAT_MODEL": os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+                "OPENAI_CHAT_MODEL": os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5-mini-2025-08-07'),
             }
         )
         

@@ -1,4 +1,4 @@
-# Archive files (globally ignored)
+# Archive files
 *.zip
 *.tar.gz
 *.rar
@@ -14,7 +14,6 @@ pnpm-debug.log*
 lerna-debug.log*
 .pnp
 .pnp.js
-# Note: package-lock.json is intentionally tracked for reproducible builds
 
 # Build outputs
 dist/
@@ -60,12 +59,15 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 env.bak/
 venv.bak/
 *.egg-info/
 .installed.cfg
 *.egg
+*.backup
+*.bak
 pip-log.txt
 pip-delete-this-directory.txt
 .pytest_cache/
@@ -102,7 +104,6 @@ coverage/
 junit.xml
 test-results/
 playwright-report/
-test-results/
 
 # Temporary files
 tmp/
@@ -134,15 +135,14 @@ docker-compose.override.yml
 .stylelintcache
 .parcel-cache/
 
-# CDK specific
-cdk.out/
-cdk.context.json
-
 # Python virtual environments
 backend/venv/
 backend/.venv/
 backend/env/
 backend/.env/
+boq-backend/venv/
+boq-backend/.venv/
+boq-backend/env/
 
 # Frontend specific
 frontend/dist/
@@ -168,3 +168,19 @@ local.json
 local.yml
 local.yaml
 
+# BOQ-specific
+output/
+data/
+*.xlsx
+*.jsonl
+!requirements.txt
+!**/requirements.txt
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Keep structure
+!input/.gitkeep
+!output/.gitkeep
+!logs/.gitkeep

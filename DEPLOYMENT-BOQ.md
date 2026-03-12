@@ -222,27 +222,47 @@ aws cloudformation describe-stacks --stack-name DeletionStack \
 
 ## 7. Updating Code (Redeployment Required)
 
-When you change Python code, workers, or Lambda handlers:
+When you change Python code, workers, handlers, or layers, redeploy the stacks that package that code:
 
 ```bash
-# Update boq-backend/env if settings changed
-# Then redeploy the affected stacks
+# Safe default when impact is unclear: redeploy all stacks
+cdk deploy --app "python3 infra/app.py" --all
+```
 
-# If you changed worker.py or almabani/ package:
+```bash
+# Worker entrypoints
+# worker.py
 cdk deploy --app "python3 infra/app.py" AlmabaniStack
 
-# If you changed pricecode_worker.py:
+# pricecode_worker.py
 cdk deploy --app "python3 infra/app.py" PriceCodeStack
 
-# If you changed pricecode_vector_worker.py:
+# pricecode_vector_worker.py
 cdk deploy --app "python3 infra/app.py" PriceCodeVectorStack
 
-# If you changed chat_handler.py or chat_deps layer:
+# Lambda handlers
+# chat_handler.py
 cdk deploy --app "python3 infra/app.py" ChatStack
 
-# If you changed delete_handler.py:
+# delete_handler.py
 cdk deploy --app "python3 infra/app.py" DeletionStack
+
+# Shared BOQ package code (boq-backend/almabani/)
+# Used by all workers + chat + deletion handlers
+cdk deploy --app "python3 infra/app.py" AlmabaniStack PriceCodeStack PriceCodeVectorStack ChatStack DeletionStack
+
+# Layer changes
+# boq-backend/layers/chat_deps/**
+cdk deploy --app "python3 infra/app.py" ChatStack
+
+# infra/layers/deletion_dependencies/**
+cdk deploy --app "python3 infra/app.py" ChatStack DeletionStack
+
+# Trigger Lambda code (infra/lambdas/trigger*.py)
+cdk deploy --app "python3 infra/app.py" AlmabaniStack PriceCodeStack PriceCodeVectorStack
 ```
+
+If you changed values in `boq-backend/env`, redeploy every stack that consumes those values.
 
 CDK automatically rebuilds Docker images and uploads new Lambda code.
 

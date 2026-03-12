@@ -2,7 +2,8 @@
 
 ## Overview
 
-The backend is a Python 3.11 application structured as an installable package (`almabani` v2.0.0). It runs in two modes:
+This document describes the BOQ backend in `boq-backend/` (not the separate `backend/` service).
+It is a Python 3.11 application structured as an installable package (`almabani` v2.0.0). It runs in two modes:
 
 1. **Fargate workers** — batch processing triggered by S3 uploads
 2. **Lambda handlers** — serverless APIs (chat, deletion)
@@ -84,7 +85,6 @@ Matches BOQ items to price codes using OpenAI embeddings + S3 Vectors + LLM vali
 | `excel.py` | Excel read/write utilities (openpyxl) |
 | `storage.py` | Storage abstraction — local filesystem or S3 |
 | `vector_store.py` | S3 Vectors client wrapper (index management, upsert, search, delete) |
-| `async_vector_store.py` | Async S3 Vectors client (used by chat Lambda) |
 | `rate_limits.py` | API rate limiter (RPM-based) |
 
 ### `config/` — Configuration
@@ -125,8 +125,8 @@ Matches BOQ items to price codes using OpenAI embeddings + S3 Vectors + LLM vali
 Fargate entrypoint for the AlmabaniStack. Determines job mode from environment variables.
 
 **Modes**:
-- `PARSE` — Downloads Excel from S3, runs parse pipeline, uploads JSON to `output/indexes/`, indexes into S3 Vectors
-- `FILL` — Downloads Excel from S3, runs rate filler pipeline, uploads filled Excel to `output/fills/`
+- `PARSE` — Downloads Excel from S3, runs parse pipeline, uploads JSON to `output/indexes/`, indexes items into S3 Vectors (`almabani` index)
+- `FILL` — Downloads Excel from S3, runs 3-stage rate matching pipeline, writes estimate to `estimates/<file>_estimate.json`, uploads filled Excel to `output/fills/`
 
 ### `pricecode_worker.py` (Price Code Lexical Pipeline)
 
@@ -134,15 +134,15 @@ Fargate entrypoint for the PriceCodeStack.
 
 **Modes**:
 - `INDEX` — Index price codes from Excel into SQLite TF-IDF database, upload to S3
-- `ALLOCATE` — Download SQLite index from S3, match BOQ items using lexical search + LLM, output color-coded Excel
+- `ALLOCATE` — Download SQLite index from S3, perform lexical search → local rerank → LLM judge on candidates, write estimate to `estimates/pc_<file>_estimate.json`, output color-coded Excel
 
 ### `pricecode_vector_worker.py` (Price Code Vector Pipeline)
 
 Fargate entrypoint for the PriceCodeVectorStack.
 
 **Modes**:
-- `INDEX` — Embed price code items from Excel into S3 Vectors index
-- `ALLOCATE` — Query S3 Vectors for similar items, match via LLM, output allocated Excel
+- `INDEX` — Embed price code items from Excel, upsert into S3 Vectors (`almabani-pricecode-vector` index)
+- `ALLOCATE` — Embed BOQ items, query S3 Vectors for similar candidates, LLM judges each candidate, write estimate to `estimates/pcv_<file>_estimate.json`, output allocated Excel
 
 ---
 
@@ -172,10 +172,15 @@ Dispatcher/worker Lambda handlers for async deletion:
 
 | Handler | Endpoint | Action |
 |---------|----------|--------|
-| `dispatch_delete_datasheet` | `DELETE /files/sheets/{name}` | 202 → async delete from S3 Vectors + registry |
-| `dispatch_delete_price_code_set` | `DELETE /pricecode/sets/{name}` | 202 → async delete from index |
-| `dispatch_delete_pricecode_vector_set` | `DELETE /pricecode-vector/sets/{name}` | 202 → async delete from S3 Vectors |
-| `get_deletion_status` | `GET /deletion-status/{id}` | Poll status (auto-cleanup) |
+| `dispatch_delete_datasheet` | `DELETE /files/sheets/{sheet_name}` | 202 → async delete from S3 Vectors + registry |
+| `dispatch_delete_price_code_set` | `DELETE /pricecode/sets/{set_name}` | 202 → async delete from index |
+| `dispatch_delete_pricecode_vector_set` | `DELETE /pricecode-vector/sets/{set_name}` | 202 → async delete from S3 Vectors |
+| `get_deletion_status` | `GET /deletion-status/{deletion_id}` | Poll status (auto-cleanup) |
+
+For status polling, use query parameter `bucket_type`:
+- `files` for datasheet deletions (default)
+- `pricecode` for lexical price code deletions
+- `pricecode-vector` for vector price code deletions
 
 ---
 

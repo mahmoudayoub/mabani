@@ -9,11 +9,23 @@ The backend is a Python 3.11 application structured as an installable package (`
 
 ---
 
+## Entrypoints
+
+| File | Runs As | Purpose |
+|------|---------|---------|
+| `worker.py` | Fargate (AlmabaniStack) | Unit rate parsing & filling |
+| `pricecode_worker.py` | Fargate (PriceCodeStack) | Lexical price code index & allocation |
+| `pricecode_vector_worker.py` | Fargate (PriceCodeVectorStack) | Embedding price code index & allocation |
+| `chat_handler.py` | Lambda (ChatStack) | Natural language chat API |
+| `delete_handler.py` | Lambda (DeletionStack) | Async deletion dispatchers + workers |
+
+---
+
 ## `almabani/` Package
 
-The core logic is organized into 8 sub-modules:
+The core logic is organized into sub-modules:
 
-### `parsers/` — Excel → JSON
+### `parsers/` — Excel to JSON
 
 Extracts structured BOQ items from Excel datasheets.
 
@@ -72,6 +84,7 @@ Matches BOQ items to price codes using OpenAI embeddings + S3 Vectors + LLM vali
 | `excel.py` | Excel read/write utilities (openpyxl) |
 | `storage.py` | Storage abstraction — local filesystem or S3 |
 | `vector_store.py` | S3 Vectors client wrapper (index management, upsert, search, delete) |
+| `async_vector_store.py` | Async S3 Vectors client (used by chat Lambda) |
 | `rate_limits.py` | API rate limiter (RPM-based) |
 
 ### `config/` — Configuration
@@ -81,20 +94,23 @@ Matches BOQ items to price codes using OpenAI embeddings + S3 Vectors + LLM vali
 | `settings.py` | Pydantic-based settings — all env vars mapped to typed fields |
 | `logging_config.py` | Structured logging setup |
 
-**Key settings** (from `settings.py`):
+---
+
+## Key Settings (from `settings.py`)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `openai_chat_model` | `gpt-5-mini-2025-08-07` | LLM for matching/chat |
 | `openai_embedding_model` | `text-embedding-3-small` | Embedding model |
-| `s3_vectors_bucket` | (env-based) | S3 Vectors bucket |
+| `s3_vectors_bucket` | `almabani-vectors` | S3 Vectors bucket |
 | `s3_vectors_index_name` | `almabani` | Unit rate S3 Vectors index |
-| `pricecode_index_name` | `almabani-pricecode-vector` | Price code S3 Vectors index |
-| `pricecode_vector_index_name` | (env-based) | Price code vector pipeline index |
-| `similarity_threshold` | `0.5` | Minimum cosine similarity |
-| `top_k` | `10` | Candidates per query (rate filler) |
+| `pricecode_index_name` | `almabani-pricecode-vector` | Price code S3 Vectors index (chat + vector pipeline) |
+| `similarity_threshold` | `0.5` | Minimum cosine similarity (unit rate) |
+| `top_k` | `10` | Candidates per query (unit rate fill) |
 | `pricecode_max_candidates` | `1` | Lexical candidates sent to LLM per item |
+| `pricecode_max_concurrent` | `200` | Max concurrent DB queries (lexical pipeline) |
 | `pricecode_vector_top_k` | `5` | Candidates per query (vector price code) |
+| `pricecode_vector_threshold` | `0.40` | Minimum cosine similarity (vector price code) |
 | `batch_size` | `500` | Items per processing batch |
 | `max_workers` | `200` | Max concurrent embedding tasks |
 | `embeddings_rpm` | `3000` | OpenAI embeddings rate limit |

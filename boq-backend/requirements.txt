@@ -1,0 +1,24 @@
+# Almabani BOQ Management System
+# Install: pip install -r requirements.txt
+# Or install as package: pip install -e .
+
+# Core Data Processing
+pandas>=2.0.0
+openpyxl>=3.1.0
+rapidfuzz>=3.0.0
+aiosqlite>=0.19.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+pyyaml>=6.0.0
+
+# AI & Vector Search
+openai>=1.0.0
+# S3 Vectors uses boto3 + aioboto3 for async operations
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+
+# AWS
+boto3>=1.34.0
+aioboto3>=13.0.0

@@ -228,7 +228,7 @@ export const deleteEstimate = async (filename: string): Promise<void> => {
  * Delete a sheet (External API — async with polling)
  */
 export const deleteSheet = async (sheetName: string): Promise<void> => {
-    const deletionApiUrl = "https://auwdkyf4ka.execute-api.eu-west-1.amazonaws.com/prod";
+    const deletionApiUrl = import.meta.env.VITE_BOQ_DELETION_API_URL || "";
 
     const headers = await getAuthHeaders();
     const encodedName = encodeURIComponent(sheetName);

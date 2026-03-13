@@ -35,7 +35,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     useEffect(() => {
         const warmUpLambda = async () => {
             try {
-                await fetch('https://wio42z6ftqwg6dblphsfnpmz6e0petwm.lambda-url.eu-west-1.on.aws/', {
+                await fetch(import.meta.env.VITE_BOQ_CHAT_API_URL || '', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type, message: '__warmup__', warmup: true })

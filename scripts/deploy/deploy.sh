@@ -187,6 +187,30 @@ deploy_frontend() {
     log_success "Frontend deployment completed"
 }
 
+# Deploy BOQ (New CDK stacks and ECS background workers)
+deploy_boq() {
+    log_info "Deploying BOQ infrastructure and services..."
+    
+    cd "$PROJECT_ROOT/infra"
+    
+    # Install Python dependencies for CDK
+    if [ ! -d "venv" ]; then
+        log_info "Creating Python virtual environment for BOQ infra..."
+        python3 -m venv venv
+    fi
+    
+    log_info "Installing Python dependencies..."
+    source venv/bin/activate
+    pip install --upgrade pip
+    pip install -r requirements.txt
+    
+    # Deploy all stacks
+    log_info "Deploying BOQ CDK stacks..."
+    npx cdk deploy --all $PROFILE_ARG --require-approval never
+    
+    log_success "BOQ deployment completed"
+}
+
 # Update environment variables
 update_env_vars() {
     log_info "Updating environment variables..."
@@ -253,15 +277,19 @@ main() {
         "config"|"env")
             update_env_vars
             ;;
+        "boq")
+            deploy_boq
+            ;;
         "all")
             deploy_infrastructure
             deploy_backend
+            deploy_boq
             update_env_vars
             deploy_frontend
             ;;
         *)
             log_error "Invalid component: $COMPONENT"
-            log_info "Valid components: infra, backend, frontend, config, all"
+            log_info "Valid components: infra, backend, frontend, config, boq, all"
             exit 1
             ;;
     esac

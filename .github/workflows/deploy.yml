@@ -1,10 +1,19 @@
 name: Deploy to Dev
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to deploy'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - frontend
+          - backend
+          - infrastructure
+          - boq
 
 permissions:
   id-token: write # Required for requesting the JWT
@@ -46,10 +55,12 @@ jobs:
 
       # Frontend Checks (Build required for CDK Synth)
       - name: Install Frontend Deps
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'frontend' }}
         working-directory: ./frontend
         run: npm ci
 
       - name: Frontend Build Check
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'frontend' }}
         working-directory: ./frontend
         run: |
           touch .env
@@ -57,16 +68,19 @@ jobs:
 
       # Infrastructure Checks
       - name: Install Infrastructure Deps
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'infrastructure' }}
         run: |
           cd infrastructure
           npm ci
 
       - name: CDK Synth (Infrastructure Validation)
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'infrastructure' }}
         working-directory: ./infrastructure
         run: npx cdk synth
 
       # Backend Checks
       - name: Install Backend Deps
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'backend' }}
         working-directory: ./backend
         run: |
           python -m pip install --upgrade pip
@@ -74,6 +88,7 @@ jobs:
           pip install flake8 pytest
 
       - name: Backend Lint
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'backend' }}
         working-directory: ./backend
         run: flake8 lambdas/ --count --select=E9,F63,F7,F82 --show-source --statistics
 
@@ -83,15 +98,23 @@ jobs:
         run: chmod +x ./scripts/deploy/deploy.sh
 
       - name: Deploy Infrastructure
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'infrastructure' }}
         run: ./scripts/deploy/deploy.sh dev infra
 
       - name: Deploy Backend
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'backend' }}
         run: ./scripts/deploy/deploy.sh dev backend
 
+      - name: Deploy BOQ
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'boq' }}
+        run: ./scripts/deploy/deploy.sh dev boq
+
       - name: Update Configuration
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'frontend' }}
         env:
           VITE_DELETION_API_URL: ${{ secrets.VITE_DELETION_API_URL }}
         run: ./scripts/deploy/deploy.sh dev config
 
       - name: Deploy Frontend
+        if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'frontend' }}
         run: ./scripts/deploy/deploy.sh dev frontend

@@ -1,4 +1,5 @@
 import { API_BASE_URL, getAuthHeaders } from '../utils/api';
+import { getDeletionApiBaseUrl, readJsonResponse } from './deletionApi';
 
 export interface OutputFile {
     key: string;
@@ -228,7 +229,7 @@ export const deleteEstimate = async (filename: string): Promise<void> => {
  * Delete a sheet (External API — async with polling)
  */
 export const deleteSheet = async (sheetName: string): Promise<void> => {
-    const deletionApiUrl = import.meta.env.VITE_BOQ_DELETION_API_URL || "";
+    const deletionApiUrl = getDeletionApiBaseUrl();
 
     const headers = await getAuthHeaders();
     const encodedName = encodeURIComponent(sheetName);
@@ -239,12 +240,15 @@ export const deleteSheet = async (sheetName: string): Promise<void> => {
         headers: headers,
     });
 
+    const data = await readJsonResponse<{ deletion_id?: string; bucket_type?: string; error?: string }>(
+        response,
+        `Delete sheet "${sheetName}"`
+    );
+
     if (!response.ok && response.status !== 202) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || `Failed to delete sheet: ${response.statusText}`);
+        throw new Error(data.error || `Failed to delete sheet: ${response.statusText}`);
     }
 
-    const data = await response.json();
     const deletionId = data.deletion_id;
     const bucketType = data.bucket_type || 'files';
 
@@ -264,7 +268,10 @@ export const deleteSheet = async (sheetName: string): Promise<void> => {
             if (statusResp.status === 404) continue;
 
             if (statusResp.ok) {
-                const statusData = await statusResp.json();
+                const statusData = await readJsonResponse<{ status?: string; error?: string }>(
+                    statusResp,
+                    `Poll deletion status for "${sheetName}"`
+                );
                 if (statusData.status === 'complete') return;
                 if (statusData.status === 'error') {
                     throw new Error(statusData.error || 'Deletion failed');

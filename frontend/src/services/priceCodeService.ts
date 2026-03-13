@@ -1,4 +1,5 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
+import { getDeletionApiBaseUrl, readJsonResponse } from './deletionApi';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -233,7 +234,7 @@ export const fetchTextContent = async (url: string): Promise<string> => {
  * Delete a price code set (External API — async with polling)
  */
 export const deletePriceCodeSet = async (setName: string): Promise<void> => {
-    const deletionApiUrl = import.meta.env.VITE_BOQ_DELETION_API_URL || "";
+    const deletionApiUrl = getDeletionApiBaseUrl();
 
     const headers = await getAuthHeaders();
     const encodedName = encodeURIComponent(setName);
@@ -244,12 +245,15 @@ export const deletePriceCodeSet = async (setName: string): Promise<void> => {
         headers: headers,
     });
 
+    const data = await readJsonResponse<{ deletion_id?: string; bucket_type?: string; error?: string }>(
+        response,
+        `Delete price code set "${setName}"`
+    );
+
     if (!response.ok && response.status !== 202) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || `Failed to delete price code set: ${response.statusText}`);
+        throw new Error(data.error || `Failed to delete price code set: ${response.statusText}`);
     }
 
-    const data = await response.json();
     const deletionId = data.deletion_id;
     const bucketType = data.bucket_type || 'pricecode';
 
@@ -269,7 +273,10 @@ export const deletePriceCodeSet = async (setName: string): Promise<void> => {
             if (statusResp.status === 404) continue; // Not ready yet
 
             if (statusResp.ok) {
-                const statusData = await statusResp.json();
+                const statusData = await readJsonResponse<{ status?: string; error?: string }>(
+                    statusResp,
+                    `Poll deletion status for "${setName}"`
+                );
                 if (statusData.status === 'complete') return;
                 if (statusData.status === 'error') {
                     throw new Error(statusData.error || 'Deletion failed');

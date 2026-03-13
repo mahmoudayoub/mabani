@@ -4,7 +4,6 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_apigateway as apigw,
     aws_iam as iam,
-    aws_ssm as ssm,
     aws_s3 as s3,
     Duration,
     CfnOutput,
@@ -12,6 +11,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 import os
+from layer_utils import build_async_aws_dependencies_layer
 
 class DeletionStack(Stack):
 
@@ -49,12 +49,10 @@ class DeletionStack(Stack):
 
         # 2. Lambda Functions & Layer
         backend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'boq-backend')
-        layer_dir = os.path.join(os.path.dirname(__file__), 'layers', 'deletion_dependencies')
-        
-        dependencies_layer = _lambda.LayerVersion(self, "DeletionDependenciesLayer",
-            code=_lambda.Code.from_asset(layer_dir),
-            compatible_runtimes=[_lambda.Runtime.PYTHON_3_11],
-            description="Dependencies for deletion lambda (boto3)"
+        async_dependencies_layer = build_async_aws_dependencies_layer(
+            self,
+            "DeletionDependenciesLayer",
+            "Async AWS dependencies for deletion lambdas",
         )
 
         code_asset = _lambda.Code.from_asset(backend_dir, exclude=[
@@ -69,7 +67,7 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_datasheet", 
             code=code_asset,
-            layers=[dependencies_layer],
+            layers=[async_dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
@@ -83,7 +81,6 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_price_code_set",
             code=code_asset,
-            layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
@@ -97,7 +94,7 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_pricecode_vector_set",
             code=code_asset,
-            layers=[dependencies_layer],
+            layers=[async_dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_VECTOR_BUCKET": pcv_bucket_name,
@@ -113,7 +110,6 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.dispatch_delete_datasheet",
             code=code_asset,
-            layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "WORKER_LAMBDA_ARN_DATASHEET": worker_datasheet.function_arn,
@@ -125,7 +121,6 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.dispatch_delete_price_code_set",
             code=code_asset,
-            layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
@@ -138,7 +133,6 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.dispatch_delete_pricecode_vector_set",
             code=code_asset,
-            layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_VECTOR_BUCKET": pcv_bucket_name,
@@ -153,7 +147,6 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.get_deletion_status",
             code=code_asset,
-            layers=[dependencies_layer],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
@@ -183,7 +176,6 @@ class DeletionStack(Stack):
             resources=["*"]
         )
         worker_datasheet.add_to_role_policy(s3v_policy)
-        worker_pricecode.add_to_role_policy(s3v_policy)
         worker_pcv.add_to_role_policy(s3v_policy)
 
         # Grant dispatchers permission to invoke workers
@@ -243,4 +235,3 @@ class DeletionStack(Stack):
 
         # Outputs
         CfnOutput(self, "DeletionApiUrl", value=api.url)
-

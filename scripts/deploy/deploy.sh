@@ -44,6 +44,56 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+sanitize_stack_output() {
+    local value="$1"
+    if [ "$value" = "None" ] || [ "$value" = "null" ]; then
+        echo ""
+    else
+        echo "$value"
+    fi
+}
+
+get_stack_output() {
+    local stack_name="$1"
+    local output_key="$2"
+    local value
+
+    value=$(aws cloudformation describe-stacks \
+        --stack-name "$stack_name" \
+        --region "$AWS_REGION" \
+        $PROFILE_ARG \
+        --query "Stacks[0].Outputs[?OutputKey==\`${output_key}\`].OutputValue | [0]" \
+        --output text 2>/dev/null || true)
+
+    sanitize_stack_output "$value"
+}
+
+smoke_test_deletion_dispatch() {
+    local api_base_url="$1"
+    local path="$2"
+    local label="$3"
+    local smoke_name="codex-smoke-${label}-$(date +%s)"
+    local response
+    local http_code
+    local body
+
+    response=$(curl -sS -X DELETE -w '\n%{http_code}' "${api_base_url%/}/${path}/${smoke_name}")
+    http_code=$(printf '%s\n' "$response" | tail -n 1)
+    body=$(printf '%s\n' "$response" | sed '$d')
+
+    if [ "$http_code" != "202" ]; then
+        log_error "${label} deletion dispatcher smoke test failed with HTTP ${http_code}: ${body}"
+        exit 1
+    fi
+
+    if ! printf '%s' "$body" | python3 -c 'import json, sys; data = json.load(sys.stdin); assert data.get("deletion_id"), data' >/dev/null 2>&1; then
+        log_error "${label} deletion dispatcher smoke test returned invalid JSON: ${body}"
+        exit 1
+    fi
+
+    log_success "${label} deletion dispatcher smoke test passed"
+}
+
 # Check if AWS CLI is installed and configured
 check_aws_cli() {
     if ! command -v aws &> /dev/null; then
@@ -207,6 +257,17 @@ deploy_boq() {
     # Deploy all stacks
     log_info "Deploying BOQ CDK stacks..."
     npx cdk deploy --all $PROFILE_ARG --require-approval never
+
+    local deletion_api_url
+    deletion_api_url=$(get_stack_output "DeletionStack" "DeletionApiUrl")
+    if [ -z "$deletion_api_url" ]; then
+        log_error "Could not resolve DeletionStack output DeletionApiUrl after BOQ deploy."
+        exit 1
+    fi
+
+    log_info "Running BOQ deletion dispatcher smoke tests..."
+    smoke_test_deletion_dispatch "$deletion_api_url" "pricecode/sets" "pricecode"
+    smoke_test_deletion_dispatch "$deletion_api_url" "pricecode-vector/sets" "pricecode-vector"
     
     log_success "BOQ deployment completed"
 }
@@ -246,13 +307,36 @@ update_env_vars() {
     
     API_URL="https://${API_URL}.execute-api.${AWS_REGION}.amazonaws.com/${ENVIRONMENT}"
     
+    DELETION_API_URL=$(get_stack_output "DeletionStack" "DeletionApiUrl")
+    if [ -z "$DELETION_API_URL" ]; then
+        DELETION_API_URL=$(sanitize_stack_output "${VITE_BOQ_DELETION_API_URL:-${VITE_DELETION_API_URL:-}}")
+    fi
+
+    CHAT_API_URL=$(get_stack_output "ChatStack" "ChatFunctionUrl")
+    if [ -z "$CHAT_API_URL" ]; then
+        CHAT_API_URL=$(get_stack_output "ChatStack" "ChatApiUrl")
+    fi
+    if [ -z "$CHAT_API_URL" ]; then
+        CHAT_API_URL=$(sanitize_stack_output "${VITE_BOQ_CHAT_API_URL:-}")
+    fi
+
+    if [ -z "$DELETION_API_URL" ]; then
+        log_warning "BOQ deletion API URL could not be resolved. Frontend delete actions will be unavailable until VITE_BOQ_DELETION_API_URL is set."
+    fi
+
+    if [ -z "$CHAT_API_URL" ]; then
+        log_warning "BOQ chat API URL could not be resolved. Frontend chat actions will be unavailable until VITE_BOQ_CHAT_API_URL is set."
+    fi
+
     # Update frontend .env file
     cat > "$PROJECT_ROOT/frontend/.env" << EOF
 VITE_COGNITO_USER_POOL_ID=$USER_POOL_ID
 VITE_COGNITO_USER_POOL_CLIENT_ID=$USER_POOL_CLIENT_ID
 VITE_COGNITO_REGION=$AWS_REGION
 VITE_API_BASE_URL=$API_URL
-VITE_DELETION_API_URL=$VITE_DELETION_API_URL
+VITE_BOQ_DELETION_API_URL=$DELETION_API_URL
+VITE_BOQ_CHAT_API_URL=$CHAT_API_URL
+VITE_DELETION_API_URL=$DELETION_API_URL
 EOF
     
     log_success "Environment variables updated"

@@ -112,7 +112,8 @@ jobs:
       - name: Update Configuration
         if: ${{ github.event.inputs.component == 'all' || github.event.inputs.component == 'frontend' }}
         env:
-          VITE_DELETION_API_URL: ${{ secrets.VITE_DELETION_API_URL }}
+          VITE_BOQ_DELETION_API_URL: ${{ secrets.VITE_BOQ_DELETION_API_URL }}
+          VITE_BOQ_CHAT_API_URL: ${{ secrets.VITE_BOQ_CHAT_API_URL }}
         run: ./scripts/deploy/deploy.sh dev config
 
       - name: Deploy Frontend

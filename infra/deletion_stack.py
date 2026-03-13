@@ -81,6 +81,7 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.delete_price_code_set",
             code=code_asset,
+            layers=[],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
@@ -110,6 +111,7 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.dispatch_delete_datasheet",
             code=code_asset,
+            layers=[],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "WORKER_LAMBDA_ARN_DATASHEET": worker_datasheet.function_arn,
@@ -121,6 +123,7 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.dispatch_delete_price_code_set",
             code=code_asset,
+            layers=[],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
@@ -133,6 +136,7 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.dispatch_delete_pricecode_vector_set",
             code=code_asset,
+            layers=[],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_VECTOR_BUCKET": pcv_bucket_name,
@@ -147,6 +151,7 @@ class DeletionStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="delete_handler.get_deletion_status",
             code=code_asset,
+            layers=[],
             environment={
                 "FILE_PROCESSING_BUCKET": bucket.bucket_name,
                 "PRICECODE_BUCKET": pc_bucket_name,
@@ -154,6 +159,18 @@ class DeletionStack(Stack):
             },
             timeout=Duration.seconds(10)
         )
+
+        # CloudFormation treats omitted Layers as "leave existing value".
+        # Override non-worker lambdas to an explicit empty list so updates
+        # remove stale broken layers from previously deployed functions.
+        for fn in (
+            worker_pricecode,
+            dispatcher_datasheet,
+            dispatcher_pricecode,
+            dispatcher_pcv,
+            status_lambda,
+        ):
+            fn.node.default_child.add_property_override("Layers", [])
 
         # 3. Permissions — S3
         bucket.grant_read_write(worker_datasheet)

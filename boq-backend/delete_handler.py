@@ -61,6 +61,21 @@ def _cleanup_s3_prefix(bucket, prefix, set_name=None):
         print(f"Warning: cleanup of {prefix} failed: {e}")
 
 
+def _cleanup_sqlite_local_files(db_path):
+    """Remove a SQLite database file and its common sidecar files from /tmp."""
+    if not db_path:
+        return
+
+    for suffix in ("", "-journal", "-wal", "-shm"):
+        path = f"{db_path}{suffix}"
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"Warning: failed to remove local file {path}: {e}")
+
+
 # ============================================================
 # STATUS ENDPOINT (shared across all delete types)
 # ============================================================
@@ -447,6 +462,7 @@ def delete_price_code_set(event, context):
     # ── 1. Remove rows from SQLite index ────────────────────────────────
     db_s3_key = "metadata/pricecode_index.db"
     db_local = "/tmp/pricecode_index.db"
+    _cleanup_sqlite_local_files(db_local)
     try:
         s3_client.download_file(bucket, db_s3_key, db_local)
         print(f"Downloaded index from s3://{bucket}/{db_s3_key}")
@@ -466,8 +482,10 @@ def delete_price_code_set(event, context):
 
     if db_local:
         import sqlite3
+        conn = None
         try:
             conn = sqlite3.connect(db_local)
+            vacuum_error = None
             # Find ref_ids belonging to this source_file
             ref_ids = [
                 r[0] for r in conn.execute(
@@ -542,18 +560,24 @@ def delete_price_code_set(event, context):
                 print(f"Pruned index: {before_count} -> {after_count} refs "
                       f"(removed {len(ref_ids)} rows for '{set_name}')")
 
-                # VACUUM to reclaim space (shrink the .db file)
-                conn.execute("VACUUM")
+                # VACUUM is a best-effort compaction step. The prune is already
+                # committed, so a disk-full failure here should not abort delete.
+                try:
+                    conn.execute("VACUUM")
+                    print("Vacuumed lexical price code index")
+                except Exception as e:
+                    vacuum_error = e
+                    print(f"Warning: VACUUM skipped after prune: {e}")
             else:
                 after_count = before_count
                 print(f"Source file '{set_name}' not found in index (0 rows matched)")
-
-            conn.close()
 
             # Re-upload pruned index
             if ref_ids:
                 s3_client.upload_file(db_local, bucket, db_s3_key)
                 print(f"Re-uploaded pruned index to s3://{bucket}/{db_s3_key}")
+                if vacuum_error:
+                    print("Uploaded pruned index without VACUUM compaction")
 
         except Exception as e:
             print(f"SQLite prune failed: {e}")
@@ -563,6 +587,13 @@ def delete_price_code_set(event, context):
                     "set_name": set_name, "error": f"Failed to prune index: {str(e)}"
                 })
             return create_response(500, {"error": f"Failed to prune index: {str(e)}"})
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            _cleanup_sqlite_local_files(db_local)
 
     # ── 2. Delete source Excel from S3 ──────────────────────────────────
     # The INDEX job stores reference files under input/pricecode/index/
@@ -761,4 +792,3 @@ def delete_pricecode_vector_set(event, context):
         })
 
     return create_response(200, {"message": f"Price Code Vector set '{set_name}' deleted successfully"})
-

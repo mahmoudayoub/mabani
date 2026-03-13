@@ -87,7 +87,7 @@ class DeletionStack(Stack):
                 "PRICECODE_BUCKET": pc_bucket_name,
             },
             memory_size=2048,
-            ephemeral_storage_size=Size.mebibytes(2048),
+            ephemeral_storage_size=Size.mebibytes(4096),
             timeout=Duration.minutes(15)
         )
 

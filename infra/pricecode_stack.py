@@ -64,6 +64,7 @@ class PriceCodeStack(Stack):
         # 2. S3 Bucket - use shared or create new
         if shared_bucket:
             bucket = shared_bucket
+            created_bucket = False
         else:
             bucket = s3.Bucket(self, "PriceCodeData",
                 versioned=False,
@@ -77,7 +78,13 @@ class PriceCodeStack(Stack):
                     )
                 ]
             )
+            created_bucket = True
         self.bucket = bucket
+        if created_bucket:
+            bucket.add_lifecycle_rule(
+                prefix="deletion-status/",
+                expiration=Duration.days(1),
+            )
 
         # 3. ECS Cluster
         cluster = ecs.Cluster(self, "PriceCodeCluster", vpc=vpc)

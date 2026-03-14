@@ -123,8 +123,8 @@ def get_deletion_status(event, context):
         if status_data.get("status") in ("complete", "error"):
             try:
                 s3_client.delete_object(Bucket=bucket, Key=status_key)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: failed to delete status marker s3://{bucket}/{status_key}: {e}")
 
         return create_response(200, status_data)
     except s3_client.exceptions.NoSuchKey:

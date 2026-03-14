@@ -53,6 +53,10 @@ class AlmabaniStack(Stack):
 
         )
         self.bucket = bucket
+        bucket.add_lifecycle_rule(
+            prefix="deletion-status/",
+            expiration=Duration.days(1),
+        )
 
         # 3. ECS Cluster
         cluster = ecs.Cluster(self, "AlmabaniCluster", vpc=vpc)

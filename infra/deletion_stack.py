@@ -13,6 +13,15 @@ from constructs import Construct
 import os
 from layer_utils import build_async_aws_dependencies_layer
 
+
+def _grant_status_marker_access(grantee: iam.IGrantable, bucket: s3.IBucket) -> None:
+    grantee.grant_principal.add_to_principal_policy(
+        iam.PolicyStatement(
+            actions=["s3:GetObject", "s3:DeleteObject"],
+            resources=[bucket.arn_for_objects("deletion-status/*")],
+        )
+    )
+
 class DeletionStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, 
@@ -174,18 +183,18 @@ class DeletionStack(Stack):
 
         # 3. Permissions — S3
         bucket.grant_read_write(worker_datasheet)
-        bucket.grant_read_write(status_lambda)
         bucket.grant_write(dispatcher_datasheet)  # Write deletion-status markers
+        _grant_status_marker_access(status_lambda, bucket)
 
         if pc_bucket:
             pc_bucket.grant_read_write(worker_pricecode)
-            pc_bucket.grant_read(status_lambda)
             pc_bucket.grant_write(dispatcher_pricecode)
+            _grant_status_marker_access(status_lambda, pc_bucket)
 
         if pcv_bucket:
             pcv_bucket.grant_read_write(worker_pcv)
-            pcv_bucket.grant_read(status_lambda)
             pcv_bucket.grant_write(dispatcher_pcv)
+            _grant_status_marker_access(status_lambda, pcv_bucket)
             
         # Grant S3 Vectors data API access to workers
         s3v_policy = iam.PolicyStatement(
